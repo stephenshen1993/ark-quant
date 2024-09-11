@@ -14,22 +14,15 @@ public class Position {
     private String name;
     private Double price;
     private Integer quantity;
-    private Double value;
 
     public Position(String symbol, String name, Double price, Integer quantity) {
         this.symbol = symbol;
         this.name = name;
-        this.price = price;
+        this.price = price != null ? price : 0;
         this.quantity = quantity;
-        this.value = price * quantity;
     }
 
-    /**
-     * 更新持仓数量
-     * @param quantity
-     */
-    public void updateQuantity(Integer quantity) {
-        this.quantity = quantity;
-        this.value = price * quantity;
+    public double getValue() {
+        return this.price * this.quantity;
     }
 }

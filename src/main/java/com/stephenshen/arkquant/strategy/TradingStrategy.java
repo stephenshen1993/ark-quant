@@ -2,6 +2,8 @@ package com.stephenshen.arkquant.strategy;
 
 import com.stephenshen.arkquant.entity.TradingPlan;
 
+import java.util.List;
+
 /**
  * 交易策略
  *
@@ -15,7 +17,7 @@ public interface TradingStrategy<T extends TradingStrategy.Context> {
      * @param context
      * @return
      */
-    TradingPlan makeTradingPlan(T context);
+    List<TradingPlan> makeTradingPlan(T context);
 
     /**
      * 策略上下文

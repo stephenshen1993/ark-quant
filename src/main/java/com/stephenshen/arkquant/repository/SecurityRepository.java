@@ -22,16 +22,16 @@ public interface SecurityRepository {
     Security getSecurity(String symbol);
 
     /**
-     * 获取标的映射
-     * @param symbols
-     * @return 标的代码 -> 标的信息
-     */
-    Map<String, Security> getSecurityMap(Collection<String> symbols);
-
-    /**
      * 获取标的列表
      * @param symbols
      * @return
      */
     List<Security> getSecurities(Collection<String> symbols);
+
+    /**
+     * 获取标的映射
+     * @param symbols
+     * @return 标的代码 -> 标的信息
+     */
+    Map<String, Security> getSecurityMap(Collection<String> symbols);
 }

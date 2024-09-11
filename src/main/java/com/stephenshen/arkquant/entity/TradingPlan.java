@@ -1,9 +1,7 @@
 package com.stephenshen.arkquant.entity;
 
-import lombok.Getter;
-
-import java.util.HashMap;
-import java.util.Map;
+import com.alibaba.fastjson.annotation.JSONField;
+import lombok.Data;
 
 /**
  * 交易计划
@@ -11,16 +9,30 @@ import java.util.Map;
  * @author stephenshen
  * @date 2024/8/28 07:04:49
  */
-@Getter
+@Data
 public class TradingPlan {
-    private final Map<String, Integer> buyPlan = new HashMap<>();
-    private final Map<String, Integer> sellPlan = new HashMap<>();
+    // 标的编码
+    @JSONField(ordinal = 1)
+    private String symbol;
+    // 标的名称
+    @JSONField(ordinal = 2)
+    private String name;
+    // 标的价格
+    @JSONField(ordinal = 3)
+    private Double price;
+    // 交易数量
+    @JSONField(ordinal = 4)
+    private Integer quantity;
+    // 交易价值
+    @JSONField(ordinal = 5)
+    private Double value;
 
-    public void addBuy(String symbol, int quantity) {
-        buyPlan.put(symbol, quantity);
-    }
-
-    public void addSell(String symbol, int quantity) {
-        sellPlan.put(symbol, quantity);
+    public TradingPlan(Security security, Integer quantity) {
+        this.symbol = security.getSymbol();
+        this.name = security.getName();
+        this.price = security.getPrice();
+        this.quantity = quantity;
+        // 交易价值
+        this.value = this.price * this.quantity;
     }
 }

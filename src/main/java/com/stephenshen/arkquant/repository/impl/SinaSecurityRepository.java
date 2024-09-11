@@ -75,8 +75,8 @@ public class SinaSecurityRepository implements SecurityRepository {
         if (symbol.startsWith("600") || symbol.startsWith("601") || symbol.startsWith("603")) {
             return "sh" + symbol;
         }
-        // 深市股票代码以000、001、002或300开头
-        if (symbol.startsWith("000") || symbol.startsWith("001") || symbol.startsWith("002") || symbol.startsWith("300")) {
+        // 深市股票代码以000、001、002或003开头
+        if (symbol.startsWith("000") || symbol.startsWith("001") || symbol.startsWith("002") || symbol.startsWith("003")) {
             return "sz" + symbol;
         }
 
@@ -114,8 +114,8 @@ public class SinaSecurityRepository implements SecurityRepository {
         if (symbol.startsWith("600") || symbol.startsWith("601") || symbol.startsWith("603")) {
             return 100;
         }
-        // 深市股票代码以000、001、002或300开头
-        if (symbol.startsWith("000") || symbol.startsWith("001") || symbol.startsWith("002") || symbol.startsWith("300")) {
+        // 深市股票代码以000、001、002或003开头
+        if (symbol.startsWith("000") || symbol.startsWith("001") || symbol.startsWith("002") || symbol.startsWith("003")) {
             return 100;
         }
 
