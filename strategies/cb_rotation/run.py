@@ -109,6 +109,14 @@ def as_yuan(series: pd.Series, column_name: str | None = None) -> pd.Series:
     return value
 
 
+def as_turnover_yuan(series: pd.Series, column_name: str | None = None) -> pd.Series:
+    value = as_yuan(series, column_name)
+    name = column_name or ""
+    if name == "成交额" and value.max(skipna=True) < 10_000_000:
+        return value * 10_000
+    return value
+
+
 def get_col(df: pd.DataFrame, candidates: list[str], target: str, required: bool = False) -> pd.Series:
     col = first_existing_col(df, candidates)
     if col is None:
@@ -122,7 +130,7 @@ def get_col(df: pd.DataFrame, candidates: list[str], target: str, required: bool
 
 def fetch_cb_universe(ak) -> pd.DataFrame:
     errors: list[str] = []
-    for func_name in ("bond_cb_jsl", "bond_zh_cov"):
+    for func_name in ("bond_zh_cov", "bond_cb_jsl"):
         if not hasattr(ak, func_name):
             continue
         try:
@@ -137,15 +145,46 @@ def fetch_cb_universe(ak) -> pd.DataFrame:
     raise RuntimeError("无法获取可转债全市场数据: " + " | ".join(errors))
 
 
+def enrich_cb_with_redeem_data(ak, cb: pd.DataFrame) -> pd.DataFrame:
+    try:
+        logging.info("Fetching redeem risk data with ak.bond_cb_redeem_jsl()")
+        raw = ak.bond_cb_redeem_jsl()
+    except Exception as exc:
+        logging.warning("Failed to fetch redeem data: %s", exc)
+        return cb
+    if raw.empty:
+        return cb
+
+    redeem = pd.DataFrame(index=raw.index)
+    redeem["bond_code"] = get_col(raw, ["代码", "债券代码"], "bond_code", True).astype(str).str.zfill(6)
+    redeem["remaining_size_100m_redeem"] = as_100m_units(get_col(raw, ["剩余规模"], "remaining_size_100m"))
+    redeem["maturity_date_redeem"] = pd.to_datetime(
+        get_col(raw, ["到期日", "到期时间", "到期日期"], "maturity_date"),
+        errors="coerce",
+    ).dt.date
+    redeem["call_status_redeem"] = get_col(raw, ["强赎状态"], "call_status").astype(str)
+    redeem = redeem.drop_duplicates(subset=["bond_code"])
+
+    merged = cb.merge(redeem, on="bond_code", how="left")
+    merged["remaining_size_100m"] = merged["remaining_size_100m"].combine_first(
+        merged["remaining_size_100m_redeem"]
+    )
+    merged["maturity_date"] = merged["maturity_date"].combine_first(merged["maturity_date_redeem"])
+    merged["call_status"] = merged["call_status"].replace({"<NA>": pd.NA, "nan": pd.NA}).combine_first(
+        merged["call_status_redeem"]
+    )
+    return merged.drop(columns=["remaining_size_100m_redeem", "maturity_date_redeem", "call_status_redeem"])
+
+
 def normalize_cb_data(raw: pd.DataFrame) -> pd.DataFrame:
     df = pd.DataFrame(index=raw.index)
     df["bond_code"] = get_col(raw, ["债券代码", "转债代码", "代码", "bond_id"], "bond_code", True).astype(str).str.zfill(6)
     df["bond_name"] = get_col(raw, ["债券简称", "转债名称", "名称", "bond_nm"], "bond_name", True).astype(str)
     df["stock_code"] = get_col(raw, ["正股代码", "stock_id", "stock_code"], "stock_code").astype(str).str.extract(r"(\d{6})", expand=False)
-    df["stock_name"] = get_col(raw, ["正股名称", "stock_nm", "stock_name"], "stock_name").astype(str)
-    df["cb_price"] = as_number(get_col(raw, ["现价", "最新价", "转债最新价", "price"], "cb_price", True))
+    df["stock_name"] = get_col(raw, ["正股简称", "正股名称", "stock_nm", "stock_name"], "stock_name").astype(str)
+    df["cb_price"] = as_number(get_col(raw, ["债现价", "现价", "最新价", "转债最新价", "price"], "cb_price", True))
     df["premium_rate"] = as_number(get_col(raw, ["转股溢价率", "溢价率", "premium_rt"], "premium_rate", True))
-    remaining_col = first_existing_col(raw, ["剩余规模", "债券余额", "余额", "remain_size"])
+    remaining_col = first_existing_col(raw, ["剩余规模", "债券余额", "余额", "发行规模", "remain_size"])
     if remaining_col is None:
         logging.warning("缺少字段 remaining_size_100m；该字段相关过滤会跳过。")
         df["remaining_size_100m"] = pd.NA
@@ -156,11 +195,12 @@ def normalize_cb_data(raw: pd.DataFrame) -> pd.DataFrame:
         logging.warning("缺少字段 turnover_yuan；该字段相关过滤会跳过。")
         df["turnover_yuan"] = pd.NA
     else:
-        df["turnover_yuan"] = as_yuan(raw[turnover_col], str(turnover_col))
+        df["turnover_yuan"] = as_turnover_yuan(raw[turnover_col], str(turnover_col))
     df["maturity_date"] = pd.to_datetime(
         get_col(raw, ["到期时间", "到期日期", "maturity_dt"], "maturity_date"),
         errors="coerce",
     ).dt.date
+    df["remaining_years"] = as_number(get_col(raw, ["剩余年限"], "remaining_years"))
     df["call_status"] = get_col(raw, ["强赎状态", "强赎", "redeem_flag", "redeem_status"], "call_status").astype(str)
     return df.drop_duplicates(subset=["bond_code"])
 
@@ -170,14 +210,10 @@ def normalize_stock_code(code: str) -> str:
     return digits[-6:] if len(digits) >= 6 else digits
 
 
-def fetch_stock_spot(ak) -> pd.DataFrame:
-    logging.info("Fetching A-share spot data with ak.stock_zh_a_spot_em()")
-    raw = ak.stock_zh_a_spot_em()
-    df = pd.DataFrame(index=raw.index)
-    df["stock_code"] = get_col(raw, ["代码", "stock_code"], "stock_code", True).astype(str).str.zfill(6)
-    df["stock_name_spot"] = get_col(raw, ["名称", "股票简称", "stock_name"], "stock_name", True).astype(str)
-    df["market_cap"] = as_number(get_col(raw, ["总市值", "总市值-元", "market_cap"], "market_cap"))
-    return df.drop_duplicates(subset=["stock_code"])
+def stock_symbol_with_exchange(code: str) -> str:
+    code = normalize_stock_code(code)
+    prefix = "sh" if code.startswith(("5", "6", "9")) else "sz"
+    return f"{prefix}{code}"
 
 
 def fetch_stock_factors(ak, stock_codes: Iterable[str], end: date) -> pd.DataFrame:
@@ -187,13 +223,20 @@ def fetch_stock_factors(ak, stock_codes: Iterable[str], end: date) -> pd.DataFra
         if not code:
             continue
         try:
-            hist = ak.stock_zh_a_hist(
-                symbol=code,
-                period="daily",
-                start_date=start.strftime("%Y%m%d"),
-                end_date=end.strftime("%Y%m%d"),
-                adjust="qfq",
-            )
+            try:
+                hist = ak.stock_zh_a_daily(
+                    symbol=stock_symbol_with_exchange(code),
+                    start_date=start.strftime("%Y%m%d"),
+                    end_date=end.strftime("%Y%m%d"),
+                    adjust="qfq",
+                )
+            except Exception:
+                hist = ak.stock_zh_a_hist_tx(
+                    symbol=stock_symbol_with_exchange(code),
+                    start_date=start.strftime("%Y%m%d"),
+                    end_date=end.strftime("%Y%m%d"),
+                    adjust="qfq",
+                )
             close_col = first_existing_col(hist, ["收盘", "close"])
             if close_col is None or len(hist) < 21:
                 logging.warning("Stock %s history is insufficient; skipping factors.", code)
@@ -202,18 +245,48 @@ def fetch_stock_factors(ak, stock_codes: Iterable[str], end: date) -> pd.DataFra
             if len(close) < 21:
                 continue
             ret = close.pct_change().dropna()
+            share_col = first_existing_col(hist, ["outstanding_share"])
+            market_cap = np.nan
+            if share_col is not None:
+                shares = pd.to_numeric(hist[share_col], errors="coerce").dropna()
+                if not shares.empty:
+                    market_cap = close.iloc[-1] * shares.iloc[-1]
             rows.append(
                 {
                     "stock_code": code,
                     "stock_momentum_20d": close.iloc[-1] / close.iloc[-21] - 1,
                     "stock_volatility_20d": ret.tail(20).std() * np.sqrt(252),
+                    "market_cap": market_cap,
                 }
             )
             if i % 50 == 0:
                 logging.info("Fetched stock history for %s symbols.", i)
         except Exception as exc:
             logging.warning("Failed to fetch stock history for %s: %s", code, exc)
-    return pd.DataFrame(rows, columns=["stock_code", "stock_momentum_20d", "stock_volatility_20d"])
+    return pd.DataFrame(rows, columns=["stock_code", "stock_momentum_20d", "stock_volatility_20d", "market_cap"])
+
+
+def apply_cb_prefilters(df: pd.DataFrame, config: dict) -> pd.DataFrame:
+    filters = config["filters"]
+    mask = pd.Series(True, index=df.index)
+    mask &= df["cb_price"] < filters["max_cb_price"]
+    if df["remaining_size_100m"].notna().any():
+        mask &= df["remaining_size_100m"] > filters["min_remaining_size_100m"]
+    if df["turnover_yuan"].notna().any():
+        mask &= df["turnover_yuan"] > filters["min_turnover_yuan"]
+    if df["remaining_years"].notna().any():
+        mask &= df["remaining_years"] > filters["min_years_to_maturity"]
+    elif df["maturity_date"].notna().any():
+        min_maturity = pd.Timestamp(date.today() + timedelta(days=365 * filters["min_years_to_maturity"]))
+        mask &= df["maturity_date"] > min_maturity
+    if filters.get("exclude_call_risk", True) and df["call_status"].notna().any():
+        risk_words = ("已满足", "满足强赎", "强赎公告", "公告强赎", "即将强赎", "强赎中", "赎回登记", "最后交易", "停止交易")
+        mask &= ~df["call_status"].fillna("").str.contains("|".join(risk_words), regex=True)
+    if filters.get("exclude_st_stock", True):
+        mask &= ~df["stock_name"].fillna("").str.upper().str.contains("ST", regex=False)
+    filtered = df.loc[mask].copy()
+    logging.info("CB prefiltered universe: %s -> %s", len(df), len(filtered))
+    return filtered
 
 
 def apply_filters(df: pd.DataFrame, config: dict) -> pd.DataFrame:
@@ -225,14 +298,17 @@ def apply_filters(df: pd.DataFrame, config: dict) -> pd.DataFrame:
         mask &= df["remaining_size_100m"] > filters["min_remaining_size_100m"]
     if df["turnover_yuan"].notna().any():
         mask &= df["turnover_yuan"] > filters["min_turnover_yuan"]
-    if df["maturity_date"].notna().any():
-        min_maturity = date.today() + timedelta(days=365 * filters["min_years_to_maturity"])
+    if df["remaining_years"].notna().any():
+        mask &= df["remaining_years"] > filters["min_years_to_maturity"]
+    elif df["maturity_date"].notna().any():
+        min_maturity = pd.Timestamp(date.today() + timedelta(days=365 * filters["min_years_to_maturity"]))
         mask &= df["maturity_date"] > min_maturity
     if filters.get("exclude_call_risk", True) and df["call_status"].notna().any():
         risk_words = ("已满足", "满足强赎", "强赎公告", "公告强赎", "即将强赎", "强赎中", "赎回登记", "最后交易", "停止交易")
         mask &= ~df["call_status"].fillna("").str.contains("|".join(risk_words), regex=True)
     if filters.get("exclude_st_stock", True):
-        name = df["stock_name_spot"].fillna(df["stock_name"]).fillna("")
+        stock_name_spot = df["stock_name_spot"] if "stock_name_spot" in df.columns else pd.Series(pd.NA, index=df.index)
+        name = stock_name_spot.fillna(df["stock_name"]).fillna("")
         mask &= ~name.str.upper().str.contains("ST", regex=False)
 
     filtered = df.loc[mask].copy()
@@ -320,7 +396,7 @@ def save_outputs(target: pd.DataFrame, rebalance: pd.DataFrame, config: dict, lo
         "bond_code",
         "bond_name",
         "stock_code",
-        "stock_name_spot",
+        "stock_name",
         "cb_price",
         "premium_rate",
         "double_low",
@@ -375,10 +451,10 @@ def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -
         cb = cb.head(max_bonds).copy()
         logging.info("Limited universe to first %s bonds for test run.", max_bonds)
 
-    stock_spot = fetch_stock_spot(ak)
-    merged = cb.merge(stock_spot, on="stock_code", how="left")
-    stock_factors = fetch_stock_factors(ak, merged["stock_code"].dropna(), end=date.today())
-    merged = merged.merge(stock_factors, on="stock_code", how="left")
+    cb = enrich_cb_with_redeem_data(ak, cb)
+    cb = apply_cb_prefilters(cb, config)
+    stock_factors = fetch_stock_factors(ak, cb["stock_code"].dropna(), end=date.today())
+    merged = cb.merge(stock_factors, on="stock_code", how="left")
 
     filtered = apply_filters(merged, config)
     scored = score_candidates(filtered, config)
