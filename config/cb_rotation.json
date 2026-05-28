@@ -1,0 +1,22 @@
+{
+  "strategy_name": "CB-MF-Rotation v1",
+  "top_n": 15,
+  "filters": {
+    "max_cb_price": 130,
+    "min_remaining_size_100m": 3,
+    "min_turnover_yuan": 30000000,
+    "min_years_to_maturity": 1,
+    "exclude_call_risk": true,
+    "exclude_st_stock": true
+  },
+  "weights": {
+    "double_low": 0.35,
+    "stock_momentum_20d": 0.3,
+    "stock_low_volatility_20d": 0.2,
+    "stock_small_market_cap": 0.15
+  },
+  "position": {
+    "method": "equal_weight",
+    "max_single_weight": 0.08
+  }
+}
