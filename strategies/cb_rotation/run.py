@@ -20,6 +20,7 @@ DEFAULT_CONFIG = ROOT / "config" / "cb_rotation.json"
 DEFAULT_POSITIONS = ROOT / "portfolios" / "current_cb_positions.csv"
 OUTPUT_DIR = ROOT / "outputs"
 LOG_DIR = ROOT / "logs"
+CACHE_DIR = ROOT / "data" / "cache"
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,44 @@ def require_akshare():
             "缺少依赖 akshare。请先运行: python3 -m pip install -r requirements.txt"
         ) from exc
     return ak
+
+
+def cache_path(name: str, stamp: str | None = None) -> Path:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    suffix = stamp or datetime.now().strftime("%Y%m%d")
+    return CACHE_DIR / f"{name}_{suffix}.csv"
+
+
+def latest_cache(name: str, max_age_days: int) -> Path | None:
+    if not CACHE_DIR.exists():
+        return None
+    files = sorted(CACHE_DIR.glob(f"{name}_*.csv"), reverse=True)
+    cutoff = datetime.now() - timedelta(days=max_age_days)
+    for path in files:
+        if datetime.fromtimestamp(path.stat().st_mtime) >= cutoff:
+            return path
+    return None
+
+
+def fetch_with_cache(name: str, fetcher, config: dict) -> pd.DataFrame:
+    try:
+        df = fetcher()
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            path = cache_path(name)
+            df.to_csv(path, index=False, encoding="utf-8-sig")
+            logging.info("Saved data cache: %s", path)
+            return df
+    except Exception as exc:
+        logging.warning("Fetch failed for %s: %s", name, exc)
+
+    data_config = config.get("data", {})
+    if not data_config.get("use_cache_on_failure", True):
+        raise RuntimeError(f"数据源 {name} 获取失败，且未启用缓存回退。")
+    cached = latest_cache(name, int(data_config.get("max_cache_age_days", 7)))
+    if cached is None:
+        raise RuntimeError(f"数据源 {name} 获取失败，且没有可用缓存。")
+    logging.warning("Using cached data for %s: %s", name, cached)
+    return pd.read_csv(cached, dtype=str)
 
 
 def first_existing_col(df: pd.DataFrame, names: Iterable[str]) -> str | None:
@@ -128,14 +167,14 @@ def get_col(df: pd.DataFrame, candidates: list[str], target: str, required: bool
     return df[col]
 
 
-def fetch_cb_universe(ak) -> pd.DataFrame:
+def fetch_cb_universe(ak, config: dict) -> pd.DataFrame:
     errors: list[str] = []
     for func_name in ("bond_zh_cov", "bond_cb_jsl"):
         if not hasattr(ak, func_name):
             continue
         try:
             logging.info("Fetching convertible bond universe with ak.%s()", func_name)
-            raw = getattr(ak, func_name)()
+            raw = fetch_with_cache(func_name, getattr(ak, func_name), config)
             if isinstance(raw, pd.DataFrame) and not raw.empty:
                 raw.attrs["source_func"] = func_name
                 return raw
@@ -145,10 +184,10 @@ def fetch_cb_universe(ak) -> pd.DataFrame:
     raise RuntimeError("无法获取可转债全市场数据: " + " | ".join(errors))
 
 
-def enrich_cb_with_redeem_data(ak, cb: pd.DataFrame) -> pd.DataFrame:
+def enrich_cb_with_redeem_data(ak, cb: pd.DataFrame, config: dict) -> pd.DataFrame:
     try:
         logging.info("Fetching redeem risk data with ak.bond_cb_redeem_jsl()")
-        raw = ak.bond_cb_redeem_jsl()
+        raw = fetch_with_cache("bond_cb_redeem_jsl", ak.bond_cb_redeem_jsl, config)
     except Exception as exc:
         logging.warning("Failed to fetch redeem data: %s", exc)
         return cb
@@ -264,6 +303,48 @@ def fetch_stock_factors(ak, stock_codes: Iterable[str], end: date) -> pd.DataFra
         except Exception as exc:
             logging.warning("Failed to fetch stock history for %s: %s", code, exc)
     return pd.DataFrame(rows, columns=["stock_code", "stock_momentum_20d", "stock_volatility_20d", "market_cap"])
+
+
+def fetch_stock_factors_with_cache(ak, stock_codes: Iterable[str], end: date, config: dict) -> pd.DataFrame:
+    codes = sorted({normalize_stock_code(c) for c in stock_codes if pd.notna(c)})
+    name = f"stock_factors_{end:%Y%m%d}"
+    cached_today = cache_path(name, stamp="latest")
+    if cached_today.exists():
+        cached = pd.read_csv(cached_today, dtype={"stock_code": str})
+        cached_codes = set(cached["stock_code"].astype(str).str.zfill(6))
+        if set(codes).issubset(cached_codes):
+            logging.info("Using same-day stock factor cache: %s", cached_today)
+            return cached[cached["stock_code"].astype(str).str.zfill(6).isin(codes)].copy()
+
+    factors = fetch_stock_factors(ak, codes, end)
+    if not factors.empty:
+        factors.to_csv(cached_today, index=False, encoding="utf-8-sig")
+        logging.info("Saved stock factor cache: %s", cached_today)
+        return factors
+
+    data_config = config.get("data", {})
+    if data_config.get("use_cache_on_failure", True):
+        cached = latest_cache("stock_factors", int(data_config.get("max_cache_age_days", 7)))
+        if cached is not None:
+            logging.warning("Using cached stock factors: %s", cached)
+            return pd.read_csv(cached, dtype={"stock_code": str})
+    return factors
+
+
+def build_data_notes(df: pd.DataFrame, config: dict) -> list[str]:
+    notes: list[str] = []
+    top_n = config["top_n"]
+    if top_n != 15:
+        notes.append(f"持仓数量已按当前配置调整为 Top{top_n}，不同于原始文档中的 Top15。")
+    if "turnover_yuan" not in df.columns or not df["turnover_yuan"].notna().any():
+        notes.append("日成交额字段缺失，本次未严格执行 日成交额 > 3000 万 过滤。")
+    if "market_cap" in df.columns and df["market_cap"].notna().any():
+        notes.append("正股市值使用历史行情中的股本字段乘以收盘价估算，当前不是严格总市值口径。")
+    else:
+        notes.append("正股市值字段缺失，小市值因子本次可能失效。")
+    if "call_status" not in df.columns or not df["call_status"].notna().any():
+        notes.append("强赎状态字段缺失，本次强赎过滤可能不完整。")
+    return notes
 
 
 def apply_cb_prefilters(df: pd.DataFrame, config: dict) -> pd.DataFrame:
@@ -384,7 +465,13 @@ def build_rebalance_plan(current: pd.DataFrame, target: pd.DataFrame) -> pd.Data
     return pd.DataFrame(rows, columns=["action", "bond_code", "bond_name", "target_weight"])
 
 
-def save_outputs(target: pd.DataFrame, rebalance: pd.DataFrame, config: dict, log_file: Path) -> RunArtifacts:
+def save_outputs(
+    target: pd.DataFrame,
+    rebalance: pd.DataFrame,
+    config: dict,
+    log_file: Path,
+    data_notes: list[str],
+) -> RunArtifacts:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     candidates_csv = OUTPUT_DIR / f"cb_rotation_top{config['top_n']}_{stamp}.csv"
@@ -424,6 +511,10 @@ def save_outputs(target: pd.DataFrame, rebalance: pd.DataFrame, config: dict, lo
                 f"- 单债目标权重: {target['target_weight'].iloc[0]:.2%}" if len(target) else "- 单债目标权重: N/A",
                 f"- 日志文件: `{log_file}`",
                 "",
+                "## 数据口径提醒",
+                "",
+                "\n".join(f"- {note}" for note in data_notes) if data_notes else "- 本次未发现明显数据口径提醒。",
+                "",
                 "## Top 候选",
                 "",
                 target[["bond_code", "bond_name", "cb_price", "premium_rate", "double_low", "score", "target_weight"]]
@@ -445,23 +536,24 @@ def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -
     config = load_config(config_path)
     ak = require_akshare()
 
-    raw_cb = fetch_cb_universe(ak)
+    raw_cb = fetch_cb_universe(ak, config)
     cb = normalize_cb_data(raw_cb)
     if max_bonds:
         cb = cb.head(max_bonds).copy()
         logging.info("Limited universe to first %s bonds for test run.", max_bonds)
 
-    cb = enrich_cb_with_redeem_data(ak, cb)
+    cb = enrich_cb_with_redeem_data(ak, cb, config)
     cb = apply_cb_prefilters(cb, config)
-    stock_factors = fetch_stock_factors(ak, cb["stock_code"].dropna(), end=date.today())
+    stock_factors = fetch_stock_factors_with_cache(ak, cb["stock_code"].dropna(), date.today(), config)
     merged = cb.merge(stock_factors, on="stock_code", how="left")
 
     filtered = apply_filters(merged, config)
+    data_notes = build_data_notes(filtered, config)
     scored = score_candidates(filtered, config)
     target = assign_equal_weight(scored, config)
     current = load_current_positions(positions_path)
     rebalance = build_rebalance_plan(current, target)
-    artifacts = save_outputs(target, rebalance, config, log_file)
+    artifacts = save_outputs(target, rebalance, config, log_file, data_notes)
     logging.info("Saved report to %s", artifacts.report_md)
     return artifacts
 

@@ -52,7 +52,7 @@ ark-quant/
   - 正股动量 30%
   - 低波动 20%
   - 小市值 15%
-- 输出 Top15 候选持仓。
+- 输出 Top20 候选持仓。
 - 支持等权仓位，单债权重上限默认 8%。
 - 根据 `portfolios/current_cb_positions.csv` 生成调仓建议。
 - 输出保存到 `outputs/`，日志保存到 `logs/`。
@@ -93,10 +93,10 @@ python3 -m strategies.cb_rotation.run \
 
 ```csv
 bond_code,bond_name,target_weight
-113000,示例转债,0.0667
+113000,示例转债,0.05
 ```
 
-策略会用最新 Top15 和当前持仓对比，生成：
+策略会用最新 Top20 和当前持仓对比，生成：
 
 - `BUY`
 - `SELL`
@@ -106,14 +106,16 @@ bond_code,bond_name,target_weight
 
 每次运行会在 `outputs/` 生成：
 
-- `cb_rotation_top15_*.csv`
-- `cb_rotation_top15_*.xlsx`
+- `cb_rotation_top20_*.csv`
+- `cb_rotation_top20_*.xlsx`
 - `cb_rotation_rebalance_*.csv`
 - `cb_rotation_report_*.md`
 
 运行日志在 `logs/`：
 
 - `cb_rotation_*.log`
+
+关键数据缓存保存在 `data/cache/`。当 AKShare 或其底层数据源短暂不可用时，策略会在配置允许的缓存有效期内使用最近一次缓存数据继续运行，并在报告中提示数据口径差异。
 
 ## 配置
 
@@ -123,6 +125,7 @@ bond_code,bond_name,target_weight
 - `filters`: 基础过滤阈值
 - `weights`: 因子权重
 - `position`: 仓位规则
+- `data`: 数据缓存与故障回退规则
 
 ## 当前未完成事项
 

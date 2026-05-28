@@ -1,6 +1,6 @@
 {
   "strategy_name": "CB-MF-Rotation v1",
-  "top_n": 15,
+  "top_n": 20,
   "filters": {
     "max_cb_price": 130,
     "min_remaining_size_100m": 3,
@@ -18,5 +18,9 @@
   "position": {
     "method": "equal_weight",
     "max_single_weight": 0.08
+  },
+  "data": {
+    "use_cache_on_failure": true,
+    "max_cache_age_days": 7
   }
 }
