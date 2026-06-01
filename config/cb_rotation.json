@@ -21,6 +21,9 @@
   },
   "data": {
     "strict_original_rules": true,
+    "selection_data_mode": "previous_close",
+    "run_after_close_only": true,
+    "selection_run_after": "15:10",
     "use_cache_on_failure": true,
     "max_cache_age_days": 7,
     "max_market_data_age_days": 4,

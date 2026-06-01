@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import argparse
-import json as json_lib
 import json
 import logging
-import math
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -14,7 +12,6 @@ from typing import Iterable
 try:
     import numpy as np
     import pandas as pd
-    import requests
 except ImportError as exc:
     raise SystemExit("缺少基础依赖。请先运行: python3 -m pip install -r requirements.txt") from exc
 
@@ -95,6 +92,27 @@ def require_fresh_dates(df: pd.DataFrame, column: str, max_age_days: int, stage:
     if stale.any():
         oldest = values.min().date()
         raise RuntimeError(f"{stage} 包含过期数据，最早日期为 {oldest}。本次停止运行。")
+
+
+def require_single_trade_date(df: pd.DataFrame, column: str, stage: str) -> date:
+    values = pd.to_datetime(df[column], errors="coerce")
+    dates = sorted({value.date() for value in values.dropna()})
+    if len(dates) != 1:
+        raise RuntimeError(f"{stage} 必须使用同一个已完成交易日，当前包含: {dates}。本次停止运行。")
+    return dates[0]
+
+
+def enforce_after_close_run(config: dict) -> None:
+    data_config = config.get("data", {})
+    if data_config.get("selection_data_mode", "previous_close") != "previous_close":
+        raise RuntimeError("当前仅支持 previous_close 收盘口径。")
+    if not data_config.get("run_after_close_only", True):
+        return
+    cutoff = datetime.strptime(data_config.get("selection_run_after", "15:10"), "%H:%M").time()
+    if datetime.now().time() < cutoff:
+        raise RuntimeError(
+            f"策略使用上一已完成交易日收盘数据，请在 {cutoff:%H:%M} 后运行并在下一交易日开盘执行调仓。"
+        )
 
 
 def merge_latest_rows(existing: pd.DataFrame, new: pd.DataFrame, key: str) -> pd.DataFrame:
@@ -227,57 +245,6 @@ def fetch_cb_universe(ak, config: dict) -> pd.DataFrame:
     raise RuntimeError("无法获取可转债全市场数据: " + " | ".join(errors))
 
 
-def fetch_cb_spot_sina() -> pd.DataFrame:
-    count_url = "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeStockCountSimple"
-    data_url = "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeDataSimple"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    count_resp = requests.get(count_url, params={"node": "hskzz_z"}, headers=headers, timeout=10)
-    count_resp.raise_for_status()
-    count_match = re.search(r"\d+", count_resp.text)
-    if count_match is None:
-        raise RuntimeError(f"无法解析新浪可转债数量: {count_resp.text[:120]}")
-    page_count = math.ceil(int(count_match.group()) / 80)
-
-    rows: list[dict] = []
-    for page in range(1, page_count + 1):
-        params = {
-            "page": page,
-            "num": 80,
-            "sort": "symbol",
-            "asc": 1,
-            "node": "hskzz_z",
-            "_s_r_a": "page",
-        }
-        resp = requests.get(data_url, params=params, headers=headers, timeout=10)
-        resp.raise_for_status()
-        rows.extend(json_lib.loads(resp.text))
-    return pd.DataFrame(rows)
-
-
-def enrich_cb_with_spot_data(config: dict, cb: pd.DataFrame) -> pd.DataFrame:
-    try:
-        logging.info("Fetching convertible bond spot turnover with Sina endpoint")
-        raw = fetch_with_cache("bond_cb_spot_sina", fetch_cb_spot_sina, config)
-    except Exception as exc:
-        logging.warning("Failed to fetch convertible bond spot data: %s", exc)
-        return cb
-    if raw.empty:
-        return cb
-
-    spot = pd.DataFrame(index=raw.index)
-    spot["bond_code"] = get_col(raw, ["code", "代码"], "bond_code", True).astype(str).str.extract(r"(\d{6})", expand=False)
-    spot["spot_price"] = as_number(get_col(raw, ["trade", "最新价"], "spot_price"))
-    spot["turnover_yuan_spot"] = as_number(get_col(raw, ["amount", "成交额"], "turnover_yuan"))
-    spot = spot.dropna(subset=["bond_code"]).drop_duplicates(subset=["bond_code"])
-
-    merged = cb.merge(spot, on="bond_code", how="left")
-    merged["turnover_yuan"] = merged["turnover_yuan"].where(
-        merged["turnover_yuan"].notna(), merged["turnover_yuan_spot"]
-    )
-    merged["cb_price"] = merged["cb_price"].where(merged["cb_price"].notna(), merged["spot_price"])
-    return merged.drop(columns=["spot_price", "turnover_yuan_spot"])
-
-
 def enrich_cb_with_redeem_data(ak, cb: pd.DataFrame, config: dict) -> pd.DataFrame:
     try:
         logging.info("Fetching redeem risk data with ak.bond_cb_redeem_jsl()")
@@ -403,6 +370,7 @@ def fetch_cb_daily_turnover(ak, bond_codes: Iterable[str], config: dict) -> pd.D
             rows.append(
                 {
                     "bond_code": code,
+                    "cb_close_daily": close,
                     "turnover_yuan_daily": close * volume,
                     "turnover_trade_date": latest.get("date"),
                 }
@@ -416,7 +384,10 @@ def fetch_cb_daily_turnover(ak, bond_codes: Iterable[str], config: dict) -> pd.D
                 logging.warning("Stop fetching bond daily turnover after %s failures.", failure_count)
                 break
 
-    turnover = pd.DataFrame(rows, columns=["bond_code", "turnover_yuan_daily", "turnover_trade_date"])
+    turnover = pd.DataFrame(
+        rows,
+        columns=["bond_code", "cb_close_daily", "turnover_yuan_daily", "turnover_trade_date"],
+    )
     turnover = turnover.drop_duplicates(subset=["bond_code"], keep="last")
     if not turnover.empty:
         turnover.to_csv(cached_today, index=False, encoding="utf-8-sig")
@@ -432,16 +403,26 @@ def fetch_cb_daily_turnover(ak, bond_codes: Iterable[str], config: dict) -> pd.D
     return turnover
 
 
-def fill_missing_turnover_from_daily(ak, cb: pd.DataFrame, config: dict) -> pd.DataFrame:
+def enrich_cb_with_daily_market_data(ak, cb: pd.DataFrame, config: dict) -> pd.DataFrame:
     turnover = fetch_cb_daily_turnover(ak, cb["bond_code"], config)
     if turnover.empty:
         return cb
+    if config.get("data", {}).get("strict_original_rules", True):
+        assert_required_fields(
+            turnover,
+            ["cb_close_daily", "turnover_yuan_daily", "turnover_trade_date"],
+            "可转债收盘行情",
+            require_all_rows=True,
+        )
     merged = cb.merge(turnover, on="bond_code", how="left")
-    # Prefer the latest completed daily bar over intraday spot amount.
+    if "cb_close_daily" not in merged.columns:
+        merged["cb_close_daily"] = pd.NA
+    # The strategy selects after close and trades on the next open.
+    merged["cb_price"] = merged["cb_close_daily"].where(merged["cb_close_daily"].notna(), merged["cb_price"])
     merged["turnover_yuan"] = merged["turnover_yuan_daily"].where(
         merged["turnover_yuan_daily"].notna(), merged["turnover_yuan"]
     )
-    return merged.drop(columns=["turnover_yuan_daily"])
+    return merged.drop(columns=["cb_close_daily", "turnover_yuan_daily"])
 
 
 def fetch_stock_factors(ak, stock_codes: Iterable[str], end: date, config: dict) -> pd.DataFrame:
@@ -548,14 +529,14 @@ def fetch_stock_factors_with_cache(ak, stock_codes: Iterable[str], end: date, co
     return factors
 
 
-def fetch_stock_market_caps_spot(ak, stock_codes: Iterable[str]) -> pd.DataFrame:
+def fetch_stock_market_caps_close_snapshot(ak, stock_codes: Iterable[str]) -> pd.DataFrame:
     codes = sorted({normalize_stock_code(c) for c in stock_codes if pd.notna(c)})
     raw = ak.stock_zh_a_spot_em()
     code_col = first_existing_col(raw, ["代码", "stock_code"])
     market_cap_col = first_existing_col(raw, ["总市值", "market_cap"])
     name_col = first_existing_col(raw, ["名称", "股票简称", "stock_name"])
     if code_col is None or market_cap_col is None:
-        raise RuntimeError("AKShare A股实时行情缺少代码或总市值字段。")
+        raise RuntimeError("AKShare A股收盘快照缺少代码或总市值字段。")
 
     caps = pd.DataFrame(index=raw.index)
     caps["stock_code"] = raw[code_col].astype(str).str.extract(r"(\d{6})", expand=False).str.zfill(6)
@@ -583,15 +564,15 @@ def fetch_stock_market_caps(ak, stock_codes: Iterable[str], config: dict) -> pd.
         rows.extend(cached[cached["stock_code"].isin(codes)].to_dict("records"))
 
     try:
-        logging.info("Fetching stock total market caps with ak.stock_zh_a_spot_em()")
-        spot_caps = fetch_stock_market_caps_spot(ak, codes)
-        if not spot_caps.empty:
-            spot_codes = set(spot_caps["stock_code"])
-            rows = [row for row in rows if row.get("stock_code") not in spot_codes]
-            rows.extend(spot_caps.to_dict("records"))
-            cached_codes = cached_codes | spot_codes
+        logging.info("Fetching stock total market caps from the after-close A-share snapshot")
+        snapshot_caps = fetch_stock_market_caps_close_snapshot(ak, codes)
+        if not snapshot_caps.empty:
+            snapshot_codes = set(snapshot_caps["stock_code"])
+            rows = [row for row in rows if row.get("stock_code") not in snapshot_codes]
+            rows.extend(snapshot_caps.to_dict("records"))
+            cached_codes = cached_codes | snapshot_codes
     except Exception as exc:
-        logging.warning("Failed to fetch stock market caps from A-share spot snapshot: %s", exc)
+        logging.warning("Failed to fetch stock market caps from A-share close snapshot: %s", exc)
 
     failure_count = 0
     max_failures = int(config.get("data", {}).get("max_market_cap_fetch_failures", 10))
@@ -648,7 +629,7 @@ def fetch_stock_market_caps(ak, stock_codes: Iterable[str], config: dict) -> pd.
 
 
 def build_data_notes(df: pd.DataFrame, config: dict) -> list[str]:
-    notes: list[str] = []
+    notes: list[str] = ["选债使用最近已完成交易日收盘数据，调仓建议用于下一交易日开盘执行。"]
     top_n = config["top_n"]
     if top_n != 15:
         notes.append(f"持仓数量按当前配置使用 Top{top_n}。")
@@ -917,6 +898,7 @@ def save_outputs(
 def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -> RunArtifacts:
     log_file = setup_logging()
     config = load_config(config_path)
+    enforce_after_close_run(config)
     ak = require_akshare()
 
     raw_cb = fetch_cb_universe(ak, config)
@@ -925,11 +907,10 @@ def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -
         cb = cb.head(max_bonds).copy()
         logging.info("Limited universe to first %s bonds for test run.", max_bonds)
 
-    cb = enrich_cb_with_spot_data(config, cb)
     cb = enrich_cb_with_redeem_data(ak, cb, config)
     enforce_cb_filter_coverage(cb, config)
     cb = apply_cb_prefilters(cb, config)
-    cb = fill_missing_turnover_from_daily(ak, cb, config)
+    cb = enrich_cb_with_daily_market_data(ak, cb, config)
     if config.get("data", {}).get("strict_original_rules", True):
         assert_required_fields(cb, ["turnover_yuan"], "可转债成交额过滤", require_all_rows=True)
         require_fresh_dates(
@@ -938,6 +919,7 @@ def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -
             int(config.get("data", {}).get("max_market_data_age_days", 4)),
             "可转债成交额过滤",
         )
+        require_single_trade_date(cb, "turnover_trade_date", "可转债收盘行情")
     assert_required_fields(cb, ["turnover_yuan"], "可转债成交额过滤")
     enforce_original_rule_fields(cb, config)
     stock_factors = fetch_stock_factors_with_cache(ak, cb["stock_code"].dropna(), date.today(), config)
@@ -973,6 +955,7 @@ def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -
             int(config.get("data", {}).get("max_market_data_age_days", 4)),
             "正股动量与波动率",
         )
+        require_single_trade_date(filtered, "stock_factor_trade_date", "正股收盘行情")
         require_fresh_dates(
             filtered,
             "market_cap_as_of_date",

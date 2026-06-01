@@ -125,6 +125,34 @@ class ConvertibleBondRotationTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "包含过期数据"):
             run.require_fresh_dates(stale, "trade_date", 4, "测试行情")
 
+    def test_require_single_trade_date_rejects_mixed_dates(self) -> None:
+        mixed = pd.DataFrame({"trade_date": ["2026-05-27", "2026-05-28"]})
+
+        with self.assertRaisesRegex(RuntimeError, "同一个已完成交易日"):
+            run.require_single_trade_date(mixed, "trade_date", "测试行情")
+
+    def test_daily_bond_market_data_overrides_snapshot_price(self) -> None:
+        class FakeAk:
+            @staticmethod
+            def bond_zh_hs_cov_daily(symbol: str) -> pd.DataFrame:
+                return pd.DataFrame([{"date": "2026-05-28", "close": 119.5, "volume": 300000}])
+
+        cb = pd.DataFrame([{"bond_code": "123456", "cb_price": 121.0, "turnover_yuan": pd.NA}])
+        with TemporaryDirectory() as temp_dir, patch.object(run, "CACHE_DIR", Path(temp_dir)):
+            enriched = run.enrich_cb_with_daily_market_data(FakeAk(), cb, {"data": {}})
+
+        self.assertEqual(enriched.loc[0, "cb_price"], 119.5)
+        self.assertEqual(enriched.loc[0, "turnover_yuan"], 35_850_000)
+
+    def test_daily_bond_market_data_rejects_old_cache_without_close(self) -> None:
+        cached = pd.DataFrame(
+            [{"bond_code": "123456", "turnover_yuan_daily": 35_850_000, "turnover_trade_date": "2026-05-28"}]
+        )
+        cb = pd.DataFrame([{"bond_code": "123456", "cb_price": 121.0, "turnover_yuan": pd.NA}])
+        with patch.object(run, "fetch_cb_daily_turnover", return_value=cached):
+            with self.assertRaisesRegex(RuntimeError, "cb_close_daily"):
+                run.enrich_cb_with_daily_market_data(object(), cb, {"data": {"strict_original_rules": True}})
+
     def test_latest_cache_uses_business_date_in_filename(self) -> None:
         stale_date = date.today() - timedelta(days=8)
         with TemporaryDirectory() as temp_dir:
