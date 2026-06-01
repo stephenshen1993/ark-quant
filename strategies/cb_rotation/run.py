@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import json as json_lib
 import json
 import logging
+import math
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -11,6 +14,7 @@ from typing import Iterable
 try:
     import numpy as np
     import pandas as pd
+    import requests
 except ImportError as exc:
     raise SystemExit("缺少基础依赖。请先运行: python3 -m pip install -r requirements.txt") from exc
 
@@ -67,11 +71,38 @@ def latest_cache(name: str, max_age_days: int) -> Path | None:
     if not CACHE_DIR.exists():
         return None
     files = sorted(CACHE_DIR.glob(f"{name}_*.csv"), reverse=True)
-    cutoff = datetime.now() - timedelta(days=max_age_days)
+    cutoff = date.today() - timedelta(days=max_age_days)
     for path in files:
-        if datetime.fromtimestamp(path.stat().st_mtime) >= cutoff:
+        stamps = re.findall(r"(?<!\d)(20\d{6})(?!\d)", path.stem)
+        cache_date = (
+            datetime.strptime(stamps[-1], "%Y%m%d").date()
+            if stamps
+            else datetime.fromtimestamp(path.stat().st_mtime).date()
+        )
+        if cache_date >= cutoff:
             return path
     return None
+
+
+def require_fresh_dates(df: pd.DataFrame, column: str, max_age_days: int, stage: str) -> None:
+    if column not in df.columns:
+        raise RuntimeError(f"{stage} 缺少数据日期字段 {column}。本次停止运行。")
+    values = pd.to_datetime(df[column], errors="coerce")
+    if values.isna().any():
+        raise RuntimeError(f"{stage} 存在无法识别的数据日期。 本次停止运行。")
+    cutoff = pd.Timestamp(date.today() - timedelta(days=max_age_days))
+    stale = values < cutoff
+    if stale.any():
+        oldest = values.min().date()
+        raise RuntimeError(f"{stage} 包含过期数据，最早日期为 {oldest}。本次停止运行。")
+
+
+def merge_latest_rows(existing: pd.DataFrame, new: pd.DataFrame, key: str) -> pd.DataFrame:
+    if existing.empty:
+        return new.copy()
+    if new.empty:
+        return existing.copy()
+    return pd.concat([existing, new], ignore_index=True).drop_duplicates(subset=[key], keep="last")
 
 
 def fetch_with_cache(name: str, fetcher, config: dict) -> pd.DataFrame:
@@ -116,9 +147,8 @@ def as_number(series: pd.Series) -> pd.Series:
         .str.replace("亿", "", regex=False)
         .str.replace("万元", "", regex=False)
         .str.replace("万", "", regex=False)
-        .str.replace("--", "", regex=False)
-        .str.replace("-", "", regex=False)
     )
+    cleaned = cleaned.mask(text.isin(["", "-", "--", "nan", "None", "<NA>"]))
     return pd.to_numeric(cleaned, errors="coerce") * multiplier
 
 
@@ -130,9 +160,8 @@ def as_100m_units(series: pd.Series) -> pd.Series:
         .str.replace("亿", "", regex=False)
         .str.replace("万元", "", regex=False)
         .str.replace("万", "", regex=False)
-        .str.replace("--", "", regex=False)
-        .str.replace("-", "", regex=False)
     )
+    cleaned = cleaned.mask(text.isin(["", "-", "--", "nan", "None", "<NA>"]))
     value = pd.to_numeric(cleaned, errors="coerce")
     value = value.mask(text.str.contains("万", na=False), value / 10_000)
     return value
@@ -167,6 +196,20 @@ def get_col(df: pd.DataFrame, candidates: list[str], target: str, required: bool
     return df[col]
 
 
+def assert_required_fields(df: pd.DataFrame, fields: Iterable[str], stage: str, require_all_rows: bool = False) -> None:
+    missing = [field for field in fields if field not in df.columns or not df[field].notna().any()]
+    if missing:
+        raise RuntimeError(f"{stage} 缺少原策略必需字段: {missing}。本次停止运行，避免静默放宽策略。")
+    if require_all_rows:
+        incomplete = [field for field in fields if df[field].isna().any()]
+        if incomplete:
+            counts = {field: int(df[field].isna().sum()) for field in incomplete}
+            raise RuntimeError(
+                f"{stage} 存在未覆盖全部候选的原策略必需字段: {counts}。"
+                "本次停止运行，避免用缺失值参与排序。"
+            )
+
+
 def fetch_cb_universe(ak, config: dict) -> pd.DataFrame:
     errors: list[str] = []
     for func_name in ("bond_zh_cov", "bond_cb_jsl"):
@@ -182,6 +225,57 @@ def fetch_cb_universe(ak, config: dict) -> pd.DataFrame:
             errors.append(f"{func_name}: {exc}")
             logging.warning("Failed to fetch with %s: %s", func_name, exc)
     raise RuntimeError("无法获取可转债全市场数据: " + " | ".join(errors))
+
+
+def fetch_cb_spot_sina() -> pd.DataFrame:
+    count_url = "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeStockCountSimple"
+    data_url = "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeDataSimple"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    count_resp = requests.get(count_url, params={"node": "hskzz_z"}, headers=headers, timeout=10)
+    count_resp.raise_for_status()
+    count_match = re.search(r"\d+", count_resp.text)
+    if count_match is None:
+        raise RuntimeError(f"无法解析新浪可转债数量: {count_resp.text[:120]}")
+    page_count = math.ceil(int(count_match.group()) / 80)
+
+    rows: list[dict] = []
+    for page in range(1, page_count + 1):
+        params = {
+            "page": page,
+            "num": 80,
+            "sort": "symbol",
+            "asc": 1,
+            "node": "hskzz_z",
+            "_s_r_a": "page",
+        }
+        resp = requests.get(data_url, params=params, headers=headers, timeout=10)
+        resp.raise_for_status()
+        rows.extend(json_lib.loads(resp.text))
+    return pd.DataFrame(rows)
+
+
+def enrich_cb_with_spot_data(config: dict, cb: pd.DataFrame) -> pd.DataFrame:
+    try:
+        logging.info("Fetching convertible bond spot turnover with Sina endpoint")
+        raw = fetch_with_cache("bond_cb_spot_sina", fetch_cb_spot_sina, config)
+    except Exception as exc:
+        logging.warning("Failed to fetch convertible bond spot data: %s", exc)
+        return cb
+    if raw.empty:
+        return cb
+
+    spot = pd.DataFrame(index=raw.index)
+    spot["bond_code"] = get_col(raw, ["code", "代码"], "bond_code", True).astype(str).str.extract(r"(\d{6})", expand=False)
+    spot["spot_price"] = as_number(get_col(raw, ["trade", "最新价"], "spot_price"))
+    spot["turnover_yuan_spot"] = as_number(get_col(raw, ["amount", "成交额"], "turnover_yuan"))
+    spot = spot.dropna(subset=["bond_code"]).drop_duplicates(subset=["bond_code"])
+
+    merged = cb.merge(spot, on="bond_code", how="left")
+    merged["turnover_yuan"] = merged["turnover_yuan"].where(
+        merged["turnover_yuan"].notna(), merged["turnover_yuan_spot"]
+    )
+    merged["cb_price"] = merged["cb_price"].where(merged["cb_price"].notna(), merged["spot_price"])
+    return merged.drop(columns=["spot_price", "turnover_yuan_spot"])
 
 
 def enrich_cb_with_redeem_data(ak, cb: pd.DataFrame, config: dict) -> pd.DataFrame:
@@ -201,12 +295,18 @@ def enrich_cb_with_redeem_data(ak, cb: pd.DataFrame, config: dict) -> pd.DataFra
         get_col(raw, ["到期日", "到期时间", "到期日期"], "maturity_date"),
         errors="coerce",
     ).dt.date
-    redeem["call_status_redeem"] = get_col(raw, ["强赎状态"], "call_status").astype(str)
+    redeem["call_status_redeem"] = (
+        get_col(raw, ["强赎状态"], "call_status")
+        .replace({"<NA>": pd.NA, "nan": pd.NA})
+        .fillna("无强赎提示")
+        .astype(str)
+    )
+    redeem["active_reference"] = True
     redeem = redeem.drop_duplicates(subset=["bond_code"])
 
     merged = cb.merge(redeem, on="bond_code", how="left")
-    merged["remaining_size_100m"] = merged["remaining_size_100m"].combine_first(
-        merged["remaining_size_100m_redeem"]
+    merged["remaining_size_100m"] = merged["remaining_size_100m_redeem"].combine_first(
+        merged["remaining_size_100m"]
     )
     merged["maturity_date"] = merged["maturity_date"].combine_first(merged["maturity_date_redeem"])
     merged["call_status"] = merged["call_status"].replace({"<NA>": pd.NA, "nan": pd.NA}).combine_first(
@@ -219,11 +319,16 @@ def normalize_cb_data(raw: pd.DataFrame) -> pd.DataFrame:
     df = pd.DataFrame(index=raw.index)
     df["bond_code"] = get_col(raw, ["债券代码", "转债代码", "代码", "bond_id"], "bond_code", True).astype(str).str.zfill(6)
     df["bond_name"] = get_col(raw, ["债券简称", "转债名称", "名称", "bond_nm"], "bond_name", True).astype(str)
-    df["stock_code"] = get_col(raw, ["正股代码", "stock_id", "stock_code"], "stock_code").astype(str).str.extract(r"(\d{6})", expand=False)
+    df["stock_code"] = (
+        get_col(raw, ["正股代码", "stock_id", "stock_code"], "stock_code")
+        .astype(str)
+        .str.extract(r"(\d{6})", expand=False)
+        .str.zfill(6)
+    )
     df["stock_name"] = get_col(raw, ["正股简称", "正股名称", "stock_nm", "stock_name"], "stock_name").astype(str)
     df["cb_price"] = as_number(get_col(raw, ["债现价", "现价", "最新价", "转债最新价", "price"], "cb_price", True))
     df["premium_rate"] = as_number(get_col(raw, ["转股溢价率", "溢价率", "premium_rt"], "premium_rate", True))
-    remaining_col = first_existing_col(raw, ["剩余规模", "债券余额", "余额", "发行规模", "remain_size"])
+    remaining_col = first_existing_col(raw, ["剩余规模", "债券余额", "余额", "remain_size"])
     if remaining_col is None:
         logging.warning("缺少字段 remaining_size_100m；该字段相关过滤会跳过。")
         df["remaining_size_100m"] = pd.NA
@@ -237,6 +342,10 @@ def normalize_cb_data(raw: pd.DataFrame) -> pd.DataFrame:
         df["turnover_yuan"] = as_turnover_yuan(raw[turnover_col], str(turnover_col))
     df["maturity_date"] = pd.to_datetime(
         get_col(raw, ["到期时间", "到期日期", "maturity_dt"], "maturity_date"),
+        errors="coerce",
+    ).dt.date
+    df["listing_date"] = pd.to_datetime(
+        get_col(raw, ["上市时间", "上市日期", "list_dt"], "listing_date"),
         errors="coerce",
     ).dt.date
     df["remaining_years"] = as_number(get_col(raw, ["剩余年限"], "remaining_years"))
@@ -255,9 +364,91 @@ def stock_symbol_with_exchange(code: str) -> str:
     return f"{prefix}{code}"
 
 
-def fetch_stock_factors(ak, stock_codes: Iterable[str], end: date) -> pd.DataFrame:
+def bond_symbol_with_exchange(code: str) -> str:
+    code = "".join(ch for ch in str(code) if ch.isdigit())[-6:]
+    prefix = "sh" if code.startswith("11") else "sz"
+    return f"{prefix}{code}"
+
+
+def fetch_cb_daily_turnover(ak, bond_codes: Iterable[str], config: dict) -> pd.DataFrame:
+    codes = sorted({str(c).zfill(6) for c in bond_codes if pd.notna(c)})
+    name = f"bond_daily_turnover_{date.today():%Y%m%d}"
+    cached_today = cache_path(name, stamp="latest")
+    if cached_today.exists():
+        cached = pd.read_csv(cached_today, dtype={"bond_code": str})
+        cached_codes = set(cached["bond_code"].astype(str).str.zfill(6))
+        if set(codes).issubset(cached_codes):
+            logging.info("Using same-day bond turnover cache: %s", cached_today)
+            return cached[cached["bond_code"].astype(str).str.zfill(6).isin(codes)].copy()
+
+    rows: list[dict] = []
+    cached_codes: set[str] = set()
+    if cached_today.exists():
+        cached = pd.read_csv(cached_today, dtype={"bond_code": str})
+        cached["bond_code"] = cached["bond_code"].astype(str).str.zfill(6)
+        cached_codes = set(cached["bond_code"])
+        rows.extend(cached[cached["bond_code"].isin(codes)].to_dict("records"))
+
+    missing_codes = [code for code in codes if code not in cached_codes]
+    failure_count = 0
+    max_failures = int(config.get("data", {}).get("max_per_symbol_fetch_failures", 10))
+    for i, code in enumerate(missing_codes, start=1):
+        try:
+            hist = ak.bond_zh_hs_cov_daily(symbol=bond_symbol_with_exchange(code))
+            if hist.empty:
+                continue
+            latest = hist.tail(1).iloc[0]
+            close = pd.to_numeric(latest.get("close"), errors="coerce")
+            volume = pd.to_numeric(latest.get("volume"), errors="coerce")
+            rows.append(
+                {
+                    "bond_code": code,
+                    "turnover_yuan_daily": close * volume,
+                    "turnover_trade_date": latest.get("date"),
+                }
+            )
+            if i % 50 == 0:
+                logging.info("Fetched bond daily turnover for %s symbols.", i)
+        except Exception as exc:
+            logging.warning("Failed to fetch bond daily turnover for %s: %s", code, exc)
+            failure_count += 1
+            if failure_count >= max_failures:
+                logging.warning("Stop fetching bond daily turnover after %s failures.", failure_count)
+                break
+
+    turnover = pd.DataFrame(rows, columns=["bond_code", "turnover_yuan_daily", "turnover_trade_date"])
+    turnover = turnover.drop_duplicates(subset=["bond_code"], keep="last")
+    if not turnover.empty:
+        turnover.to_csv(cached_today, index=False, encoding="utf-8-sig")
+        logging.info("Saved bond turnover cache: %s", cached_today)
+        return turnover
+
+    data_config = config.get("data", {})
+    if data_config.get("use_cache_on_failure", True):
+        cached = latest_cache("bond_daily_turnover", int(data_config.get("max_cache_age_days", 7)))
+        if cached is not None:
+            logging.warning("Using cached bond turnover: %s", cached)
+            return pd.read_csv(cached, dtype={"bond_code": str})
+    return turnover
+
+
+def fill_missing_turnover_from_daily(ak, cb: pd.DataFrame, config: dict) -> pd.DataFrame:
+    turnover = fetch_cb_daily_turnover(ak, cb["bond_code"], config)
+    if turnover.empty:
+        return cb
+    merged = cb.merge(turnover, on="bond_code", how="left")
+    # Prefer the latest completed daily bar over intraday spot amount.
+    merged["turnover_yuan"] = merged["turnover_yuan_daily"].where(
+        merged["turnover_yuan_daily"].notna(), merged["turnover_yuan"]
+    )
+    return merged.drop(columns=["turnover_yuan_daily"])
+
+
+def fetch_stock_factors(ak, stock_codes: Iterable[str], end: date, config: dict) -> pd.DataFrame:
     start = end - timedelta(days=90)
     rows: list[dict] = []
+    failure_count = 0
+    max_failures = int(config.get("data", {}).get("max_per_symbol_fetch_failures", 10))
     for i, code in enumerate(sorted({normalize_stock_code(c) for c in stock_codes if pd.notna(c)}), start=1):
         if not code:
             continue
@@ -284,25 +475,41 @@ def fetch_stock_factors(ak, stock_codes: Iterable[str], end: date) -> pd.DataFra
             if len(close) < 21:
                 continue
             ret = close.pct_change().dropna()
+            trade_date_col = first_existing_col(hist, ["日期", "date"])
+            trade_date = hist.iloc[-1][trade_date_col] if trade_date_col is not None else hist.index[-1]
             share_col = first_existing_col(hist, ["outstanding_share"])
-            market_cap = np.nan
+            market_cap_estimate = np.nan
             if share_col is not None:
                 shares = pd.to_numeric(hist[share_col], errors="coerce").dropna()
                 if not shares.empty:
-                    market_cap = close.iloc[-1] * shares.iloc[-1]
+                    market_cap_estimate = close.iloc[-1] * shares.iloc[-1]
             rows.append(
                 {
                     "stock_code": code,
                     "stock_momentum_20d": close.iloc[-1] / close.iloc[-21] - 1,
                     "stock_volatility_20d": ret.tail(20).std() * np.sqrt(252),
-                    "market_cap": market_cap,
+                    "market_cap_estimate": market_cap_estimate,
+                    "stock_factor_trade_date": trade_date,
                 }
             )
             if i % 50 == 0:
                 logging.info("Fetched stock history for %s symbols.", i)
         except Exception as exc:
             logging.warning("Failed to fetch stock history for %s: %s", code, exc)
-    return pd.DataFrame(rows, columns=["stock_code", "stock_momentum_20d", "stock_volatility_20d", "market_cap"])
+            failure_count += 1
+            if failure_count >= max_failures:
+                logging.warning("Stop fetching stock history after %s failures.", failure_count)
+                break
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "stock_code",
+            "stock_momentum_20d",
+            "stock_volatility_20d",
+            "market_cap_estimate",
+            "stock_factor_trade_date",
+        ],
+    )
 
 
 def fetch_stock_factors_with_cache(ak, stock_codes: Iterable[str], end: date, config: dict) -> pd.DataFrame:
@@ -311,12 +518,20 @@ def fetch_stock_factors_with_cache(ak, stock_codes: Iterable[str], end: date, co
     cached_today = cache_path(name, stamp="latest")
     if cached_today.exists():
         cached = pd.read_csv(cached_today, dtype={"stock_code": str})
+        cached["stock_code"] = cached["stock_code"].astype(str).str.zfill(6)
         cached_codes = set(cached["stock_code"].astype(str).str.zfill(6))
         if set(codes).issubset(cached_codes):
             logging.info("Using same-day stock factor cache: %s", cached_today)
             return cached[cached["stock_code"].astype(str).str.zfill(6).isin(codes)].copy()
 
-    factors = fetch_stock_factors(ak, codes, end)
+    cached = pd.DataFrame()
+    if cached_today.exists():
+        cached = pd.read_csv(cached_today, dtype={"stock_code": str})
+        cached["stock_code"] = cached["stock_code"].astype(str).str.zfill(6)
+
+    cached_codes = set(cached["stock_code"]) if not cached.empty else set()
+    factors = fetch_stock_factors(ak, [code for code in codes if code not in cached_codes], end, config)
+    factors = merge_latest_rows(cached, factors, "stock_code")
     if not factors.empty:
         factors.to_csv(cached_today, index=False, encoding="utf-8-sig")
         logging.info("Saved stock factor cache: %s", cached_today)
@@ -327,19 +542,120 @@ def fetch_stock_factors_with_cache(ak, stock_codes: Iterable[str], end: date, co
         cached = latest_cache("stock_factors", int(data_config.get("max_cache_age_days", 7)))
         if cached is not None:
             logging.warning("Using cached stock factors: %s", cached)
-            return pd.read_csv(cached, dtype={"stock_code": str})
+            factors = pd.read_csv(cached, dtype={"stock_code": str})
+            factors["stock_code"] = factors["stock_code"].astype(str).str.zfill(6)
+            return factors
     return factors
+
+
+def fetch_stock_market_caps_spot(ak, stock_codes: Iterable[str]) -> pd.DataFrame:
+    codes = sorted({normalize_stock_code(c) for c in stock_codes if pd.notna(c)})
+    raw = ak.stock_zh_a_spot_em()
+    code_col = first_existing_col(raw, ["代码", "stock_code"])
+    market_cap_col = first_existing_col(raw, ["总市值", "market_cap"])
+    name_col = first_existing_col(raw, ["名称", "股票简称", "stock_name"])
+    if code_col is None or market_cap_col is None:
+        raise RuntimeError("AKShare A股实时行情缺少代码或总市值字段。")
+
+    caps = pd.DataFrame(index=raw.index)
+    caps["stock_code"] = raw[code_col].astype(str).str.extract(r"(\d{6})", expand=False).str.zfill(6)
+    caps["market_cap"] = as_number(raw[market_cap_col])
+    caps["stock_name_spot"] = raw[name_col].astype(str) if name_col is not None else pd.NA
+    caps["industry"] = pd.NA
+    caps["market_cap_as_of_date"] = date.today().isoformat()
+    caps = caps.dropna(subset=["stock_code", "market_cap"]).drop_duplicates(subset=["stock_code"])
+    return caps[caps["stock_code"].isin(codes)].copy()
+
+
+def fetch_stock_market_caps(ak, stock_codes: Iterable[str], config: dict) -> pd.DataFrame:
+    codes = sorted({normalize_stock_code(c) for c in stock_codes if pd.notna(c)})
+    name = f"stock_market_caps_{date.today():%Y%m%d}"
+    cached_today = cache_path(name, stamp="latest")
+    rows: list[dict] = []
+    cached_codes: set[str] = set()
+    if cached_today.exists():
+        cached = pd.read_csv(cached_today, dtype={"stock_code": str})
+        cached["stock_code"] = cached["stock_code"].astype(str).str.zfill(6)
+        cached_codes = set(cached["stock_code"])
+        if set(codes).issubset(cached_codes):
+            logging.info("Using same-day stock market cap cache: %s", cached_today)
+            return cached[cached["stock_code"].astype(str).str.zfill(6).isin(codes)].copy()
+        rows.extend(cached[cached["stock_code"].isin(codes)].to_dict("records"))
+
+    try:
+        logging.info("Fetching stock total market caps with ak.stock_zh_a_spot_em()")
+        spot_caps = fetch_stock_market_caps_spot(ak, codes)
+        if not spot_caps.empty:
+            spot_codes = set(spot_caps["stock_code"])
+            rows = [row for row in rows if row.get("stock_code") not in spot_codes]
+            rows.extend(spot_caps.to_dict("records"))
+            cached_codes = cached_codes | spot_codes
+    except Exception as exc:
+        logging.warning("Failed to fetch stock market caps from A-share spot snapshot: %s", exc)
+
+    failure_count = 0
+    max_failures = int(config.get("data", {}).get("max_market_cap_fetch_failures", 10))
+    missing_codes = [code for code in codes if code not in cached_codes]
+    for i, code in enumerate(missing_codes, start=1):
+        if not code:
+            continue
+        last_error: Exception | None = None
+        for _ in range(3):
+            try:
+                raw = ak.stock_individual_info_em(symbol=code, timeout=10)
+                info = dict(zip(raw["item"], raw["value"]))
+                rows.append(
+                    {
+                        "stock_code": code,
+                        "stock_name_spot": info.get("股票简称"),
+                        "market_cap": pd.to_numeric(info.get("总市值"), errors="coerce"),
+                        "industry": info.get("行业"),
+                        "market_cap_as_of_date": date.today().isoformat(),
+                    }
+                )
+                break
+            except Exception as exc:
+                last_error = exc
+        else:
+            failure_count += 1
+            logging.warning("Failed to fetch total market cap for %s: %s", code, last_error)
+            if failure_count >= max_failures:
+                logging.warning("Stop fetching total market caps after %s failures.", failure_count)
+                break
+        if i % 50 == 0:
+            logging.info("Fetched total market cap for %s symbols.", i)
+
+    caps = pd.DataFrame(
+        rows,
+        columns=["stock_code", "stock_name_spot", "market_cap", "industry", "market_cap_as_of_date"],
+    )
+    if not caps.empty:
+        caps["stock_code"] = caps["stock_code"].astype(str).str.zfill(6)
+        caps = caps.drop_duplicates(subset=["stock_code"], keep="last")
+        caps.to_csv(cached_today, index=False, encoding="utf-8-sig")
+        logging.info("Saved stock market cap cache: %s", cached_today)
+        return caps
+
+    data_config = config.get("data", {})
+    if data_config.get("use_cache_on_failure", True):
+        cached = latest_cache("stock_market_caps", int(data_config.get("max_cache_age_days", 7)))
+        if cached is not None:
+            logging.warning("Using cached stock market caps: %s", cached)
+            caps = pd.read_csv(cached, dtype={"stock_code": str})
+            caps["stock_code"] = caps["stock_code"].astype(str).str.zfill(6)
+            return caps
+    return caps
 
 
 def build_data_notes(df: pd.DataFrame, config: dict) -> list[str]:
     notes: list[str] = []
     top_n = config["top_n"]
     if top_n != 15:
-        notes.append(f"持仓数量已按当前配置调整为 Top{top_n}，不同于原始文档中的 Top15。")
+        notes.append(f"持仓数量按当前配置使用 Top{top_n}。")
     if "turnover_yuan" not in df.columns or not df["turnover_yuan"].notna().any():
         notes.append("日成交额字段缺失，本次未严格执行 日成交额 > 3000 万 过滤。")
     if "market_cap" in df.columns and df["market_cap"].notna().any():
-        notes.append("正股市值使用历史行情中的股本字段乘以收盘价估算，当前不是严格总市值口径。")
+        notes.append("正股市值使用 A 股行情快照或个股信息中的总市值字段。")
     else:
         notes.append("正股市值字段缺失，小市值因子本次可能失效。")
     if "call_status" not in df.columns or not df["call_status"].notna().any():
@@ -347,21 +663,71 @@ def build_data_notes(df: pd.DataFrame, config: dict) -> list[str]:
     return notes
 
 
+def enforce_original_rule_fields(df: pd.DataFrame, config: dict) -> None:
+    if not config.get("data", {}).get("strict_original_rules", True):
+        return
+    assert_required_fields(
+        df,
+        ["cb_price", "premium_rate", "remaining_size_100m", "maturity_date", "call_status"],
+        "可转债过滤",
+        require_all_rows=True,
+    )
+
+
+def enforce_cb_filter_coverage(df: pd.DataFrame, config: dict) -> None:
+    if not config.get("data", {}).get("strict_original_rules", True):
+        return
+    filters = config["filters"]
+    listed = pd.to_datetime(df["listing_date"], errors="coerce") <= pd.Timestamp(date.today())
+    active = df["active_reference"].eq(True) if "active_reference" in df.columns else False
+    potential = df.loc[active & listed & df["cb_price"].notna() & (df["cb_price"] < filters["max_cb_price"])].copy()
+    assert_required_fields(
+        potential,
+        ["premium_rate", "remaining_size_100m", "maturity_date", "call_status"],
+        "当前已上市可转债过滤",
+        require_all_rows=True,
+    )
+
+
+def enforce_factor_fields(df: pd.DataFrame, config: dict) -> None:
+    if not config.get("data", {}).get("strict_original_rules", True):
+        return
+    assert_required_fields(
+        df,
+        ["stock_momentum_20d", "stock_volatility_20d", "market_cap"],
+        "因子计算",
+        require_all_rows=True,
+    )
+
+
 def apply_cb_prefilters(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     filters = config["filters"]
     mask = pd.Series(True, index=df.index)
+    if config.get("data", {}).get("strict_original_rules", True):
+        mask &= df["active_reference"].eq(True)
+    mask &= pd.to_datetime(df["listing_date"], errors="coerce") <= pd.Timestamp(date.today())
     mask &= df["cb_price"] < filters["max_cb_price"]
     if df["remaining_size_100m"].notna().any():
         mask &= df["remaining_size_100m"] > filters["min_remaining_size_100m"]
-    if df["turnover_yuan"].notna().any():
-        mask &= df["turnover_yuan"] > filters["min_turnover_yuan"]
     if df["remaining_years"].notna().any():
         mask &= df["remaining_years"] > filters["min_years_to_maturity"]
     elif df["maturity_date"].notna().any():
         min_maturity = pd.Timestamp(date.today() + timedelta(days=365 * filters["min_years_to_maturity"]))
-        mask &= df["maturity_date"] > min_maturity
+        mask &= pd.to_datetime(df["maturity_date"], errors="coerce") > min_maturity
     if filters.get("exclude_call_risk", True) and df["call_status"].notna().any():
-        risk_words = ("已满足", "满足强赎", "强赎公告", "公告强赎", "即将强赎", "强赎中", "赎回登记", "最后交易", "停止交易")
+        risk_words = (
+            "已满足",
+            "满足强赎",
+            "强赎公告",
+            "公告强赎",
+            "公告要强赎",
+            "已公告强赎",
+            "即将强赎",
+            "强赎中",
+            "赎回登记",
+            "最后交易",
+            "停止交易",
+        )
         mask &= ~df["call_status"].fillna("").str.contains("|".join(risk_words), regex=True)
     if filters.get("exclude_st_stock", True):
         mask &= ~df["stock_name"].fillna("").str.upper().str.contains("ST", regex=False)
@@ -383,9 +749,21 @@ def apply_filters(df: pd.DataFrame, config: dict) -> pd.DataFrame:
         mask &= df["remaining_years"] > filters["min_years_to_maturity"]
     elif df["maturity_date"].notna().any():
         min_maturity = pd.Timestamp(date.today() + timedelta(days=365 * filters["min_years_to_maturity"]))
-        mask &= df["maturity_date"] > min_maturity
+        mask &= pd.to_datetime(df["maturity_date"], errors="coerce") > min_maturity
     if filters.get("exclude_call_risk", True) and df["call_status"].notna().any():
-        risk_words = ("已满足", "满足强赎", "强赎公告", "公告强赎", "即将强赎", "强赎中", "赎回登记", "最后交易", "停止交易")
+        risk_words = (
+            "已满足",
+            "满足强赎",
+            "强赎公告",
+            "公告强赎",
+            "公告要强赎",
+            "已公告强赎",
+            "即将强赎",
+            "强赎中",
+            "赎回登记",
+            "最后交易",
+            "停止交易",
+        )
         mask &= ~df["call_status"].fillna("").str.contains("|".join(risk_words), regex=True)
     if filters.get("exclude_st_stock", True):
         stock_name_spot = df["stock_name_spot"] if "stock_name_spot" in df.columns else pd.Series(pd.NA, index=df.index)
@@ -490,9 +868,14 @@ def save_outputs(
         "stock_momentum_20d",
         "stock_volatility_20d",
         "market_cap",
+        "market_cap_estimate",
         "remaining_size_100m",
         "turnover_yuan",
+        "turnover_trade_date",
+        "stock_factor_trade_date",
+        "market_cap_as_of_date",
         "maturity_date",
+        "listing_date",
         "score",
         "target_weight",
     ]
@@ -542,12 +925,61 @@ def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -
         cb = cb.head(max_bonds).copy()
         logging.info("Limited universe to first %s bonds for test run.", max_bonds)
 
+    cb = enrich_cb_with_spot_data(config, cb)
     cb = enrich_cb_with_redeem_data(ak, cb, config)
+    enforce_cb_filter_coverage(cb, config)
     cb = apply_cb_prefilters(cb, config)
+    cb = fill_missing_turnover_from_daily(ak, cb, config)
+    if config.get("data", {}).get("strict_original_rules", True):
+        assert_required_fields(cb, ["turnover_yuan"], "可转债成交额过滤", require_all_rows=True)
+        require_fresh_dates(
+            cb,
+            "turnover_trade_date",
+            int(config.get("data", {}).get("max_market_data_age_days", 4)),
+            "可转债成交额过滤",
+        )
+    assert_required_fields(cb, ["turnover_yuan"], "可转债成交额过滤")
+    enforce_original_rule_fields(cb, config)
     stock_factors = fetch_stock_factors_with_cache(ak, cb["stock_code"].dropna(), date.today(), config)
     merged = cb.merge(stock_factors, on="stock_code", how="left")
+    logging.info(
+        "Stock factor coverage after merge: momentum=%s/%s, volatility=%s/%s",
+        int(merged["stock_momentum_20d"].notna().sum()) if "stock_momentum_20d" in merged.columns else 0,
+        len(merged),
+        int(merged["stock_volatility_20d"].notna().sum()) if "stock_volatility_20d" in merged.columns else 0,
+        len(merged),
+    )
+    stock_caps = fetch_stock_market_caps(ak, merged["stock_code"].dropna(), config)
+    merged = merged.merge(stock_caps, on="stock_code", how="left")
+    logging.info(
+        "Stock market cap coverage after merge: market_cap=%s/%s",
+        int(merged["market_cap"].notna().sum()) if "market_cap" in merged.columns else 0,
+        len(merged),
+    )
+    if config.get("data", {}).get("allow_market_cap_estimate", False):
+        merged["market_cap"] = merged["market_cap"].combine_first(merged["market_cap_estimate"])
 
     filtered = apply_filters(merged, config)
+    if config.get("data", {}).get("strict_original_rules", True):
+        assert_required_fields(
+            filtered,
+            ["stock_momentum_20d", "stock_volatility_20d", "market_cap"],
+            "因子计算",
+            require_all_rows=True,
+        )
+        require_fresh_dates(
+            filtered,
+            "stock_factor_trade_date",
+            int(config.get("data", {}).get("max_market_data_age_days", 4)),
+            "正股动量与波动率",
+        )
+        require_fresh_dates(
+            filtered,
+            "market_cap_as_of_date",
+            int(config.get("data", {}).get("max_market_data_age_days", 4)),
+            "正股总市值",
+        )
+    enforce_factor_fields(filtered, config)
     data_notes = build_data_notes(filtered, config)
     scored = score_candidates(filtered, config)
     target = assign_equal_weight(scored, config)
