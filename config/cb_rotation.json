@@ -22,12 +22,14 @@
   "data": {
     "strict_original_rules": true,
     "selection_data_mode": "previous_close",
-    "run_after_close_only": true,
-    "selection_run_after": "15:10",
+    "block_intraday_runs": true,
+    "intraday_block_start": "09:25",
+    "intraday_block_end": "15:10",
     "use_cache_on_failure": true,
     "max_cache_age_days": 7,
     "max_market_data_age_days": 4,
-    "allow_market_cap_estimate": false,
+    "allow_market_cap_estimate": true,
+    "save_raw_snapshot": true,
     "max_per_symbol_fetch_failures": 10,
     "max_market_cap_fetch_failures": 10
   }

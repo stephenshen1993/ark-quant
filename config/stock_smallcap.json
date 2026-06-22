@@ -1,0 +1,29 @@
+{
+  "strategy_name": "Stock-SmallCap v1",
+  "universe": {
+    "board_prefixes": ["600", "601", "603", "605", "000", "001", "002", "003"],
+    "_comment": "主板+中小板;排除创业板(300/301)、科创板(688/689)、北交所(8xx/4xx/920)、B股(900/200)"
+  },
+  "filters": {
+    "min_amount_yuan": 10000000,
+    "exclude_st": true,
+    "exclude_limit_up_down": true,
+    "require_positive_pe": true,
+    "min_roe_pct": -1.0
+  },
+  "selection": {
+    "hold_n": 20,
+    "sell_rank": 21,
+    "candidate_pool": 25,
+    "max_roe_fetch": 200
+  },
+  "position": {
+    "ideal_weight": 0.05,
+    "min_weight": 0.04,
+    "max_weight": 0.06
+  },
+  "data": {
+    "roe_caliber": "regular_roe_approx_for_deducted_roe",
+    "save_raw_snapshot": true
+  }
+}

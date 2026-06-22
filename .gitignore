@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 .DS_Store
+.env
+*.cookie
+secrets/
 
 logs/*.log
 outputs/*.csv
@@ -16,3 +19,11 @@ data/processed/*
 !data/cache/.gitkeep
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+
+# 敏感个人数据，永不入库
+portfolios/*.csv
+portfolios/*.json
+data/output/
+docs/portfolio_snapshot_*.md
+docs/investment_system.md
+docs/investment_system_review.md
