@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -131,6 +131,17 @@ class ConvertibleBondRotationTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "同一个已完成交易日"):
             run.require_single_trade_date(mixed, "trade_date", "测试行情")
 
+    def test_snapshot_window_allows_pre_open_run(self) -> None:
+        config = {"data": {"selection_data_mode": "previous_close", "block_intraday_runs": True}}
+
+        run.enforce_snapshot_run_window(config, now=datetime(2026, 6, 2, 8, 30))
+
+    def test_snapshot_window_rejects_intraday_run(self) -> None:
+        config = {"data": {"selection_data_mode": "previous_close", "block_intraday_runs": True}}
+
+        with self.assertRaisesRegex(RuntimeError, "09:25 前"):
+            run.enforce_snapshot_run_window(config, now=datetime(2026, 6, 2, 10, 0))
+
     def test_daily_bond_market_data_overrides_snapshot_price(self) -> None:
         class FakeAk:
             @staticmethod
@@ -160,6 +171,128 @@ class ConvertibleBondRotationTests(unittest.TestCase):
             stale.write_text("value\n1\n", encoding="utf-8")
             with patch.object(run, "CACHE_DIR", Path(temp_dir)):
                 self.assertIsNone(run.latest_cache("sample", max_age_days=7))
+
+
+    def test_market_cap_estimate_fills_missing_and_dates_it(self) -> None:
+        merged = pd.DataFrame(
+            [
+                {
+                    "stock_code": "000001",
+                    "market_cap": pd.NA,
+                    "market_cap_estimate": 5.0e9,
+                    "market_cap_as_of_date": pd.NA,
+                    "stock_factor_trade_date": "2026-06-04",
+                }
+            ]
+        )
+        out = run.apply_market_cap_estimate(merged, {"data": {"allow_market_cap_estimate": True}})
+
+        self.assertEqual(out.loc[0, "market_cap"], 5.0e9)
+        self.assertEqual(out.loc[0, "market_cap_as_of_date"], "2026-06-04")
+        self.assertEqual(out.loc[0, "market_cap_source"], run.MARKET_CAP_ESTIMATE_SOURCE)
+
+    def test_market_cap_estimate_prefers_fresh_over_stale_cap(self) -> None:
+        merged = pd.DataFrame(
+            [
+                {
+                    "stock_code": "000001",
+                    "market_cap": 9.9e9,
+                    "market_cap_estimate": 5.0e9,
+                    "market_cap_as_of_date": "2026-06-01",
+                    "stock_factor_trade_date": "2026-06-04",
+                }
+            ]
+        )
+        out = run.apply_market_cap_estimate(merged, {"data": {"allow_market_cap_estimate": True}})
+
+        self.assertEqual(out.loc[0, "market_cap"], 5.0e9)
+        self.assertEqual(out.loc[0, "market_cap_as_of_date"], "2026-06-04")
+
+    def test_market_cap_estimate_keeps_fresh_real_cap(self) -> None:
+        merged = pd.DataFrame(
+            [
+                {
+                    "stock_code": "000001",
+                    "market_cap": 9.9e9,
+                    "market_cap_estimate": 5.0e9,
+                    "market_cap_as_of_date": "2026-06-05",
+                    "stock_factor_trade_date": "2026-06-04",
+                }
+            ]
+        )
+        out = run.apply_market_cap_estimate(merged, {"data": {"allow_market_cap_estimate": True}})
+
+        self.assertEqual(out.loc[0, "market_cap"], 9.9e9)
+
+    def test_size_rebalance_lots_sells_and_respects_cash(self) -> None:
+        from strategies.cb_rotation import size_orders
+
+        target = pd.DataFrame(
+            [
+                {"bond_code": "100001", "bond_name": "甲转债"},
+                {"bond_code": "100002", "bond_name": "乙转债"},
+            ]
+        )
+        positions = pd.DataFrame(
+            [
+                {"bond_code": "100002", "bond_name": "乙转债", "shares": 50},
+                {"bond_code": "100003", "bond_name": "丙转债", "shares": 100},
+            ]
+        )
+        prices = {"100001": 100.0, "100002": 200.0, "100003": 50.0}
+        sheet, summary = size_orders.size_rebalance(target, positions, cash=5000.0, prices=prices)
+
+        actions = dict(zip(sheet["bond_code"], sheet["action"]))
+        deltas = dict(zip(sheet["bond_code"], sheet["delta_shares"]))
+        self.assertEqual(actions["100003"], "SELL")
+        self.assertEqual(deltas["100003"], -100)  # 不在目标里，全清
+        self.assertEqual(actions["100001"], "BUY")
+        self.assertEqual(summary["total_value"], 20000.0)  # 持仓15000 + 现金5000
+        self.assertGreaterEqual(summary["cash_left"], 0)  # 永不超支
+        self.assertTrue((sheet["target_shares"] % size_orders.LOT == 0).all())  # 张数都是10的整数倍
+
+    def test_snapshot_raw_data_writes_frames_and_manifest(self) -> None:
+        import json
+
+        frames = {
+            "enriched_universe": pd.DataFrame([{"bond_code": "123456", "score": 0.8}]),
+            "empty_frame": pd.DataFrame(),
+        }
+        with TemporaryDirectory() as temp_dir, patch.object(run, "RAW_DIR", Path(temp_dir)):
+            out = run.snapshot_raw_data(date(2026, 6, 4), frames, {"data": {}})
+
+            self.assertEqual(out, Path(temp_dir) / "20260604")
+            self.assertTrue((out / "enriched_universe.csv").exists())
+            self.assertFalse((out / "empty_frame.csv").exists())  # 空表跳过
+            manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["trade_date"], "2026-06-04")
+            self.assertEqual(manifest["rows"], {"enriched_universe": 1})
+            self.assertTrue((out / "config.json").exists())
+
+    def test_snapshot_raw_data_disabled_by_config(self) -> None:
+        with TemporaryDirectory() as temp_dir, patch.object(run, "RAW_DIR", Path(temp_dir)):
+            out = run.snapshot_raw_data(date(2026, 6, 4), {}, {"data": {"save_raw_snapshot": False}})
+            self.assertIsNone(out)
+
+    def test_resolve_trade_date_uses_latest_trade_date_column(self) -> None:
+        df = pd.DataFrame({"turnover_trade_date": ["2026-06-03", "2026-06-04"]})
+        self.assertEqual(run.resolve_trade_date(df), date(2026, 6, 4))
+
+    def test_market_cap_estimate_noop_when_disabled(self) -> None:
+        merged = pd.DataFrame(
+            [
+                {
+                    "stock_code": "000001",
+                    "market_cap": pd.NA,
+                    "market_cap_estimate": 5.0e9,
+                    "market_cap_as_of_date": pd.NA,
+                    "stock_factor_trade_date": "2026-06-04",
+                }
+            ]
+        )
+        out = run.apply_market_cap_estimate(merged, {"data": {"allow_market_cap_estimate": False}})
+
+        self.assertTrue(pd.isna(out.loc[0, "market_cap"]))
 
 
 if __name__ == "__main__":

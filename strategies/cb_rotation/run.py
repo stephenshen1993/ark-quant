@@ -15,6 +15,13 @@ try:
 except ImportError as exc:
     raise SystemExit("缺少基础依赖。请先运行: python3 -m pip install -r requirements.txt") from exc
 
+from datasource.market import (
+    bond_symbol_with_exchange,
+    fetch_stock_market_caps_tencent,
+    normalize_stock_code,
+    stock_symbol_with_exchange,
+)
+
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = ROOT / "config" / "cb_rotation.json"
@@ -22,6 +29,7 @@ DEFAULT_POSITIONS = ROOT / "portfolios" / "current_cb_positions.csv"
 OUTPUT_DIR = ROOT / "outputs"
 LOG_DIR = ROOT / "logs"
 CACHE_DIR = ROOT / "data" / "cache"
+RAW_DIR = ROOT / "data" / "raw"
 
 
 @dataclass(frozen=True)
@@ -102,16 +110,19 @@ def require_single_trade_date(df: pd.DataFrame, column: str, stage: str) -> date
     return dates[0]
 
 
-def enforce_after_close_run(config: dict) -> None:
+def enforce_snapshot_run_window(config: dict, now: datetime | None = None) -> None:
     data_config = config.get("data", {})
     if data_config.get("selection_data_mode", "previous_close") != "previous_close":
         raise RuntimeError("当前仅支持 previous_close 收盘口径。")
-    if not data_config.get("run_after_close_only", True):
+    if not data_config.get("block_intraday_runs", True):
         return
-    cutoff = datetime.strptime(data_config.get("selection_run_after", "15:10"), "%H:%M").time()
-    if datetime.now().time() < cutoff:
+    current = (now or datetime.now()).time()
+    market_open = datetime.strptime(data_config.get("intraday_block_start", "09:25"), "%H:%M").time()
+    after_close = datetime.strptime(data_config.get("intraday_block_end", "15:10"), "%H:%M").time()
+    if market_open <= current < after_close:
         raise RuntimeError(
-            f"策略使用上一已完成交易日收盘数据，请在 {cutoff:%H:%M} 后运行并在下一交易日开盘执行调仓。"
+            f"策略使用上一已完成交易日收盘数据，请在 {market_open:%H:%M} 前运行当日开盘建议，"
+            f"或在 {after_close:%H:%M} 后运行下一交易日建议。"
         )
 
 
@@ -318,23 +329,6 @@ def normalize_cb_data(raw: pd.DataFrame) -> pd.DataFrame:
     df["remaining_years"] = as_number(get_col(raw, ["剩余年限"], "remaining_years"))
     df["call_status"] = get_col(raw, ["强赎状态", "强赎", "redeem_flag", "redeem_status"], "call_status").astype(str)
     return df.drop_duplicates(subset=["bond_code"])
-
-
-def normalize_stock_code(code: str) -> str:
-    digits = "".join(ch for ch in str(code) if ch.isdigit())
-    return digits[-6:] if len(digits) >= 6 else digits
-
-
-def stock_symbol_with_exchange(code: str) -> str:
-    code = normalize_stock_code(code)
-    prefix = "sh" if code.startswith(("5", "6", "9")) else "sz"
-    return f"{prefix}{code}"
-
-
-def bond_symbol_with_exchange(code: str) -> str:
-    code = "".join(ch for ch in str(code) if ch.isdigit())[-6:]
-    prefix = "sh" if code.startswith("11") else "sz"
-    return f"{prefix}{code}"
 
 
 def fetch_cb_daily_turnover(ak, bond_codes: Iterable[str], config: dict) -> pd.DataFrame:
@@ -544,6 +538,7 @@ def fetch_stock_market_caps_close_snapshot(ak, stock_codes: Iterable[str]) -> pd
     caps["stock_name_spot"] = raw[name_col].astype(str) if name_col is not None else pd.NA
     caps["industry"] = pd.NA
     caps["market_cap_as_of_date"] = date.today().isoformat()
+    caps["market_cap_source"] = "eastmoney_total_mv"
     caps = caps.dropna(subset=["stock_code", "market_cap"]).drop_duplicates(subset=["stock_code"])
     return caps[caps["stock_code"].isin(codes)].copy()
 
@@ -563,16 +558,31 @@ def fetch_stock_market_caps(ak, stock_codes: Iterable[str], config: dict) -> pd.
             return cached[cached["stock_code"].astype(str).str.zfill(6).isin(codes)].copy()
         rows.extend(cached[cached["stock_code"].isin(codes)].to_dict("records"))
 
+    # Primary source: Tencent quote API (eastmoney-free, login-free, batched).
     try:
-        logging.info("Fetching stock total market caps from the after-close A-share snapshot")
-        snapshot_caps = fetch_stock_market_caps_close_snapshot(ak, codes)
-        if not snapshot_caps.empty:
-            snapshot_codes = set(snapshot_caps["stock_code"])
-            rows = [row for row in rows if row.get("stock_code") not in snapshot_codes]
-            rows.extend(snapshot_caps.to_dict("records"))
-            cached_codes = cached_codes | snapshot_codes
+        logging.info("Fetching stock total market caps from Tencent quote API")
+        tencent_caps = fetch_stock_market_caps_tencent(codes)
+        if not tencent_caps.empty:
+            tencent_codes = set(tencent_caps["stock_code"])
+            rows = [row for row in rows if row.get("stock_code") not in tencent_codes]
+            rows.extend(tencent_caps.to_dict("records"))
+            cached_codes = cached_codes | tencent_codes
+            logging.info("Tencent market cap coverage: %s/%s", len(tencent_codes), len(codes))
     except Exception as exc:
-        logging.warning("Failed to fetch stock market caps from A-share close snapshot: %s", exc)
+        logging.warning("Failed to fetch stock market caps from Tencent: %s", exc)
+
+    # Fallback source: eastmoney after-close snapshot (often blocked for Python requests).
+    if any(code not in cached_codes for code in codes):
+        try:
+            logging.info("Fetching remaining stock total market caps from the after-close A-share snapshot")
+            snapshot_caps = fetch_stock_market_caps_close_snapshot(ak, codes)
+            if not snapshot_caps.empty:
+                snapshot_codes = set(snapshot_caps["stock_code"])
+                rows = [row for row in rows if row.get("stock_code") not in snapshot_codes]
+                rows.extend(snapshot_caps.to_dict("records"))
+                cached_codes = cached_codes | snapshot_codes
+        except Exception as exc:
+            logging.warning("Failed to fetch stock market caps from A-share close snapshot: %s", exc)
 
     failure_count = 0
     max_failures = int(config.get("data", {}).get("max_market_cap_fetch_failures", 10))
@@ -592,6 +602,7 @@ def fetch_stock_market_caps(ak, stock_codes: Iterable[str], config: dict) -> pd.
                         "market_cap": pd.to_numeric(info.get("总市值"), errors="coerce"),
                         "industry": info.get("行业"),
                         "market_cap_as_of_date": date.today().isoformat(),
+                        "market_cap_source": "eastmoney_total_mv",
                     }
                 )
                 break
@@ -608,7 +619,14 @@ def fetch_stock_market_caps(ak, stock_codes: Iterable[str], config: dict) -> pd.
 
     caps = pd.DataFrame(
         rows,
-        columns=["stock_code", "stock_name_spot", "market_cap", "industry", "market_cap_as_of_date"],
+        columns=[
+            "stock_code",
+            "stock_name_spot",
+            "market_cap",
+            "industry",
+            "market_cap_as_of_date",
+            "market_cap_source",
+        ],
     )
     if not caps.empty:
         caps["stock_code"] = caps["stock_code"].astype(str).str.zfill(6)
@@ -628,6 +646,47 @@ def fetch_stock_market_caps(ak, stock_codes: Iterable[str], config: dict) -> pd.
     return caps
 
 
+MARKET_CAP_ESTIMATE_SOURCE = "stock_history_close_x_outstanding_share"
+
+
+def apply_market_cap_estimate(merged: pd.DataFrame, config: dict) -> pd.DataFrame:
+    """Fill 正股总市值 from the float-market-cap estimate when the total-cap source is down.
+
+    The estimate is 收盘价 × 流通股 computed from the (working) sina stock history. It is a
+    流通市值 proxy for the small-cap factor, used only when the eastmoney 总市值 source fails or
+    returns staler data than the estimate. The fresh estimate is preferred over any stale
+    cross-day cached cap, and the filled rows are dated and labeled so strict freshness checks
+    still apply. No-op unless `data.allow_market_cap_estimate` is true.
+    """
+    if not config.get("data", {}).get("allow_market_cap_estimate", False):
+        return merged
+    if "market_cap_estimate" not in merged.columns:
+        return merged
+    if "market_cap" not in merged.columns:
+        merged["market_cap"] = pd.NA
+    if "market_cap_as_of_date" not in merged.columns:
+        merged["market_cap_as_of_date"] = pd.NA
+    if "market_cap_source" not in merged.columns:
+        merged["market_cap_source"] = pd.NA
+
+    estimate = merged["market_cap_estimate"]
+    cap_date = pd.to_datetime(merged["market_cap_as_of_date"], errors="coerce")
+    estimate_date = pd.to_datetime(merged["stock_factor_trade_date"], errors="coerce")
+    # Use the estimate when the real cap is missing, undated, or staler than the estimate.
+    use_estimate = estimate.notna() & (
+        merged["market_cap"].isna() | cap_date.isna() | (estimate_date > cap_date)
+    )
+    merged.loc[use_estimate, "market_cap"] = estimate[use_estimate]
+    merged.loc[use_estimate, "market_cap_as_of_date"] = merged.loc[use_estimate, "stock_factor_trade_date"]
+    merged.loc[use_estimate, "market_cap_source"] = MARKET_CAP_ESTIMATE_SOURCE
+    filled = int(use_estimate.sum())
+    if filled:
+        logging.warning(
+            "正股总市值回退使用流通市值估算(收盘价×流通股)填充 %s 只，口径为流通市值而非总市值。", filled
+        )
+    return merged
+
+
 def build_data_notes(df: pd.DataFrame, config: dict) -> list[str]:
     notes: list[str] = ["选债使用最近已完成交易日收盘数据，调仓建议用于下一交易日开盘执行。"]
     top_n = config["top_n"]
@@ -636,7 +695,17 @@ def build_data_notes(df: pd.DataFrame, config: dict) -> list[str]:
     if "turnover_yuan" not in df.columns or not df["turnover_yuan"].notna().any():
         notes.append("日成交额字段缺失，本次未严格执行 日成交额 > 3000 万 过滤。")
     if "market_cap" in df.columns and df["market_cap"].notna().any():
-        notes.append("正股市值使用 A 股行情快照或个股信息中的总市值字段。")
+        source = df["market_cap_source"] if "market_cap_source" in df.columns else pd.Series(pd.NA, index=df.index)
+        estimate_count = int(source.fillna("").str.contains("outstanding_share").sum())
+        total = int(df["market_cap"].notna().sum())
+        if estimate_count == total:
+            notes.append("正股市值本次全部使用流通市值估算(收盘价×流通股)，非总市值，小市值因子口径存在偏差。")
+        elif estimate_count > 0:
+            notes.append(
+                f"正股市值部分使用流通市值估算({estimate_count}/{total} 只)，其余为总市值快照，小市值因子口径不完全一致。"
+            )
+        else:
+            notes.append("正股市值使用 A 股行情快照或个股信息中的总市值字段。")
     else:
         notes.append("正股市值字段缺失，小市值因子本次可能失效。")
     if "call_status" not in df.columns or not df["call_status"].notna().any():
@@ -895,10 +964,53 @@ def save_outputs(
     return RunArtifacts(candidates_csv, candidates_xlsx, rebalance_csv, report_md)
 
 
+def resolve_trade_date(df: pd.DataFrame) -> date:
+    """Best-effort data 基准日 from the frame's trade-date columns, falling back to today."""
+    for col in ("turnover_trade_date", "stock_factor_trade_date"):
+        if col in df.columns:
+            values = pd.to_datetime(df[col], errors="coerce").dropna()
+            if not values.empty:
+                return values.max().date()
+    return date.today()
+
+
+def snapshot_raw_data(
+    trade_date: date, frames: dict[str, pd.DataFrame], config: dict, subdir: str | None = None
+) -> Path | None:
+    """Persist an immutable, date-keyed point-in-time snapshot to ``data/raw/<trade_date>/``.
+
+    Keyed by the data 基准日 so each trading day has one reproducible snapshot: the榜单 can be
+    re-derived later, a failed live source can fall back to the last good day, and history
+    accumulates for backtesting. Re-running the same trade date overwrites idempotently. Disabled
+    via ``data.save_raw_snapshot = false``. ``subdir`` namespaces per-strategy snapshots under the
+    same trade-date folder (e.g. ``stock_smallcap``) so multiple strategies don't collide.
+    """
+    if not config.get("data", {}).get("save_raw_snapshot", True):
+        return None
+    day_dir = RAW_DIR / f"{trade_date:%Y%m%d}"
+    if subdir:
+        day_dir = day_dir / subdir
+    day_dir.mkdir(parents=True, exist_ok=True)
+    written: dict[str, int] = {}
+    for name, frame in frames.items():
+        if isinstance(frame, pd.DataFrame) and not frame.empty:
+            frame.to_csv(day_dir / f"{name}.csv", index=False, encoding="utf-8-sig")
+            written[name] = int(len(frame))
+    (day_dir / "config.json").write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+    manifest = {
+        "trade_date": trade_date.isoformat(),
+        "run_at": datetime.now().isoformat(timespec="seconds"),
+        "rows": written,
+    }
+    (day_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    logging.info("Saved raw snapshot to %s (%s)", day_dir, written)
+    return day_dir
+
+
 def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -> RunArtifacts:
     log_file = setup_logging()
     config = load_config(config_path)
-    enforce_after_close_run(config)
+    enforce_snapshot_run_window(config)
     ak = require_akshare()
 
     raw_cb = fetch_cb_universe(ak, config)
@@ -919,6 +1031,20 @@ def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -
             int(config.get("data", {}).get("max_market_data_age_days", 4)),
             "可转债成交额过滤",
         )
+        # Some illiquid bonds may not have traded on the latest session; their last trade
+        # date lags by one day. Drop them so all remaining bonds share a single trade date.
+        # These bonds would also fail the turnover filter, so exclusion is correct.
+        if "turnover_trade_date" in cb.columns:
+            latest_td = pd.to_datetime(cb["turnover_trade_date"], errors="coerce").max()
+            stale_mask = pd.to_datetime(cb["turnover_trade_date"], errors="coerce") < latest_td
+            if stale_mask.any():
+                logging.info(
+                    "Dropping %d bonds with stale turnover_trade_date (< %s): %s",
+                    stale_mask.sum(),
+                    latest_td.date(),
+                    cb.loc[stale_mask, "bond_code"].tolist(),
+                )
+                cb = cb[~stale_mask].copy()
         require_single_trade_date(cb, "turnover_trade_date", "可转债收盘行情")
     assert_required_fields(cb, ["turnover_yuan"], "可转债成交额过滤")
     enforce_original_rule_fields(cb, config)
@@ -938,8 +1064,7 @@ def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -
         int(merged["market_cap"].notna().sum()) if "market_cap" in merged.columns else 0,
         len(merged),
     )
-    if config.get("data", {}).get("allow_market_cap_estimate", False):
-        merged["market_cap"] = merged["market_cap"].combine_first(merged["market_cap_estimate"])
+    merged = apply_market_cap_estimate(merged, config)
 
     filtered = apply_filters(merged, config)
     if config.get("data", {}).get("strict_original_rules", True):
@@ -970,6 +1095,20 @@ def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -
     rebalance = build_rebalance_plan(current, target)
     artifacts = save_outputs(target, rebalance, config, log_file, data_notes)
     logging.info("Saved report to %s", artifacts.report_md)
+    try:
+        snapshot_raw_data(
+            resolve_trade_date(scored),
+            {
+                "cb_universe_raw": raw_cb,
+                "enriched_universe": merged,
+                "scored_universe": scored,
+                "target_topn": target,
+                "rebalance_plan": rebalance,
+            },
+            config,
+        )
+    except Exception as exc:  # Snapshot is a safety net; never fail a good run over it.
+        logging.warning("Failed to save raw snapshot: %s", exc)
     return artifacts
 
 
