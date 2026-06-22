@@ -9,6 +9,28 @@
 
 目标不是一次性脚本，而是逐步演化成可长期维护的投资系统（转债 + 股票 + 基金 + 多策略协同）。
 
+## 操作入口
+
+如果是盘后或盘前生成交易计划，先读：
+
+- `docs/README.md`：文档地图，说明体系、操作、研究、复盘各自在哪。
+- `docs/operations/system_rebalance_runbook.md`：体系级再平衡运行手册，定义输入、公式、执行顺序和把关规则。
+- `docs/system/investment_system.md`：长期投资体系说明，定义资产桶和目标仓位公式。
+- `portfolios/accounts_state.json`：最近账户状态，包括温度、现金、长钱、海外长钱。
+- `portfolios/current_cb_positions.csv`、`portfolios/current_stock_positions.csv`：当前策略持仓。
+
+体系级决策顺序是：先按温度和国内总资产计算现金、长钱、可转债、小市值目标金额，再把可转债和小市值策略内部轮动落成具体订单。不要把本项目理解成“股票账户和转债账户各自独立满仓运行”。
+
+常用执行入口：
+
+```bash
+# 用持仓和行情估算股票/转债账户总市值，并回填账户状态
+python3 value_accounts.py
+
+# 按温度和账户状态计算体系级目标仓位与调拨方向
+python3 rebalance.py --temperature 55
+```
+
 ## 目录结构
 
 ```text
@@ -24,12 +46,21 @@ ark-quant/
 │   └── cache/              # 工作缓存（短期故障回退）
 ├── outputs/                # 策略输出（榜单、调仓建议、报告）
 ├── logs/                   # 运行日志
-├── docs/                   # 策略设计、数据源调研、差距记录
+├── datasource/             # 统一行情与数据存取封装
+├── docs/                   # 体系说明、运行手册、策略设计、研究与复盘
+│   ├── operations/         # 日常运行手册
+│   ├── system/             # 投资体系与仓位公式
+│   ├── strategies/         # 策略设计与差距分析
+│   ├── research/           # 数据源、因子和外部资料调研
+│   └── reviews/            # 阶段复盘与组合快照
 ├── backtests/              # 回测模块（待建）
 ├── factor_lab/             # 因子研究（待建）
 ├── execution/              # 执行与调仓自动化（待建）
 ├── dashboards/             # 可视化看板（待建）
-└── notebooks/              # 研究笔记
+├── notebooks/              # 研究笔记
+├── tests/                  # 自动化测试
+├── rebalance.py            # 体系级目标仓位与调拨计划
+└── value_accounts.py       # 股票/转债账户估值并回填状态
 ```
 
 ## 当前已实现

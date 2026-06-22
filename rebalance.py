@@ -28,7 +28,7 @@ from pathlib import Path
 
 STATE_FILE = Path(__file__).parent / "portfolios" / "accounts_state.json"
 
-_THRESHOLD = 500  # 差额低于此值视为无需调拨（元）
+_THRESHOLD = 1000  # 差额低于此值视为无需调拨（元）
 
 
 # ── State I/O ─────────────────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ def save_state(state: dict) -> None:
 # ── Formula ───────────────────────────────────────────────────────────────────
 
 def calc_targets(domestic_total: float, T_raw: float) -> dict:
-    """五. 核心公式 from docs/investment_system.md."""
+    """五. 核心公式 from docs/system/investment_system.md."""
     T_norm = T_raw / 100.0
     cash_target = domestic_total * 0.20 * T_norm
     B = domestic_total - cash_target
