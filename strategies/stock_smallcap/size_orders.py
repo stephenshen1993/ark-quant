@@ -40,6 +40,7 @@ def size_rebalance(
     prices: dict[str, float],
     lot: int = LOT,
     max_single_weight: float = 0.08,
+    min_trade_value: float = 0.0,
 ) -> tuple[pd.DataFrame, dict]:
     """等权全量对齐，返回 (订单表, 摘要)。"""
     reb = rebalance.copy()
@@ -104,6 +105,19 @@ def size_rebalance(
                 left -= prices[c] * lot
                 improved = True
 
+    # 摩擦成本过滤：加仓金额低于门槛的跳过，把预算还回去
+    skipped: dict[str, tuple[int, float]] = {}
+    if min_trade_value > 0:
+        for c in target_codes:
+            cur = held.get(c, 0)
+            tgt = desired[c]
+            if tgt > cur:
+                trade_val = (tgt - cur) * prices[c]
+                if trade_val < min_trade_value:
+                    skipped[c] = (tgt - cur, trade_val)
+                    left += trade_val
+                    desired[c] = cur
+
     # 生成订单行
     rows = []
     exit_codes = set(held) - set(target_codes)
@@ -113,7 +127,9 @@ def size_rebalance(
 
     for c in target_codes:
         cur, tgt = held.get(c, 0), desired[c]
-        if cur == 0 and tgt > 0:
+        if c in skipped:
+            rows.append(_row("SKIP", c, name_map, prices, cur, cur))
+        elif cur == 0 and tgt > 0:
             rows.append(_row("BUY", c, name_map, prices, cur, tgt))
         elif tgt > cur:
             rows.append(_row("ADD", c, name_map, prices, cur, tgt))
@@ -129,6 +145,7 @@ def size_rebalance(
         "per_target": per,
         "cash_left": left,
         "n_target": n,
+        "skipped": skipped,
     }
     return pd.DataFrame(rows), summary
 
@@ -152,6 +169,8 @@ def main() -> None:
     parser.add_argument("--rebalance", type=Path, default=None, help="调仓建议CSV，默认取最新一份。")
     parser.add_argument("--positions", type=Path, default=DEFAULT_POSITIONS)
     parser.add_argument("--cash", type=float, required=True, help="当前可用现金（元）。")
+    parser.add_argument("--min-trade-value", type=float, default=1000.0,
+                        help="加仓/买入金额下限（元），低于此的小单跳过，默认 1000。")
     args = parser.parse_args()
 
     setup_logging()
@@ -169,7 +188,8 @@ def main() -> None:
     if missing:
         raise SystemExit(f"缺少报价，无法计算: {missing}")
 
-    sheet, summary = size_rebalance(reb, positions, args.cash, prices)
+    sheet, summary = size_rebalance(reb, positions, args.cash, prices,
+                                    min_trade_value=args.min_trade_value)
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out = OUTPUT_DIR / f"stock_orders_{stamp}.csv"
@@ -178,15 +198,19 @@ def main() -> None:
     print(f"\n总资产 {summary['total_value']:>12,.0f} 元  (持仓 {summary['holdings_value']:,.0f} + 现金 {summary['cash_in']:,.0f})")
     print(f"每只目标 {summary['per_target']:>10,.0f} 元 (≈{summary['per_target']/summary['total_value']:.1%})，共 {summary['n_target']} 只\n")
 
-    label = {"SELL": "清仓卖出", "TRIM": "减仓", "BUY": "买入", "ADD": "加仓", "HOLD": "持有不动"}
-    verb  = {"SELL": "卖", "TRIM": "卖", "BUY": "买", "ADD": "买", "HOLD": ""}
-    for act in ("SELL", "TRIM", "BUY", "ADD", "HOLD"):
+    label = {"SELL": "清仓卖出", "TRIM": "减仓", "BUY": "买入", "ADD": "加仓", "HOLD": "持有不动", "SKIP": "跳过（摩擦过高）"}
+    verb  = {"SELL": "卖", "TRIM": "卖", "BUY": "买", "ADD": "买", "HOLD": "", "SKIP": ""}
+    skipped = summary.get("skipped", {})
+    for act in ("SELL", "TRIM", "BUY", "ADD", "SKIP", "HOLD"):
         sub = sheet[sheet["action"] == act]
         if sub.empty:
             continue
         print(f"——— {label[act]} ({len(sub)}) ———")
         for _, r in sub.iterrows():
-            if r["delta_shares"]:
+            if act == "SKIP":
+                skip_lots, skip_val = skipped.get(r["stock_code"], (0, 0.0))
+                qty = f"跳过 +{skip_lots}股(+{skip_lots // LOT}手)  {skip_val:.0f}元 < {args.min_trade_value:.0f}元"
+            elif r["delta_shares"]:
                 qty = f"{verb[act]}{abs(int(r['delta_shares']))}股({abs(int(r['delta_shares']))//LOT}手)  {r['amount']:>10,.0f}元"
             else:
                 qty = f"不动  {int(r['current_shares'])}股  {int(r['current_shares'])*r['price']:>10,.0f}元"

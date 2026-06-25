@@ -210,18 +210,22 @@ def print_report(T_raw: float, state: dict) -> None:
         print("  → 建议顺序：先银证转入，再执行欠仓账户策略轮动。")
 
     # ── size_orders hints ──────────────────────────────────────────────────────
-    bond_avail  = state["bond"]["cash"]  + max(0.0, deltas["bond"])
-    stock_avail = state["stock"]["cash"] + max(0.0, deltas["stock"])
+    # 超仓账户用负数 cash 告知 size_orders 需要多卖出以释放转出金额
+    bond_avail  = state["bond"]["cash"]  + deltas["bond"]
+    stock_avail = state["stock"]["cash"] + deltas["stock"]
+
+    def _transfer_note(d: float) -> str:
+        if d > _THRESHOLD:
+            return f" + 转入 {d:,.0f}"
+        if d < -_THRESHOLD:
+            return f" - 转出 {-d:,.0f}"
+        return ""
 
     print("\n调拨完成后策略可用现金:")
-    print(f"  转债 {state['bond']['cash']:>10,.2f} 元"
-          + (f" + 转入 {deltas['bond']:,.0f}" if deltas["bond"] > _THRESHOLD else "")
-          + f"  =  {bond_avail:,.2f} 元")
+    print(f"  转债 {state['bond']['cash']:>10,.2f} 元{_transfer_note(deltas['bond'])}  =  {bond_avail:,.2f} 元")
     print(f"    python3 -m strategies.cb_rotation.size_orders --cash {bond_avail:.0f}")
     print()
-    print(f"  股票 {state['stock']['cash']:>10,.2f} 元"
-          + (f" + 转入 {deltas['stock']:,.0f}" if deltas["stock"] > _THRESHOLD else "")
-          + f"  =  {stock_avail:,.2f} 元")
+    print(f"  股票 {state['stock']['cash']:>10,.2f} 元{_transfer_note(deltas['stock'])}  =  {stock_avail:,.2f} 元")
     print(f"    python3 -m strategies.stock_smallcap.size_orders --cash {stock_avail:.0f}")
 
     print("=" * W)
