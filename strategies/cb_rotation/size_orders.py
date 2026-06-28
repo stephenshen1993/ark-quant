@@ -187,6 +187,17 @@ def main() -> None:
         print()
     print(f"调仓后剩余现金 ≈ {summary['cash_left']:,.0f} 元")
     print(f"下单清单已存: {out}")
+    try:
+        from datasource.db import init_db, get_latest_run_id, insert_cb_orders
+        init_db()
+        run_id = get_latest_run_id("cb")
+        if run_id is not None:
+            insert_cb_orders(run_id, sheet)
+            logging.info("DB write OK: cb orders run_id=%s", run_id)
+        else:
+            logging.warning("DB write skipped: no cb strategy_run found yet.")
+    except Exception as exc:
+        logging.warning("DB write failed (cb orders): %s", exc)
 
 
 if __name__ == "__main__":

@@ -1096,6 +1096,15 @@ def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -
     artifacts = save_outputs(target, rebalance, config, log_file, data_notes)
     logging.info("Saved report to %s", artifacts.report_md)
     try:
+        from datasource.db import init_db, insert_strategy_run, insert_cb_rankings
+        init_db()
+        _data_date = resolve_trade_date(scored)
+        _run_id = insert_strategy_run("cb", _data_date)
+        insert_cb_rankings(_run_id, target)
+        logging.info("DB write OK: cb rankings run_id=%s data_date=%s", _run_id, _data_date)
+    except Exception as _exc:
+        logging.warning("DB write failed (cb rankings): %s", _exc)
+    try:
         snapshot_raw_data(
             resolve_trade_date(scored),
             {
