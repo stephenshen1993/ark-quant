@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ark-quant</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-900 flex h-screen">
+
+<!-- 侧边导航 -->
+<nav class="w-40 bg-white border-r border-gray-200 flex flex-col pt-6 px-3 gap-1 shrink-0">
+  <span class="text-xs text-gray-400 font-medium px-2 mb-2">ark-quant</span>
+  <template x-data x-for="item in [
+    {id:'account', label:'账户总览', icon:'📊'},
+    {id:'positions', label:'持仓', icon:'💼'},
+    {id:'plan', label:'本期计划', icon:'📋'},
+    {id:'rankings', label:'榜单', icon:'🏆'}
+  ]">
+    <button @click="$dispatch('nav', item.id)"
+      :class="$store.page === item.id
+        ? 'bg-gray-100 text-gray-900 font-medium'
+        : 'text-gray-500 hover:bg-gray-50'"
+      class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left w-full">
+      <span x-text="item.icon"></span>
+      <span x-text="item.label"></span>
+    </button>
+  </template>
+</nav>
+
+<!-- 主内容 -->
+<main class="flex-1 overflow-auto p-6" x-data @nav.window="$store.page = $event.detail">
+
+  <!-- 账户总览 -->
+  <div x-show="$store.page === 'account'" x-data="accountPage()" x-init="load()">
+    <div class="flex justify-between items-center mb-4">
+      <h1 class="text-lg font-medium">账户总览</h1>
+      <span x-show="snap" class="text-xs text-gray-400"
+        x-text="snap ? snap.snapshot_date + ' · 温度 ' + snap.temperature + '°' : ''"></span>
+    </div>
+    <!-- 账户卡片 -->
+    <div class="grid grid-cols-4 gap-3 mb-4" x-show="snap">
+      <div class="bg-white border border-gray-100 rounded-xl p-4">
+        <div class="text-xs text-gray-400 mb-1">股票账户</div>
+        <div class="text-lg font-medium" x-text="fmt(snap?.stock_total)"></div>
+        <div class="text-xs text-gray-400 mt-1" x-text="'现金 ' + fmt(snap?.stock_cash)"></div>
+      </div>
+      <div class="bg-white border border-gray-100 rounded-xl p-4">
+        <div class="text-xs text-gray-400 mb-1">转债账户</div>
+        <div class="text-lg font-medium" x-text="fmt(snap?.bond_total)"></div>
+        <div class="text-xs text-gray-400 mt-1" x-text="'现金 ' + fmt(snap?.bond_cash)"></div>
+      </div>
+      <div class="bg-white border border-gray-100 rounded-xl p-4">
+        <div class="text-xs text-gray-400 mb-1">长钱账户</div>
+        <div class="text-lg font-medium" x-text="fmt(snap?.changqian_total)"></div>
+      </div>
+      <div class="bg-white border border-gray-100 rounded-xl p-4">
+        <div class="text-xs text-gray-400 mb-1">现金池</div>
+        <div class="text-lg font-medium" x-text="fmt(snap?.cash_pool)"></div>
+      </div>
+    </div>
+    <div x-show="!snap" class="text-sm text-gray-400 mb-4">暂无账户数据，请录入。</div>
+
+    <!-- 录入表单 -->
+    <div class="bg-white border border-gray-100 rounded-xl p-4 mb-4">
+      <div class="text-sm font-medium mb-3">更新账户数据</div>
+      <div class="grid grid-cols-3 gap-3 text-sm">
+        <label class="flex flex-col gap-1">
+          <span class="text-xs text-gray-400">快照日期</span>
+          <input type="date" x-model="form.snapshot_date" class="border border-gray-200 rounded px-2 py-1">
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="text-xs text-gray-400">温度</span>
+          <input type="number" x-model.number="form.temperature" class="border border-gray-200 rounded px-2 py-1" placeholder="45">
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="text-xs text-gray-400">股票总市值</span>
+          <input type="number" x-model.number="form.stock_total" class="border border-gray-200 rounded px-2 py-1">
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="text-xs text-gray-400">股票现金</span>
+          <input type="number" x-model.number="form.stock_cash" class="border border-gray-200 rounded px-2 py-1">
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="text-xs text-gray-400">转债总市值</span>
+          <input type="number" x-model.number="form.bond_total" class="border border-gray-200 rounded px-2 py-1">
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="text-xs text-gray-400">转债现金</span>
+          <input type="number" x-model.number="form.bond_cash" class="border border-gray-200 rounded px-2 py-1">
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="text-xs text-gray-400">长钱净值</span>
+          <input type="number" x-model.number="form.changqian_total" class="border border-gray-200 rounded px-2 py-1">
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="text-xs text-gray-400">现金池余额</span>
+          <input type="number" x-model.number="form.cash_pool" class="border border-gray-200 rounded px-2 py-1">
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="text-xs text-gray-400">海外长钱净值</span>
+          <input type="number" x-model.number="form.overseas_total" class="border border-gray-200 rounded px-2 py-1">
+        </label>
+      </div>
+      <button @click="save()" class="mt-3 px-4 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700">
+        保存
+      </button>
+      <span x-show="saved" class="ml-3 text-xs text-green-600">已保存</span>
+    </div>
+  </div>
+
+  <!-- 持仓页 -->
+  <div x-show="$store.page === 'positions'" x-data="positionsPage()" x-init="load()">
+    <div class="flex justify-between items-center mb-4">
+      <h1 class="text-lg font-medium">持仓</h1>
+      <div class="flex gap-2">
+        <select x-model="dateFilter" @change="loadByDate()" class="text-xs border border-gray-200 rounded px-2 py-1">
+          <option value="">最新</option>
+          <template x-for="d in dates"><option :value="d" x-text="d"></option></template>
+        </select>
+      </div>
+    </div>
+    <div class="flex gap-2 mb-4">
+      <button @click="tab='cb'" :class="tab==='cb'?'bg-gray-900 text-white':'bg-white text-gray-500 border border-gray-200'"
+        class="px-4 py-1.5 rounded-lg text-sm">转债持仓</button>
+      <button @click="tab='stock'" :class="tab==='stock'?'bg-gray-900 text-white':'bg-white text-gray-500 border border-gray-200'"
+        class="px-4 py-1.5 rounded-lg text-sm">股票持仓</button>
+    </div>
+    <!-- 持仓表格 -->
+    <div class="bg-white border border-gray-100 rounded-xl overflow-hidden mb-4">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-gray-400 text-xs">
+          <tr>
+            <th class="text-left px-4 py-2">代码</th>
+            <th class="text-left px-4 py-2">名称</th>
+            <th class="text-right px-4 py-2" x-text="tab==='cb'?'持有(张)':'持有(股)'"></th>
+            <th class="w-8"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="(row, idx) in currentRows()" :key="idx">
+            <tr class="border-t border-gray-50">
+              <td class="px-4 py-2" x-text="row.code"></td>
+              <td class="px-4 py-2 text-gray-600" x-text="row.name"></td>
+              <td class="px-4 py-2 text-right">
+                <input type="number" x-model.number="row.shares"
+                  class="w-20 text-right border border-gray-100 rounded px-1 py-0.5 text-sm">
+              </td>
+              <td class="px-2">
+                <button @click="removeRow(idx)" class="text-gray-300 hover:text-red-400 text-xs">✕</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+    <div class="flex gap-2">
+      <button @click="addRow()" class="px-3 py-1.5 border border-gray-200 text-sm rounded-lg text-gray-500 hover:bg-gray-50">
+        + 添加行
+      </button>
+      <button @click="savePositions()" class="px-4 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700">
+        保存持仓
+      </button>
+      <span x-show="saved" class="text-xs text-green-600 self-center">已保存</span>
+    </div>
+  </div>
+
+  <!-- 本期计划（Task 8 实现） -->
+  <div x-show="$store.page === 'plan'">
+    <h1 class="text-lg font-medium mb-4">本期计划</h1>
+    <div id="plan-content" class="text-sm text-gray-400">加载中...</div>
+  </div>
+
+  <!-- 榜单（Task 7 实现） -->
+  <div x-show="$store.page === 'rankings'">
+    <h1 class="text-lg font-medium mb-4">榜单</h1>
+    <div id="rankings-content" class="text-sm text-gray-400">加载中...</div>
+  </div>
+
+</main>
+
+<script>
+  // Alpine store for active page
+  document.addEventListener('alpine:init', () => {
+    Alpine.store('page', 'account')
+  })
+
+  // 账户总览
+  function accountPage() {
+    return {
+      snap: null,
+      saved: false,
+      form: {
+        snapshot_date: new Date().toISOString().slice(0, 10),
+        temperature: null, stock_total: null, stock_cash: null,
+        bond_total: null, bond_cash: null, changqian_total: null,
+        cash_pool: null, overseas_total: null,
+      },
+      async load() {
+        const r = await fetch('/api/account/latest')
+        this.snap = await r.json()
+        if (this.snap) Object.assign(this.form, this.snap)
+      },
+      fmt(v) { return v == null ? '-' : (v/10000).toFixed(2) + '万' },
+      async save() {
+        await fetch('/api/account/snapshot', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(this.form),
+        })
+        this.saved = true
+        await this.load()
+        setTimeout(() => this.saved = false, 2000)
+      },
+    }
+  }
+
+  // 持仓
+  function positionsPage() {
+    return {
+      tab: 'cb',
+      cbRows: [], stockRows: [],
+      dates: [], dateFilter: '',
+      saved: false,
+      async load() {
+        const [cb, stock, cbDates, stockDates] = await Promise.all([
+          fetch('/api/positions/cb').then(r => r.json()),
+          fetch('/api/positions/stock').then(r => r.json()),
+          fetch('/api/positions/cb/dates').then(r => r.json()),
+          fetch('/api/positions/stock/dates').then(r => r.json()),
+        ])
+        this.cbRows = cb
+        this.stockRows = stock
+        this.dates = [...new Set([...cbDates, ...stockDates])].sort().reverse()
+      },
+      async loadByDate() {
+        if (!this.dateFilter) return this.load()
+        const [cb, stock] = await Promise.all([
+          fetch(`/api/positions/cb?date=${this.dateFilter}`).then(r => r.json()),
+          fetch(`/api/positions/stock?date=${this.dateFilter}`).then(r => r.json()),
+        ])
+        this.cbRows = cb; this.stockRows = stock
+      },
+      currentRows() { return this.tab === 'cb' ? this.cbRows : this.stockRows },
+      addRow() { this.currentRows().push({code: '', name: '', shares: 0}) },
+      removeRow(i) { this.currentRows().splice(i, 1) },
+      async savePositions() {
+        const today = new Date().toISOString().slice(0, 10)
+        const strategy = this.tab
+        const rows = this.currentRows().filter(r => r.code)
+        await fetch(`/api/positions/${strategy}?position_date=${today}`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(rows),
+        })
+        this.saved = true
+        setTimeout(() => this.saved = false, 2000)
+      },
+    }
+  }
+</script>
+</body>
+</html>
