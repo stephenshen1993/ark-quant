@@ -42,8 +42,8 @@ def get_plan():
                 "cash_pool": targets["cash_pool"] - account["cash_pool"],
             }
             transfer_steps = build_transfer_plan(deltas)
-        except Exception as exc:
-            transfer_steps = [f"计算失败: {exc}"]
+        except Exception:
+            transfer_steps = []
 
     return {
         "generated_at": datetime.now().isoformat(),
