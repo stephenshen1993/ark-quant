@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Literal
+from typing import Literal, Optional
 from fastapi import APIRouter
 from pydantic import BaseModel
 from datasource import db
