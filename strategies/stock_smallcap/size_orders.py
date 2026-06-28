@@ -220,6 +220,19 @@ def main() -> None:
     print(f"调仓后剩余现金 ≈ {summary['cash_left']:,.0f} 元")
     print(f"下单清单已存: {out}")
 
+    try:
+        from datasource.db import init_db, get_latest_run_id, insert_stock_orders
+        init_db()
+        _run_id = get_latest_run_id("stock")
+        if _run_id is not None:
+            insert_stock_orders(_run_id, sheet)
+        else:
+            import logging as _log
+            _log.warning("DB write skipped: no stock strategy_run found yet")
+    except Exception as _exc:
+        import logging as _log
+        _log.warning("DB write failed (stock orders): %s", _exc)
+
 
 if __name__ == "__main__":
     main()

@@ -286,7 +286,7 @@ def build_data_notes(config: dict) -> list[str]:
     ]
 
 
-def save_outputs(ranked: pd.DataFrame, rebalance: pd.DataFrame, config: dict, log_file: Path, notes: list[str]) -> RunArtifacts:
+def save_outputs(ranked: pd.DataFrame, rebalance: pd.DataFrame, config: dict, log_file: Path, notes: list[str], data_date: "date | None" = None) -> RunArtifacts:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     candidates_csv = OUTPUT_DIR / f"stock_smallcap_pool_{stamp}.csv"
@@ -331,6 +331,15 @@ def save_outputs(ranked: pd.DataFrame, rebalance: pd.DataFrame, config: dict, lo
         ),
         encoding="utf-8",
     )
+    if data_date is not None:
+        try:
+            from datasource.db import init_db, insert_strategy_run, insert_stock_rankings
+            init_db()
+            _run_id = insert_strategy_run("stock", data_date)
+            insert_stock_rankings(_run_id, ranked)
+        except Exception as _exc:
+            logging.warning("DB write failed (stock rankings): %s", _exc)
+
     return RunArtifacts(candidates_csv, rebalance_csv, report_md)
 
 
@@ -368,7 +377,7 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
     current = load_current_positions(positions_path)
     target_df, rebalance = build_target_and_rebalance(current, ranked, config)
     notes = build_data_notes(config)
-    artifacts = save_outputs(ranked, rebalance, config, log_file, notes)
+    artifacts = save_outputs(ranked, rebalance, config, log_file, notes, data_date=date.today())
     logging.info("Saved report to %s", artifacts.report_md)
     try:
         snapshot_raw_data(
