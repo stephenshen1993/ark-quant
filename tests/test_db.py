@@ -57,7 +57,7 @@ class TestDb(unittest.TestCase):
     def test_trade_date_is_next_weekday(self):
         run_id = db.insert_strategy_run("cb", date(2026, 6, 26))  # Friday
         rows = db.get_rankings("cb", "2026-06-26")  # empty but run exists
-        with db.get_connection() as conn:
+        with db._conn() as conn:
             r = conn.execute("SELECT trade_date FROM strategy_runs WHERE id=?", (run_id,)).fetchone()
         self.assertEqual(r["trade_date"], "2026-06-29")  # Monday
 
