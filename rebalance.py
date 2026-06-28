@@ -279,6 +279,23 @@ def main() -> None:
     if not args.no_save:
         save_state(state)
         print(f"  (已保存至 {STATE_FILE.relative_to(Path(__file__).parent)})")
+        # 新增：写入 SQLite
+        try:
+            from datasource.db import init_db, insert_account_snapshot
+            init_db()
+            insert_account_snapshot(
+                snapshot_date=state["updated_at"],
+                temperature=state["temperature"],
+                stock_total=state["stock"]["total"],
+                stock_cash=state["stock"].get("cash", 0.0),
+                bond_total=state["bond"]["total"],
+                bond_cash=state["bond"].get("cash", 0.0),
+                changqian_total=state["changqian"]["total"],
+                cash_pool=state["cash_pool"]["total"],
+                overseas_total=state["overseas"]["total"],
+            )
+        except Exception as exc:
+            print(f"  (DB 写入失败: {exc})")
 
 
 if __name__ == "__main__":
