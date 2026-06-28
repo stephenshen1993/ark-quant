@@ -1,0 +1,241 @@
+# ark-quant Web Dashboard 设计文档
+
+- 设计日期：2026-06-29
+- 状态：待实现
+
+---
+
+## 1. 背景与目标
+
+### 痛点
+
+现有策略输出为 CSV/MD 文件，每次生成交易计划需要手动拼装，格式不固定、容易漏块（如标的池）。账户状态和持仓只能看当前快照，无法回溯历史。榜单分享给朋友需要手动复制。
+
+### 目标
+
+构建一个本机运行的个人投资管理 Web App，满足：
+1. 账户信息和持仓历史留痕、可回溯
+2. 榜单、交易计划结构固定、自动生成
+3. 数据录入轻松（表单 + 差量录入）
+4. 榜单可一键导出供分享
+
+---
+
+## 2. 技术栈
+
+| 层 | 选型 |
+|---|---|
+| 后端 | FastAPI |
+| 数据库 | SQLite |
+| 前端 | HTML + Tailwind CSS + Alpine.js |
+| 运行方式 | 本机启动，浏览器访问 localhost |
+
+前端无需构建工具，FastAPI 直接 serve 静态文件。后续上云改动最小。
+
+---
+
+## 3. 核心设计原则
+
+**三件事相互独立，按需触发：**
+
+```
+账户 + 持仓录入  ←── 用户手动输入，随时可做
+榜单（策略运行）  ←── 仅依赖市场行情，与账户/持仓无关
+交易计划生成     ←── 依赖"榜单 + 持仓 + 账户"三者同日期数据齐全
+```
+
+本期计划页是三者数据的汇合点。若同一 `trade_date` 下三类数据不齐，页面提示缺少哪一项，不强制要求按固定顺序操作。
+
+---
+
+## 4. 页面结构
+
+左侧固定导航，四个页面：
+
+### 4.1 账户总览
+
+- 各桶当前余额卡片（股票账户、转债账户、长钱账户、现金池、海外长钱）
+- 当前温度
+- 最新资金调拨建议（若本期计划已生成）
+- 总资产历史曲线（按账户快照日期）
+- **"更新账户数据"入口**：内联表单，7个输入框（各账户总市值/现金）+ 温度，填完点保存 → 写入 `account_snapshots`
+
+### 4.2 持仓
+
+- 转债持仓 / 股票持仓 两个 tab
+- 各 tab 展示当前持仓列表（代码、名称、持有数量）
+- **差量录入**：执行完交易后，在当前持仓基础上增删行或修改数量，点"保存持仓"→ 写入 `cb_positions` / `stock_positions`（日期打当天）
+- 支持查看历史某日持仓快照（日期选择器）
+
+### 4.3 本期计划
+
+- 页头显示适用交易日，若三类数据不齐则显示缺少项提示
+- 三个区块：
+  - **① 资金调拨**：调拨步骤列表
+  - **② 转债订单**：卖出 / 减仓 / 买入 / 持有，每组折叠展示
+  - **③ 股票订单**：卖出 / 买入 / 加仓 / 跳过，每组折叠展示
+- 支持按历史期次切换查看
+
+### 4.4 榜单
+
+- 转债 Top 20 / 股票 Top 20 两个 tab
+- 页头显著标注**基于哪天收盘数据**、**适用于哪个交易日**
+- 若当前交易日无有效榜单，显示提示："暂无有效榜单，请运行策略"
+- 日期选择器：可回溯历史任意一期
+- **导出按钮**：将当期榜单导出为 Markdown 格式，供分享
+
+榜单字段：
+- 转债：排名、代码、名称、价格、溢价率、双低值、评分
+- 股票：排名、代码、名称、总市值(亿)、PE、扣非ROE
+
+---
+
+## 5. 数据库结构（SQLite）
+
+### `strategy_runs` — 策略运行记录
+
+```sql
+id          INTEGER PRIMARY KEY
+strategy    TEXT        -- 'cb' | 'stock'
+data_date   TEXT        -- 基于哪天收盘数据 (YYYY-MM-DD)
+trade_date  TEXT        -- 适用哪个交易日 (YYYY-MM-DD)
+created_at  TEXT
+```
+
+### `cb_rankings` — 转债榜单（每期 20 条）
+
+```sql
+id              INTEGER PRIMARY KEY
+run_id          INTEGER REFERENCES strategy_runs(id)
+rank            INTEGER
+bond_code       TEXT
+bond_name       TEXT
+cb_price        REAL
+premium_rate    REAL
+double_low      REAL
+score           REAL
+```
+
+### `stock_rankings` — 股票榜单（每期 20 条）
+
+```sql
+id          INTEGER PRIMARY KEY
+run_id      INTEGER REFERENCES strategy_runs(id)
+rank        INTEGER
+stock_code  TEXT
+stock_name  TEXT
+market_cap  REAL    -- 亿元
+pe_ttm      REAL
+roe_ex      REAL    -- 扣非ROE %
+```
+
+### `cb_orders` — 转债订单
+
+```sql
+id          INTEGER PRIMARY KEY
+run_id      INTEGER REFERENCES strategy_runs(id)
+action      TEXT    -- 'SELL'|'BUY'|'HOLD'|'TRIM'|'ADD'
+bond_code   TEXT
+bond_name   TEXT
+price       REAL
+shares      INTEGER
+amount      REAL
+```
+
+### `stock_orders` — 股票订单
+
+```sql
+id          INTEGER PRIMARY KEY
+run_id      INTEGER REFERENCES strategy_runs(id)
+action      TEXT    -- 'SELL'|'BUY'|'HOLD'|'ADD'|'SKIP'
+stock_code  TEXT
+stock_name  TEXT
+price       REAL
+shares      INTEGER
+amount      REAL
+```
+
+### `account_snapshots` — 账户状态快照
+
+```sql
+id              INTEGER PRIMARY KEY
+snapshot_date   TEXT
+temperature     REAL
+stock_total     REAL
+stock_cash      REAL
+bond_total      REAL
+bond_cash       REAL
+changqian_total REAL
+cash_pool       REAL
+overseas_total  REAL
+created_at      TEXT
+```
+
+### `cb_positions` — 转债持仓快照
+
+```sql
+id              INTEGER PRIMARY KEY
+position_date   TEXT
+bond_code       TEXT
+bond_name       TEXT
+shares          INTEGER
+```
+
+### `stock_positions` — 股票持仓快照
+
+```sql
+id              INTEGER PRIMARY KEY
+position_date   TEXT
+stock_code      TEXT
+stock_name      TEXT
+shares          INTEGER
+```
+
+---
+
+## 6. 策略改动范围
+
+在现有出口处各加一段写库逻辑，其余代码不动：
+
+- `strategies/cb_rotation/run.py`：运行结束后写入 `strategy_runs` + `cb_rankings`
+- `strategies/cb_rotation/size_orders.py`：运行结束后写入 `cb_orders`，关联当日最新的 `strategy_runs.id`
+- `strategies/stock_smallcap/run.py`：运行结束后写入 `strategy_runs` + `stock_rankings`
+- `strategies/stock_smallcap/size_orders.py`：运行结束后写入 `stock_orders`，关联当日最新的 `strategy_runs.id`
+- `rebalance.py`：运行结束后写入 `account_snapshots`（仅当用 `--save` 时，与现有 `--no-save` 逻辑一致）
+
+新增共享模块 `datasource/db.py` 负责 SQLite 连接和建表，供上述各处复用。
+
+---
+
+## 7. 数据录入流程
+
+### 账户数据更新
+
+1. 打开账户总览页
+2. 点击"更新账户数据"
+3. 填写 7 个输入框 + 温度
+4. 点保存 → POST `/api/account-snapshot` → 写入 `account_snapshots`
+
+### 持仓更新
+
+1. 打开持仓页
+2. 在可编辑表格中增删行、修改数量
+3. 点"保存持仓" → POST `/api/positions/{cb|stock}` → 写入对应快照表
+
+### 策略运行（保持 CLI）
+
+```bash
+source .venv/bin/activate
+python3 -m strategies.cb_rotation.run      # 写入 cb_rankings + cb_orders
+python3 -m strategies.stock_smallcap.run   # 写入 stock_rankings + stock_orders
+python3 rebalance.py --temperature <T>     # 写入 account_snapshots + 输出调拨计划
+```
+
+---
+
+## 8. 超出本期范围（后续迭代）
+
+- 前端"运行策略"按钮（当前保持 CLI）
+- 持仓盈亏计算（需要成本价）
+- 券商截图/粘贴解析
+- 云端部署
