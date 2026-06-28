@@ -166,10 +166,56 @@
     </div>
   </div>
 
-  <!-- 本期计划（Task 8 实现） -->
-  <div x-show="$store.page === 'plan'">
-    <h1 class="text-lg font-medium mb-4">本期计划</h1>
-    <div id="plan-content" class="text-sm text-gray-400">加载中...</div>
+  <!-- 本期计划 -->
+  <div x-show="$store.page === 'plan'" x-data="planPage()" x-init="load()">
+    <div class="flex justify-between items-center mb-4">
+      <h1 class="text-lg font-medium">本期计划</h1>
+      <span x-show="plan?.cb?.data_date || plan?.stock?.data_date" class="text-xs text-green-600"
+        x-text="'适用 ' + (plan?.stock?.data_date || plan?.cb?.data_date || '') + ' 执行'"></span>
+    </div>
+    <div x-show="plan?.missing?.length" class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm text-amber-700">
+      缺少数据：<span x-text="plan?.missing?.join('、')"></span>，请先录入账户信息或运行策略。
+    </div>
+    <div class="bg-white border border-gray-100 rounded-xl p-4 mb-3" x-show="plan?.transfer_steps?.length">
+      <div class="text-sm font-medium mb-2">① 资金调拨</div>
+      <template x-for="(step, i) in plan?.transfer_steps || []">
+        <div class="text-sm text-gray-600 py-1 border-b border-gray-50 last:border-0" x-text="(i+1) + '. ' + step"></div>
+      </template>
+    </div>
+    <div class="bg-white border border-gray-100 rounded-xl p-4 mb-3" x-show="plan?.cb?.orders?.length">
+      <div class="text-sm font-medium mb-2">② 转债订单
+        <span class="text-xs text-gray-400 font-normal ml-2" x-text="'基于 ' + plan?.cb?.data_date"></span>
+      </div>
+      <template x-for="group in cbGroups()">
+        <div class="mb-3">
+          <div class="text-xs text-gray-400 mb-1" x-text="group.label + ' (' + group.items.length + ')'"></div>
+          <template x-for="r in group.items">
+            <div class="flex justify-between text-sm py-1 border-b border-gray-50">
+              <span><span class="text-gray-400 mr-2" x-text="r.bond_code"></span><span x-text="r.bond_name"></span></span>
+              <span><span :class="r.shares>0?'text-green-600':'text-red-500'" x-text="(r.shares>0?'+':'')+r.shares+'张'"></span>
+              <span class="ml-2 text-gray-400" x-text="'¥'+Math.abs(r.amount||0).toLocaleString()"></span></span>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
+    <div class="bg-white border border-gray-100 rounded-xl p-4" x-show="plan?.stock?.orders?.length">
+      <div class="text-sm font-medium mb-2">③ 股票订单
+        <span class="text-xs text-gray-400 font-normal ml-2" x-text="'基于 ' + plan?.stock?.data_date"></span>
+      </div>
+      <template x-for="group in stockGroups()">
+        <div class="mb-3">
+          <div class="text-xs text-gray-400 mb-1" x-text="group.label + ' (' + group.items.length + ')'"></div>
+          <template x-for="r in group.items">
+            <div class="flex justify-between text-sm py-1 border-b border-gray-50">
+              <span><span class="text-gray-400 mr-2" x-text="r.stock_code"></span><span x-text="r.stock_name"></span></span>
+              <span><span :class="r.shares>0?'text-green-600':r.shares<0?'text-red-500':'text-gray-400'" x-text="(r.shares>0?'+':'')+r.shares+'股'"></span>
+              <span class="ml-2 text-gray-400" x-text="r.amount?'¥'+Math.abs(r.amount).toLocaleString():''"></span></span>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
   </div>
 
   <!-- 榜单 -->
@@ -324,6 +370,30 @@
         })
         this.saved = true
         setTimeout(() => this.saved = false, 2000)
+      },
+    }
+  }
+
+  function planPage() {
+    const ORDER = {SELL:'卖出', BUY:'买入', ADD:'加仓', TRIM:'减仓', HOLD:'持有', SKIP:'跳过'}
+    return {
+      plan: null,
+      async load() {
+        this.plan = await fetch('/api/plan').then(r => r.json())
+      },
+      cbGroups() {
+        const orders = this.plan?.cb?.orders || []
+        return ['SELL','TRIM','BUY','ADD','HOLD'].map(action => ({
+          label: ORDER[action] || action, action,
+          items: orders.filter(r => r.action === action)
+        })).filter(g => g.items.length)
+      },
+      stockGroups() {
+        const orders = this.plan?.stock?.orders || []
+        return ['SELL','BUY','ADD','TRIM','HOLD','SKIP'].map(action => ({
+          label: ORDER[action] || action, action,
+          items: orders.filter(r => r.action === action)
+        })).filter(g => g.items.length)
       },
     }
   }
