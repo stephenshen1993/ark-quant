@@ -42,3 +42,15 @@ class TestRankingsApi(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("常银转债", r.text)
         self.assertIn("| 排名 |", r.text)
+
+    def test_export_stock_markdown(self):
+        run_id = db.insert_strategy_run("stock", date(2026, 6, 27))
+        df = pd.DataFrame([{
+            "rank": 1, "stock_code": "600455", "stock_name_q": "博通股份",
+            "total_mv_yuan": 1.357e9, "pe_ttm": 29.76, "roe_pct": 13.83,
+        }])
+        db.insert_stock_rankings(run_id, df)
+        r = self.client.get("/api/rankings/stock/2026-06-27/export")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("博通股份", r.text)
+        self.assertIn("| 排名 |", r.text)

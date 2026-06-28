@@ -44,9 +44,12 @@ def export_md(strategy: Literal["cb", "stock"], data_date: str):
         lines += ["| 排名 | 代码 | 名称 | 总市值(亿) | PE | 扣非ROE |",
                   "|---|---|---|---:|---:|---:|"]
         for r in items:
+            mc = f"{r['market_cap']:.2f}" if r['market_cap'] is not None else "-"
+            pe = f"{r['pe_ttm']:.2f}" if r['pe_ttm'] is not None else "-"
+            roe = f"{r['roe_ex']:.2f}%" if r['roe_ex'] is not None else "-"
             lines.append(
                 f"| {r['rank']} | {r['stock_code']} | {r['stock_name']} "
-                f"| {r['market_cap']:.2f} | {r['pe_ttm']:.2f} | {r['roe_ex']:.2f}% |"
+                f"| {mc} | {pe} | {roe} |"
             )
     return PlainTextResponse("\n".join(lines))
 
