@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from datasource.db import init_db
-from app.routers import accounts, positions
+from app.routers import accounts, positions, rankings
 
 app = FastAPI(title="ark-quant dashboard")
 
@@ -17,6 +17,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 app.include_router(accounts.router)
 app.include_router(positions.router)
+app.include_router(rankings.router)
 
 
 @app.get("/health")

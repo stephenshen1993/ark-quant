@@ -172,10 +172,80 @@
     <div id="plan-content" class="text-sm text-gray-400">加载中...</div>
   </div>
 
-  <!-- 榜单（Task 7 实现） -->
-  <div x-show="$store.page === 'rankings'">
-    <h1 class="text-lg font-medium mb-4">榜单</h1>
-    <div id="rankings-content" class="text-sm text-gray-400">加载中...</div>
+  <!-- 榜单 -->
+  <div x-show="$store.page === 'rankings'" x-data="rankingsPage()" x-init="load()">
+    <div class="flex justify-between items-center mb-4">
+      <h1 class="text-lg font-medium">榜单</h1>
+      <div class="flex gap-2 items-center">
+        <select x-model="selectedDate" @change="loadByDate()" class="text-xs border border-gray-200 rounded px-2 py-1">
+          <template x-for="d in dates"><option :value="d" x-text="d"></option></template>
+        </select>
+        <button @click="exportMd()" class="px-3 py-1.5 border border-gray-200 text-xs rounded-lg hover:bg-gray-50">导出 Markdown</button>
+      </div>
+    </div>
+    <div x-show="tradeDate" class="text-xs text-green-600 mb-3"
+      x-text="'基于 ' + selectedDate + ' 收盘数据 · 适用 ' + tradeDate + ' 执行'"></div>
+    <div x-show="!items.length && !stockItems.length" class="text-sm text-gray-400 mb-4">
+      暂无有效榜单，请运行策略：<code class="bg-gray-100 px-1 rounded">python3 -m strategies.cb_rotation.run</code>
+    </div>
+    <div class="flex gap-2 mb-4">
+      <button @click="tab='cb'" :class="tab==='cb'?'bg-gray-900 text-white':'bg-white text-gray-500 border border-gray-200'" class="px-4 py-1.5 rounded-lg text-sm">转债 Top 20</button>
+      <button @click="tab='stock'; loadStock()" :class="tab==='stock'?'bg-gray-900 text-white':'bg-white text-gray-500 border border-gray-200'" class="px-4 py-1.5 rounded-lg text-sm">股票 Top 20</button>
+    </div>
+    <div x-show="tab==='cb'" class="bg-white border border-gray-100 rounded-xl overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-xs text-gray-400">
+          <tr>
+            <th class="text-center px-3 py-2 w-10">#</th>
+            <th class="text-left px-3 py-2">代码</th>
+            <th class="text-left px-3 py-2">名称</th>
+            <th class="text-right px-3 py-2">价格</th>
+            <th class="text-right px-3 py-2">溢价率</th>
+            <th class="text-right px-3 py-2">双低值</th>
+            <th class="text-right px-3 py-2">评分</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="r in items" :key="r.bond_code">
+            <tr class="border-t border-gray-50">
+              <td class="text-center px-3 py-2 text-gray-400 text-xs" x-text="r.rank"></td>
+              <td class="px-3 py-2 text-gray-500" x-text="r.bond_code"></td>
+              <td class="px-3 py-2" x-text="r.bond_name"></td>
+              <td class="px-3 py-2 text-right" x-text="r.cb_price?.toFixed(2)"></td>
+              <td class="px-3 py-2 text-right" x-text="r.premium_rate?.toFixed(2) + '%'"></td>
+              <td class="px-3 py-2 text-right" x-text="r.double_low?.toFixed(2)"></td>
+              <td class="px-3 py-2 text-right" x-text="r.score?.toFixed(3)"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+    <div x-show="tab==='stock'" class="bg-white border border-gray-100 rounded-xl overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-xs text-gray-400">
+          <tr>
+            <th class="text-center px-3 py-2 w-10">#</th>
+            <th class="text-left px-3 py-2">代码</th>
+            <th class="text-left px-3 py-2">名称</th>
+            <th class="text-right px-3 py-2">总市值(亿)</th>
+            <th class="text-right px-3 py-2">PE</th>
+            <th class="text-right px-3 py-2">扣非ROE</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="r in stockItems" :key="r.stock_code">
+            <tr class="border-t border-gray-50">
+              <td class="text-center px-3 py-2 text-gray-400 text-xs" x-text="r.rank"></td>
+              <td class="px-3 py-2 text-gray-500" x-text="r.stock_code"></td>
+              <td class="px-3 py-2" x-text="r.stock_name"></td>
+              <td class="px-3 py-2 text-right" x-text="r.market_cap?.toFixed(2)"></td>
+              <td class="px-3 py-2 text-right" x-text="r.pe_ttm?.toFixed(2)"></td>
+              <td class="px-3 py-2 text-right" x-text="r.roe_ex?.toFixed(2) + '%'"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
   </div>
 
 </main>
@@ -254,6 +324,43 @@
         })
         this.saved = true
         setTimeout(() => this.saved = false, 2000)
+      },
+    }
+  }
+
+  function rankingsPage() {
+    return {
+      tab: 'cb', items: [], stockItems: [],
+      dates: [], selectedDate: '', tradeDate: '',
+      async load() {
+        const [cbDates, stockDates] = await Promise.all([
+          fetch('/api/rankings/cb/dates').then(r => r.json()),
+          fetch('/api/rankings/stock/dates').then(r => r.json()),
+        ])
+        this.dates = [...new Set([...cbDates, ...stockDates])].sort().reverse()
+        this.selectedDate = this.dates[0] || ''
+        if (this.selectedDate) await this.loadByDate()
+      },
+      async loadByDate() {
+        if (!this.selectedDate) return
+        const r = await fetch(`/api/rankings/cb/${this.selectedDate}`).then(r => r.json())
+        this.items = r.items; this.tradeDate = r.trade_date || ''
+        if (this.tab === 'stock') await this.loadStock()
+      },
+      async loadStock() {
+        if (!this.selectedDate) return
+        const r = await fetch(`/api/rankings/stock/${this.selectedDate}`).then(r => r.json())
+        this.stockItems = r.items
+      },
+      async exportMd() {
+        const strategy = this.tab
+        const r = await fetch(`/api/rankings/${strategy}/${this.selectedDate}/export`)
+        const text = await r.text()
+        const blob = new Blob([text], {type: 'text/plain'})
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(blob)
+        a.download = `${strategy}_top20_${this.selectedDate}.md`
+        a.click()
       },
     }
   }
