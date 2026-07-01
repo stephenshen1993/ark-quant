@@ -336,7 +336,8 @@ def save_outputs(ranked: pd.DataFrame, rebalance: pd.DataFrame, config: dict, lo
             from datasource.db import init_db, insert_strategy_run, insert_stock_rankings
             init_db()
             _run_id = insert_strategy_run("stock", data_date)
-            insert_stock_rankings(_run_id, ranked)
+            hold_n = config.get("selection", {}).get("hold_n", 20)
+            insert_stock_rankings(_run_id, ranked.head(hold_n))
         except Exception as _exc:
             logging.warning("DB write failed (stock rankings): %s", _exc)
 
@@ -357,6 +358,7 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
     snap = fetch_tencent_snapshot(universe["stock_code"])
     # Pre-market detection: Tencent resets amount_yuan to 0 before market open.
     # Fall back to yesterday's cached snapshot so amount-based filters use full-day data.
+    cached_data_date: date | None = None
     if snap.empty or (snap["amount_yuan"] == 0).all():
         import glob as _glob
         cached_snaps = sorted(_glob.glob("data/raw/*/stock_smallcap/universe_snapshot.csv"))
@@ -364,6 +366,11 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
             logging.info("Pre-market detected (amount_yuan=0): using cached snapshot %s", cached_snaps[-1])
             snap = pd.read_csv(cached_snaps[-1], dtype={"stock_code": str})
             snap["stock_code"] = snap["stock_code"].astype(str).str.zfill(6)
+            try:
+                from datetime import datetime as _dt
+                cached_data_date = _dt.strptime(Path(cached_snaps[-1]).parts[-3], "%Y%m%d").date()
+            except (ValueError, IndexError):
+                pass
         else:
             logging.warning("Pre-market and no cached snapshot found; amount filter will likely remove everything.")
     merged = universe.merge(snap, on="stock_code", how="inner")
@@ -377,11 +384,13 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
     current = load_current_positions(positions_path)
     target_df, rebalance = build_target_and_rebalance(current, ranked, config)
     notes = build_data_notes(config)
-    artifacts = save_outputs(ranked, rebalance, config, log_file, notes, data_date=date.today())
+    today = date.today()
+    data_date = cached_data_date if cached_data_date is not None else today
+    artifacts = save_outputs(ranked, rebalance, config, log_file, notes, data_date=data_date)
     logging.info("Saved report to %s", artifacts.report_md)
     try:
         snapshot_raw_data(
-            date.today(),
+            today,
             {"universe_snapshot": merged, "filtered": filtered, "smallcap_pool": ranked, "rebalance_plan": rebalance},
             config,
             subdir="stock_smallcap",

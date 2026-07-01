@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -174,10 +175,36 @@ def main() -> None:
     args = parser.parse_args()
 
     setup_logging()
-    reb_path = args.rebalance or latest_rebalance_file()
-    reb = pd.read_csv(reb_path, dtype={"stock_code": str})
-    reb["stock_code"] = reb["stock_code"].astype(str).str.zfill(6)
-    positions = load_current_positions(args.positions)
+
+    # 优先从 DB 读最新榜单和持仓，CSV 作为 fallback
+    reb = None
+    positions = None
+    if args.rebalance is None:
+        try:
+            from datasource.db import get_latest_rankings, get_latest_positions
+            db_r = get_latest_rankings("stock")
+            db_p = get_latest_positions("stock")
+            if db_r:
+                reb = pd.DataFrame(db_r)[["stock_code", "stock_name", "rank"]]
+                reb["stock_code"] = reb["stock_code"].astype(str).str.zfill(6)
+                reb["action"] = "BUY"  # size_rebalance 只用 HOLD/BUY 确定目标集合
+                logging.info("榜单来源: DB (%d 只)", len(reb))
+            if db_p:
+                positions = pd.DataFrame([
+                    {"stock_code": r["code"], "stock_name": r["name"], "shares": r["shares"]}
+                    for r in db_p
+                ])
+                positions["stock_code"] = positions["stock_code"].astype(str).str.zfill(6)
+                logging.info("持仓来源: DB (%d 只)", len(positions))
+        except Exception as _e:
+            logging.warning("DB 读取失败，回退到文件: %s", _e)
+
+    if reb is None:
+        reb_path = args.rebalance or latest_rebalance_file()
+        reb = pd.read_csv(reb_path, dtype={"stock_code": str})
+        reb["stock_code"] = reb["stock_code"].astype(str).str.zfill(6)
+    if positions is None:
+        positions = load_current_positions(args.positions)
 
     all_codes = list(dict.fromkeys(
         list(reb["stock_code"]) + list(positions["stock_code"])

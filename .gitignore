@@ -5,11 +5,13 @@ __pycache__/
 .env
 *.cookie
 secrets/
+.playwright-mcp/
 
 logs/*.log
 outputs/*.csv
 outputs/*.xlsx
 outputs/*.md
+data/*.db
 data/cache/*
 data/raw/*
 data/processed/*

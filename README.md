@@ -14,6 +14,9 @@
 如果是盘后或盘前生成交易计划，先读：
 
 - `docs/README.md`：文档地图，说明体系、操作、研究、复盘各自在哪。
+- `docs/app/web_dashboard.md`：本地 Web 看板说明，包含启动、页面分工、数据来源和录入方式。
+- `docs/system/accounting_model.md`：账户、总资产、持仓资产、可用现金和金额展示口径。
+- `docs/operations/daily_dashboard_workflow.md`：盘后/盘前使用看板完成账户录入、策略检查和计划确认的流程。
 - `docs/operations/system_rebalance_runbook.md`：体系级再平衡运行手册，定义输入、公式、执行顺序和把关规则。
 - `docs/system/investment_system.md`：长期投资体系说明，定义资产桶和目标仓位公式。
 - `portfolios/accounts_state.json`：最近账户状态，包括温度、现金、长钱、海外长钱。
@@ -24,6 +27,9 @@
 常用执行入口：
 
 ```bash
+# 启动本地 Web 看板
+python3 run_app.py
+
 # 用持仓和行情估算股票/转债账户总市值，并回填账户状态
 python3 value_accounts.py
 

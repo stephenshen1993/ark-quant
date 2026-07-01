@@ -1025,15 +1025,8 @@ def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -
     cb = enrich_cb_with_daily_market_data(ak, cb, config)
     if config.get("data", {}).get("strict_original_rules", True):
         assert_required_fields(cb, ["turnover_yuan"], "可转债成交额过滤", require_all_rows=True)
-        require_fresh_dates(
-            cb,
-            "turnover_trade_date",
-            int(config.get("data", {}).get("max_market_data_age_days", 4)),
-            "可转债成交额过滤",
-        )
-        # Some illiquid bonds may not have traded on the latest session; their last trade
-        # date lags by one day. Drop them so all remaining bonds share a single trade date.
-        # These bonds would also fail the turnover filter, so exclusion is correct.
+        # Drop suspended/illiquid bonds whose last trade date lags behind the dataset max.
+        # Must run before require_fresh_dates so suspended bonds don't abort the whole run.
         if "turnover_trade_date" in cb.columns:
             latest_td = pd.to_datetime(cb["turnover_trade_date"], errors="coerce").max()
             stale_mask = pd.to_datetime(cb["turnover_trade_date"], errors="coerce") < latest_td
@@ -1045,6 +1038,12 @@ def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -
                     cb.loc[stale_mask, "bond_code"].tolist(),
                 )
                 cb = cb[~stale_mask].copy()
+        require_fresh_dates(
+            cb,
+            "turnover_trade_date",
+            int(config.get("data", {}).get("max_market_data_age_days", 4)),
+            "可转债成交额过滤",
+        )
         require_single_trade_date(cb, "turnover_trade_date", "可转债收盘行情")
     assert_required_fields(cb, ["turnover_yuan"], "可转债成交额过滤")
     enforce_original_rule_fields(cb, config)

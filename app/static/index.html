@@ -7,14 +7,13 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
 </head>
-<body class="bg-gray-50 text-gray-900 flex h-screen">
+<body class="bg-gray-50 text-gray-900 flex h-screen antialiased">
 
 <!-- 侧边导航 -->
 <nav class="w-40 bg-white border-r border-gray-200 flex flex-col pt-6 px-3 gap-1 shrink-0">
   <span class="text-xs text-gray-400 font-medium px-2 mb-2">ark-quant</span>
   <template x-data x-for="item in [
     {id:'account', label:'账户总览', icon:'📊'},
-    {id:'positions', label:'持仓', icon:'💼'},
     {id:'plan', label:'本期计划', icon:'📋'},
     {id:'rankings', label:'榜单', icon:'🏆'}
   ]">
@@ -30,263 +29,403 @@
 </nav>
 
 <!-- 主内容 -->
-<main class="flex-1 overflow-auto p-6" x-data @nav.window="$store.page = $event.detail">
+<main class="flex-1 overflow-auto p-8" x-data @nav.window="$store.page = $event.detail">
 
   <!-- 账户总览 -->
   <div x-show="$store.page === 'account'" x-data="accountPage()" x-init="load()">
-    <div class="flex justify-between items-center mb-4">
-      <h1 class="text-lg font-medium">账户总览</h1>
-      <span x-show="snap" class="text-xs text-gray-400"
-        x-text="snap ? snap.snapshot_date + ' · 温度 ' + snap.temperature + '°' : ''"></span>
-    </div>
-    <!-- 账户卡片 -->
-    <div class="grid grid-cols-4 gap-3 mb-4" x-show="snap">
-      <div class="bg-white border border-gray-100 rounded-xl p-4">
-        <div class="text-xs text-gray-400 mb-1">股票账户</div>
-        <div class="text-lg font-medium" x-text="fmt(snap?.stock_total)"></div>
-        <div class="text-xs text-gray-400 mt-1" x-text="'现金 ' + fmt(snap?.stock_cash)"></div>
-      </div>
-      <div class="bg-white border border-gray-100 rounded-xl p-4">
-        <div class="text-xs text-gray-400 mb-1">转债账户</div>
-        <div class="text-lg font-medium" x-text="fmt(snap?.bond_total)"></div>
-        <div class="text-xs text-gray-400 mt-1" x-text="'现金 ' + fmt(snap?.bond_cash)"></div>
-      </div>
-      <div class="bg-white border border-gray-100 rounded-xl p-4">
-        <div class="text-xs text-gray-400 mb-1">长钱账户</div>
-        <div class="text-lg font-medium" x-text="fmt(snap?.changqian_total)"></div>
-      </div>
-      <div class="bg-white border border-gray-100 rounded-xl p-4">
-        <div class="text-xs text-gray-400 mb-1">现金池</div>
-        <div class="text-lg font-medium" x-text="fmt(snap?.cash_pool)"></div>
-      </div>
-    </div>
-    <div x-show="!snap" class="text-sm text-gray-400 mb-4">暂无账户数据，请录入。</div>
 
-    <!-- 录入表单 -->
-    <div class="bg-white border border-gray-100 rounded-xl p-4 mb-4">
-      <div class="text-sm font-medium mb-3">更新账户数据</div>
-      <div class="grid grid-cols-3 gap-3 text-sm">
-        <label class="flex flex-col gap-1">
-          <span class="text-xs text-gray-400">快照日期</span>
-          <input type="date" x-model="form.snapshot_date" class="border border-gray-200 rounded px-2 py-1">
-        </label>
-        <label class="flex flex-col gap-1">
-          <span class="text-xs text-gray-400">温度</span>
-          <input type="number" x-model.number="form.temperature" class="border border-gray-200 rounded px-2 py-1" placeholder="45">
-        </label>
-        <label class="flex flex-col gap-1">
-          <span class="text-xs text-gray-400">股票总市值</span>
-          <input type="number" x-model.number="form.stock_total" class="border border-gray-200 rounded px-2 py-1">
-        </label>
-        <label class="flex flex-col gap-1">
-          <span class="text-xs text-gray-400">股票现金</span>
-          <input type="number" x-model.number="form.stock_cash" class="border border-gray-200 rounded px-2 py-1">
-        </label>
-        <label class="flex flex-col gap-1">
-          <span class="text-xs text-gray-400">转债总市值</span>
-          <input type="number" x-model.number="form.bond_total" class="border border-gray-200 rounded px-2 py-1">
-        </label>
-        <label class="flex flex-col gap-1">
-          <span class="text-xs text-gray-400">转债现金</span>
-          <input type="number" x-model.number="form.bond_cash" class="border border-gray-200 rounded px-2 py-1">
-        </label>
-        <label class="flex flex-col gap-1">
-          <span class="text-xs text-gray-400">长钱净值</span>
-          <input type="number" x-model.number="form.changqian_total" class="border border-gray-200 rounded px-2 py-1">
-        </label>
-        <label class="flex flex-col gap-1">
-          <span class="text-xs text-gray-400">现金池余额</span>
-          <input type="number" x-model.number="form.cash_pool" class="border border-gray-200 rounded px-2 py-1">
-        </label>
-        <label class="flex flex-col gap-1">
-          <span class="text-xs text-gray-400">海外长钱净值</span>
-          <input type="number" x-model.number="form.overseas_total" class="border border-gray-200 rounded px-2 py-1">
-        </label>
+    <!-- ① 列表视图 -->
+    <div x-show="view === 'list'" class="max-w-6xl">
+      <!-- 标题栏 -->
+      <div class="flex justify-between items-center mb-5">
+        <div>
+          <h1 class="text-xl font-semibold tracking-normal">账户总览</h1>
+          <div x-show="snap" class="text-sm text-gray-400 mt-1"
+            x-text="snap ? snap.snapshot_date + ' · 温度 ' + snap.temperature + '°' : ''"></div>
+        </div>
       </div>
-      <button @click="save()" class="mt-3 px-4 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700">
-        保存
-      </button>
-      <span x-show="saved" class="ml-3 text-xs text-green-600">已保存</span>
-    </div>
-  </div>
 
-  <!-- 持仓页 -->
-  <div x-show="$store.page === 'positions'" x-data="positionsPage()" x-init="load()">
-    <div class="flex justify-between items-center mb-4">
-      <h1 class="text-lg font-medium">持仓</h1>
-      <div class="flex gap-2">
-        <select x-model="dateFilter" @change="loadByDate()" class="text-xs border border-gray-200 rounded px-2 py-1">
-          <option value="">最新</option>
-          <template x-for="d in dates"><option :value="d" x-text="d"></option></template>
-        </select>
-      </div>
-    </div>
-    <div class="flex gap-2 mb-4">
-      <button @click="tab='cb'" :class="tab==='cb'?'bg-gray-900 text-white':'bg-white text-gray-500 border border-gray-200'"
-        class="px-4 py-1.5 rounded-lg text-sm">转债持仓</button>
-      <button @click="tab='stock'" :class="tab==='stock'?'bg-gray-900 text-white':'bg-white text-gray-500 border border-gray-200'"
-        class="px-4 py-1.5 rounded-lg text-sm">股票持仓</button>
-    </div>
-    <!-- 持仓表格 -->
-    <div class="bg-white border border-gray-100 rounded-xl overflow-hidden mb-4">
-      <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-gray-400 text-xs">
-          <tr>
-            <th class="text-left px-4 py-2">代码</th>
-            <th class="text-left px-4 py-2">名称</th>
-            <th class="text-right px-4 py-2" x-text="tab==='cb'?'持有(张)':'持有(股)'"></th>
-            <th class="w-8"></th>
-          </tr>
-        </thead>
-        <tbody>
-          <template x-for="(row, idx) in currentRows()" :key="idx">
-            <tr class="border-t border-gray-50">
-              <td class="px-4 py-2" x-text="row.code"></td>
-              <td class="px-4 py-2 text-gray-600" x-text="row.name"></td>
-              <td class="px-4 py-2 text-right">
-                <input type="number" x-model.number="row.shares"
-                  class="w-20 text-right border border-gray-100 rounded px-1 py-0.5 text-sm">
-              </td>
-              <td class="px-2">
-                <button @click="removeRow(idx)" class="text-gray-300 hover:text-red-400 text-xs">✕</button>
-              </td>
-            </tr>
+      <!-- 总资产 -->
+      <section class="bg-white border border-gray-100 rounded-xl p-6 mb-5 shadow-sm shadow-gray-100/40">
+        <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-5">
+          <div>
+            <div class="text-sm text-gray-400 mb-1">总资产</div>
+            <div class="text-4xl font-semibold tracking-normal tabular-nums" x-text="fmtMoney(totalAssets())"></div>
+          </div>
+          <div class="flex flex-wrap items-center gap-3 md:justify-end">
+            <label class="text-xs text-gray-400 flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">日期
+              <input type="date" x-model="form.snapshot_date" class="text-xs text-gray-600 bg-transparent outline-none w-28">
+            </label>
+            <label class="text-xs text-gray-400 flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">温度
+              <input type="number" x-model.number="form.temperature" placeholder="45" class="text-xs text-gray-600 bg-transparent outline-none w-10 text-center">
+            </label>
+            <span x-show="snapSaved || autoSaved" class="text-xs text-green-600">已保存</span>
+            <button @click="saveSnapshot()" class="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700">保存账户</button>
+          </div>
+        </div>
+        <!-- 占比条 -->
+        <div x-show="totalAssets() > 0" class="flex h-2.5 rounded-full overflow-hidden w-full mt-6 mb-3 bg-gray-100">
+          <template x-for="seg in allocationBar()" :key="seg.color">
+            <div :style="'background:' + seg.color + ';width:' + seg.pct + '%'" class="transition-all"></div>
           </template>
-        </tbody>
-      </table>
+        </div>
+        <div x-show="totalAssets() > 0" class="flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-400">
+          <template x-for="acc in accounts" :key="acc.id">
+            <span class="flex items-center gap-1">
+              <span class="inline-block w-2 h-2 rounded-full" :style="'background:' + acc.color"></span>
+              <span x-text="acc.label"></span>
+            </span>
+          </template>
+        </div>
+        <div x-show="!snap" class="text-sm text-gray-400 mt-2">暂无账户数据，点击账户行录入。</div>
+      </section>
+
+      <!-- 账户列表 -->
+      <section class="bg-white border border-gray-100 rounded-xl divide-y divide-gray-50 shadow-sm shadow-gray-100/40">
+        <template x-for="acc in sortedAccounts()" :key="acc.id">
+          <div @click="openDetail(acc.id)"
+            class="flex items-center px-5 py-4 hover:bg-gray-50 cursor-pointer select-none">
+            <div :style="'background:' + acc.color" class="w-1 h-10 rounded-full mr-4 shrink-0"></div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-semibold" x-text="acc.label"></div>
+              <div class="text-xs text-gray-400 mt-0.5">
+                <span x-text="acc.sub"></span>
+                <template x-if="posCount(acc) !== null">
+                  <span x-text="' · 持仓 ' + posCount(acc) + ' 只'"></span>
+                </template>
+              </div>
+              <div x-show="totalAssets() > 0" class="h-1 rounded-full bg-gray-100 mt-2 max-w-sm overflow-hidden">
+                <div class="h-full rounded-full" :style="'background:' + acc.color + ';width:' + accountPct(acc) + '%'"></div>
+              </div>
+            </div>
+            <div class="text-right mr-4 shrink-0">
+              <div class="text-base font-semibold tabular-nums" x-text="fmtCompactMoney(accountAmount(acc))"></div>
+              <div class="text-xs text-gray-400"
+                x-text="totalAssets() > 0 ? accountPct(acc) + '%' : '-'"></div>
+            </div>
+            <div class="text-gray-300 text-base">›</div>
+          </div>
+        </template>
+      </section>
     </div>
-    <div class="flex gap-2">
-      <button @click="addRow()" class="px-3 py-1.5 border border-gray-200 text-sm rounded-lg text-gray-500 hover:bg-gray-50">
-        + 添加行
-      </button>
-      <button @click="savePositions()" class="px-4 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700">
-        保存持仓
-      </button>
-      <span x-show="saved" class="text-xs text-green-600 self-center">已保存</span>
+
+    <!-- ② 详情视图 -->
+    <div x-show="view === 'detail'" class="max-w-5xl">
+      <!-- 顶栏 -->
+      <div class="flex items-center gap-3 mb-5">
+        <button @click="back()" class="text-gray-400 hover:text-gray-700 text-2xl leading-none pr-1">‹</button>
+        <h1 class="text-lg font-medium" x-text="currentAccount()?.label"></h1>
+      </div>
+
+      <!-- 股票账户详情 -->
+      <div x-show="selectedAccount === 'stock'">
+        <div class="grid grid-cols-3 gap-4 mb-5">
+          <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
+            <div class="text-xs text-gray-400 mb-2">总资产 <span class="font-normal text-gray-300">持仓+现金</span></div>
+            <div class="text-2xl font-semibold tabular-nums"
+              x-text="loaded.stock ? fmtYuan(accountTotal('stock')) : (quotesLoading ? '…' : '-')"></div>
+          </div>
+          <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
+            <div class="text-xs text-gray-400 mb-2">持仓资产 <span class="font-normal text-gray-300">实时</span></div>
+            <div class="text-2xl font-semibold tabular-nums"
+              x-text="loaded.stock ? fmtYuan(holdingsValue('stock')) : (quotesLoading ? '…' : '-')"></div>
+          </div>
+          <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
+            <div class="text-xs text-gray-400 mb-2">可用现金</div>
+            <div class="flex items-baseline gap-1 border-b border-gray-200 pb-1">
+              <span class="text-xl font-semibold text-gray-400">¥</span>
+              <input type="text" inputmode="decimal" x-model="form.stock_cash" @input.debounce.800ms="saveSnapshot({ reload: false })"
+                class="text-2xl font-semibold w-full bg-transparent outline-none" placeholder="0.00">
+            </div>
+          </div>
+        </div>
+        <div class="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm shadow-gray-100/40">
+          <div class="text-sm font-semibold px-5 py-4">持仓明细 <span class="text-xs font-normal text-gray-400">（股数）</span></div>
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50"><tr class="text-xs text-gray-400 border-y border-gray-50">
+              <th class="text-left font-normal py-2 pl-5 w-20">代码</th>
+              <th class="text-left font-normal py-2 pl-2">名称</th>
+              <th class="text-right font-normal py-2 w-20">股数</th>
+              <th class="text-right font-normal py-2 w-20">现价</th>
+              <th class="text-right font-normal py-2 w-28">市值</th>
+              <th class="text-right font-normal py-2 w-16">占比</th>
+              <th class="w-5"></th>
+            </tr></thead>
+            <tbody>
+              <template x-for="row in stockRows" :key="row._id">
+                <tr class="border-t border-gray-50 hover:bg-gray-50/60">
+                  <td class="py-2 pl-5">
+                    <template x-if="row.isNew"><input type="text" x-model="row.code" @change="autofill('stock', row)" placeholder="代码" style="width:72px;border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0;font-size:12px;"></template>
+                    <span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span>
+                  </td>
+                  <td class="py-2 pl-2 text-gray-700 font-medium" x-text="row.name || '—'"></td>
+                  <td class="py-2 text-right"><input type="number" min="0" step="100" x-model.number="row.shares" @input.debounce.600ms="scheduleSortRows('stock')" style="width:64px;border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0;text-align:right;font-size:12px;"></td>
+                  <td class="py-2 text-right text-xs text-gray-500" x-text="rowPrice('stock', row.code)?.toFixed(2) ?? '-'"></td>
+                  <td class="py-2 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('stock', row) != null ? fmtYuan(rowValue('stock', row)) : '-'"></td>
+                  <td class="py-2 text-right text-xs text-gray-400" x-text="rowWeight('stock', row) != null ? (rowWeight('stock', row)*100).toFixed(1)+'%' : '-'"></td>
+                  <td class="py-2 pl-1 pr-3 text-center"><button @click="removeRow('stock', row)" class="text-gray-200 hover:text-red-400">✕</button></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div class="flex items-center gap-3 px-5 py-3 border-t border-gray-50 bg-white">
+            <button @click="addRow('stock')" class="text-xs text-gray-400 hover:text-gray-600">＋ 添加行</button>
+            <button @click="savePositions('stock')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-600">保存持仓</button>
+            <span x-show="stockSaved" class="text-xs text-green-600">已保存</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 转债账户详情 -->
+      <div x-show="selectedAccount === 'cb'">
+        <div class="grid grid-cols-3 gap-4 mb-5">
+          <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
+            <div class="text-xs text-gray-400 mb-2">总资产 <span class="font-normal text-gray-300">持仓+现金</span></div>
+            <div class="text-2xl font-semibold tabular-nums"
+              x-text="loaded.cb ? fmtYuan(accountTotal('cb')) : (quotesLoading ? '…' : '-')"></div>
+          </div>
+          <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
+            <div class="text-xs text-gray-400 mb-2">持仓资产 <span class="font-normal text-gray-300">实时</span></div>
+            <div class="text-2xl font-semibold tabular-nums"
+              x-text="loaded.cb ? fmtYuan(holdingsValue('cb')) : (quotesLoading ? '…' : '-')"></div>
+          </div>
+          <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
+            <div class="text-xs text-gray-400 mb-2">可用现金</div>
+            <div class="flex items-baseline gap-1 border-b border-gray-200 pb-1">
+              <span class="text-xl font-semibold text-gray-400">¥</span>
+              <input type="text" inputmode="decimal" x-model="form.bond_cash" @input.debounce.800ms="saveSnapshot({ reload: false })"
+                class="text-2xl font-semibold w-full bg-transparent outline-none" placeholder="0.00">
+            </div>
+          </div>
+        </div>
+        <div class="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm shadow-gray-100/40">
+          <div class="text-sm font-semibold px-5 py-4">持仓明细 <span class="text-xs font-normal text-gray-400">（张数）</span></div>
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50"><tr class="text-xs text-gray-400 border-y border-gray-50">
+              <th class="text-left font-normal py-2 pl-5 w-20">代码</th>
+              <th class="text-left font-normal py-2 pl-2">名称</th>
+              <th class="text-right font-normal py-2 w-20">张数</th>
+              <th class="text-right font-normal py-2 w-20">现价</th>
+              <th class="text-right font-normal py-2 w-28">市值</th>
+              <th class="text-right font-normal py-2 w-16">占比</th>
+              <th class="w-5"></th>
+            </tr></thead>
+            <tbody>
+              <template x-for="row in cbRows" :key="row._id">
+                <tr class="border-t border-gray-50 hover:bg-gray-50/60">
+                  <td class="py-2 pl-5">
+                    <template x-if="row.isNew"><input type="text" x-model="row.code" @change="autofill('cb', row)" placeholder="代码" style="width:72px;border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0;font-size:12px;"></template>
+                    <span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span>
+                  </td>
+                  <td class="py-2 pl-2 text-gray-700 font-medium" x-text="row.name || '—'"></td>
+                  <td class="py-2 text-right"><input type="number" min="0" step="10" x-model.number="row.shares" @input.debounce.600ms="scheduleSortRows('cb')" style="width:64px;border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0;text-align:right;font-size:12px;"></td>
+                  <td class="py-2 text-right text-xs text-gray-500" x-text="rowPrice('cb', row.code)?.toFixed(2) ?? '-'"></td>
+                  <td class="py-2 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('cb', row) != null ? fmtYuan(rowValue('cb', row)) : '-'"></td>
+                  <td class="py-2 text-right text-xs text-gray-400" x-text="rowWeight('cb', row) != null ? (rowWeight('cb', row)*100).toFixed(1)+'%' : '-'"></td>
+                  <td class="py-2 pl-1 pr-3 text-center"><button @click="removeRow('cb', row)" class="text-gray-200 hover:text-red-400">✕</button></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div class="flex items-center gap-3 px-5 py-3 border-t border-gray-50 bg-white">
+            <button @click="addRow('cb')" class="text-xs text-gray-400 hover:text-gray-600">＋ 添加行</button>
+            <button @click="savePositions('cb')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-600">保存持仓</button>
+            <span x-show="cbSaved" class="text-xs text-green-600">已保存</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 长钱账户详情 -->
+      <div x-show="selectedAccount === 'changqian'">
+        <div class="bg-white border border-gray-100 rounded-xl p-6 shadow-sm shadow-gray-100/40" style="max-width:380px">
+          <div class="text-xs text-gray-400 mb-2">总资产</div>
+          <div class="flex items-baseline gap-1 border-b border-gray-200 pb-1">
+            <span class="text-2xl font-semibold text-gray-400">¥</span>
+            <input type="text" inputmode="decimal" x-model="form.changqian_total" @input.debounce.800ms="saveSnapshot({ reload: false })"
+              class="text-3xl font-semibold w-full bg-transparent outline-none" placeholder="0.00">
+          </div>
+          <div class="mt-4 text-xs text-gray-400">输入后自动保存，也可返回列表页点「保存账户」。</div>
+        </div>
+      </div>
+
+      <!-- 现金池详情 -->
+      <div x-show="selectedAccount === 'cash'">
+        <div class="bg-white border border-gray-100 rounded-xl p-6 shadow-sm shadow-gray-100/40" style="max-width:380px">
+          <div class="text-xs text-gray-400 mb-2">余额</div>
+          <div class="flex items-baseline gap-1 border-b border-gray-200 pb-1">
+            <span class="text-2xl font-semibold text-gray-400">¥</span>
+            <input type="text" inputmode="decimal" x-model="form.cash_pool" @input.debounce.800ms="saveSnapshot({ reload: false })"
+              class="text-3xl font-semibold w-full bg-transparent outline-none" placeholder="0.00">
+          </div>
+          <div class="mt-4 text-xs text-gray-400">输入后自动保存，也可返回列表页点「保存账户」。</div>
+        </div>
+      </div>
+
+      <!-- 海外长钱详情 -->
+      <div x-show="selectedAccount === 'overseas'">
+        <div class="bg-white border border-gray-100 rounded-xl p-6 shadow-sm shadow-gray-100/40" style="max-width:380px">
+          <div class="text-xs text-gray-400 mb-2">总资产</div>
+          <div class="flex items-baseline gap-1 border-b border-gray-200 pb-1">
+            <span class="text-2xl font-semibold text-gray-400">¥</span>
+            <input type="text" inputmode="decimal" x-model="form.overseas_total" @input.debounce.800ms="saveSnapshot({ reload: false })"
+              class="text-3xl font-semibold w-full bg-transparent outline-none" placeholder="0.00">
+          </div>
+          <div class="mt-4 text-xs text-gray-400">输入后自动保存，也可返回列表页点「保存账户」。</div>
+        </div>
+      </div>
     </div>
+
   </div>
 
   <!-- 本期计划 -->
-  <div x-show="$store.page === 'plan'" x-data="planPage()" x-init="load()">
+  <div x-show="$store.page === 'plan'" x-data="planPage()" x-init="load()" class="max-w-6xl">
     <div class="flex justify-between items-center mb-4">
-      <h1 class="text-lg font-medium">本期计划</h1>
-      <span x-show="plan?.cb?.data_date || plan?.stock?.data_date" class="text-xs text-green-600"
+      <h1 class="text-xl font-semibold">本期计划</h1>
+      <span x-show="plan?.cb?.data_date || plan?.stock?.data_date" class="text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full"
         x-text="'适用 ' + (plan?.stock?.data_date || plan?.cb?.data_date || '') + ' 执行'"></span>
     </div>
     <div x-show="plan?.missing?.length" class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm text-amber-700">
       缺少数据：<span x-text="plan?.missing?.join('、')"></span>，请先录入账户信息或运行策略。
     </div>
-    <div class="bg-white border border-gray-100 rounded-xl p-4 mb-3" x-show="plan?.transfer_steps?.length">
-      <div class="text-sm font-medium mb-2">① 资金调拨</div>
+    <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40" x-show="plan?.transfer_steps?.length">
+      <div class="text-sm font-semibold mb-3">① 资金调拨</div>
       <template x-for="(step, i) in plan?.transfer_steps || []">
-        <div class="text-sm text-gray-600 py-1 border-b border-gray-50 last:border-0" x-text="(i+1) + '. ' + step"></div>
+        <div class="flex gap-3 text-sm text-gray-700 py-2 border-b border-gray-50 last:border-0">
+          <span class="text-xs w-5 h-5 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center shrink-0" x-text="i+1"></span>
+          <span x-text="step"></span>
+        </div>
       </template>
     </div>
-    <div class="bg-white border border-gray-100 rounded-xl p-4 mb-3" x-show="plan?.cb?.orders?.length">
-      <div class="text-sm font-medium mb-2">② 转债订单
+    <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40" x-show="plan?.cb?.orders?.length">
+      <div class="text-sm font-semibold mb-3">② 转债订单
         <span class="text-xs text-gray-400 font-normal ml-2" x-text="'基于 ' + plan?.cb?.data_date"></span>
       </div>
-      <template x-for="group in cbGroups()">
-        <div class="mb-3">
-          <div class="text-xs text-gray-400 mb-1" x-text="group.label + ' (' + group.items.length + ')'"></div>
-          <template x-for="r in group.items">
-            <div class="flex justify-between text-sm py-1 border-b border-gray-50">
-              <span><span class="text-gray-400 mr-2" x-text="r.bond_code"></span><span x-text="r.bond_name"></span></span>
-              <span><span :class="r.shares>0?'text-green-600':'text-red-500'" x-text="(r.shares>0?'+':'')+r.shares+'张'"></span>
-              <span class="ml-2 text-gray-400" x-text="'¥'+Math.abs(r.amount||0).toLocaleString()"></span></span>
-            </div>
-          </template>
-        </div>
-      </template>
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <template x-for="group in cbGroups()" :key="group.label">
+          <div class="bg-gray-50 rounded-lg p-3">
+            <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
+            <table class="w-full text-sm">
+              <template x-for="r in group.items" :key="r.bond_code">
+                <tr class="border-b border-gray-50 last:border-0">
+                  <td class="py-1.5 pr-3 text-gray-400" x-text="r.bond_code"></td>
+                  <td class="py-1.5 pr-4 font-medium" x-text="r.bond_name"></td>
+                  <td class="py-1.5 pr-4 text-right whitespace-nowrap" :class="r.shares>0?'text-green-600':'text-red-500'" x-text="(r.shares>0?'+':'')+r.shares+'张'"></td>
+                  <td class="py-1.5 text-right text-gray-800 whitespace-nowrap tabular-nums" x-text="fmtMoney(Math.abs(r.amount || 0))"></td>
+                </tr>
+              </template>
+            </table>
+          </div>
+        </template>
+      </div>
     </div>
-    <div class="bg-white border border-gray-100 rounded-xl p-4" x-show="plan?.stock?.orders?.length">
-      <div class="text-sm font-medium mb-2">③ 股票订单
+    <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40" x-show="plan?.stock?.orders?.length">
+      <div class="text-sm font-semibold mb-3">③ 股票订单
         <span class="text-xs text-gray-400 font-normal ml-2" x-text="'基于 ' + plan?.stock?.data_date"></span>
       </div>
-      <template x-for="group in stockGroups()">
-        <div class="mb-3">
-          <div class="text-xs text-gray-400 mb-1" x-text="group.label + ' (' + group.items.length + ')'"></div>
-          <template x-for="r in group.items">
-            <div class="flex justify-between text-sm py-1 border-b border-gray-50">
-              <span><span class="text-gray-400 mr-2" x-text="r.stock_code"></span><span x-text="r.stock_name"></span></span>
-              <span><span :class="r.shares>0?'text-green-600':r.shares<0?'text-red-500':'text-gray-400'" x-text="(r.shares>0?'+':'')+r.shares+'股'"></span>
-              <span class="ml-2 text-gray-400" x-text="r.amount?'¥'+Math.abs(r.amount).toLocaleString():''"></span></span>
-            </div>
-          </template>
-        </div>
-      </template>
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <template x-for="group in stockGroups()" :key="group.label">
+          <div class="bg-gray-50 rounded-lg p-3">
+            <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
+            <table class="w-full text-sm">
+              <template x-for="r in group.items" :key="r.stock_code">
+                <tr class="border-b border-gray-50 last:border-0">
+                  <td class="py-1.5 pr-3 text-gray-400" x-text="r.stock_code"></td>
+                  <td class="py-1.5 pr-4 font-medium" x-text="r.stock_name"></td>
+                  <td class="py-1.5 pr-4 text-right whitespace-nowrap" :class="r.shares>0?'text-green-600':r.shares<0?'text-red-500':'text-gray-400'" x-text="(r.shares>0?'+':'')+r.shares+'股'"></td>
+                  <td class="py-1.5 text-right text-gray-800 whitespace-nowrap tabular-nums" x-text="r.amount ? fmtMoney(Math.abs(r.amount)) : ''"></td>
+                </tr>
+              </template>
+            </table>
+          </div>
+        </template>
+      </div>
     </div>
   </div>
 
   <!-- 榜单 -->
-  <div x-show="$store.page === 'rankings'" x-data="rankingsPage()" x-init="load()">
-    <div class="flex justify-between items-center mb-4">
-      <h1 class="text-lg font-medium">榜单</h1>
+  <div x-show="$store.page === 'rankings'" x-data="rankingsPage()" x-init="load()" class="max-w-6xl">
+    <div class="flex justify-between items-center mb-5">
+      <div>
+        <h1 class="text-xl font-semibold">榜单</h1>
+        <div class="text-sm text-gray-400 mt-1">策略候选池与执行参考</div>
+      </div>
       <div class="flex gap-2 items-center">
-        <select x-model="selectedDate" @change="loadByDate()" class="text-xs border border-gray-200 rounded px-2 py-1">
-          <template x-for="d in dates"><option :value="d" x-text="d"></option></template>
+        <select x-show="tab==='cb'" x-model="cbDate" @change="loadCb()" class="text-xs bg-white border border-gray-200 rounded-lg px-3 py-2 outline-none">
+          <template x-for="d in cbDates"><option :value="d" x-text="d"></option></template>
         </select>
-        <button @click="exportMd()" class="px-3 py-1.5 border border-gray-200 text-xs rounded-lg hover:bg-gray-50">导出 Markdown</button>
+        <select x-show="tab==='stock'" x-model="stockDate" @change="loadStock()" class="text-xs bg-white border border-gray-200 rounded-lg px-3 py-2 outline-none">
+          <template x-for="d in stockDates"><option :value="d" x-text="d"></option></template>
+        </select>
+        <button @click="exportMd()" class="px-3 py-2 border border-gray-200 bg-white text-xs rounded-lg hover:bg-gray-50">导出 Markdown</button>
       </div>
     </div>
-    <div x-show="tradeDate" class="text-xs text-green-600 mb-3"
-      x-text="'基于 ' + selectedDate + ' 收盘数据 · 适用 ' + tradeDate + ' 执行'"></div>
-    <div x-show="!items.length && !stockItems.length" class="text-sm text-gray-400 mb-4">
-      暂无有效榜单，请运行策略：<code class="bg-gray-100 px-1 rounded">python3 -m strategies.cb_rotation.run</code>
+    <div class="bg-white border border-gray-100 rounded-xl p-4 mb-5 shadow-sm shadow-gray-100/40">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div class="inline-flex bg-gray-100 rounded-lg p-1 w-fit">
+          <button @click="tab='cb'" :class="tab==='cb'?'bg-white text-gray-900 shadow-sm':'text-gray-500 hover:text-gray-700'" class="px-4 py-1.5 rounded-md text-sm">转债 Top 20</button>
+          <button @click="tab='stock'; loadStock()" :class="tab==='stock'?'bg-white text-gray-900 shadow-sm':'text-gray-500 hover:text-gray-700'" class="px-4 py-1.5 rounded-md text-sm">股票 Top 20</button>
+        </div>
+        <div x-show="tab==='cb' && cbTradeDate" class="text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full"
+          x-text="'基于 ' + cbDate + ' 收盘 · 适用 ' + cbTradeDate + ' 执行'"></div>
+        <div x-show="tab==='stock' && stockTradeDate" class="text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full"
+          x-text="'基于 ' + stockDate + ' 收盘 · 适用 ' + stockTradeDate + ' 执行'"></div>
+      </div>
     </div>
-    <div class="flex gap-2 mb-4">
-      <button @click="tab='cb'" :class="tab==='cb'?'bg-gray-900 text-white':'bg-white text-gray-500 border border-gray-200'" class="px-4 py-1.5 rounded-lg text-sm">转债 Top 20</button>
-      <button @click="tab='stock'; loadStock()" :class="tab==='stock'?'bg-gray-900 text-white':'bg-white text-gray-500 border border-gray-200'" class="px-4 py-1.5 rounded-lg text-sm">股票 Top 20</button>
+    <div x-show="tab==='cb' && !items.length" class="bg-white border border-gray-100 rounded-xl p-6 text-sm text-gray-400 shadow-sm shadow-gray-100/40">
+      暂无转债榜单，请运行：<code class="bg-gray-100 px-1 rounded">python3 -m strategies.cb_rotation.run</code>
     </div>
-    <div x-show="tab==='cb'" class="bg-white border border-gray-100 rounded-xl overflow-hidden">
+    <div x-show="tab==='stock' && !stockItems.length" class="bg-white border border-gray-100 rounded-xl p-6 text-sm text-gray-400 shadow-sm shadow-gray-100/40">
+      暂无股票榜单，请运行：<code class="bg-gray-100 px-1 rounded">python3 -m strategies.stock_smallcap.run</code>
+    </div>
+    <div x-show="tab==='cb' && items.length" class="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm shadow-gray-100/40">
       <table class="w-full text-sm">
         <thead class="bg-gray-50 text-xs text-gray-400">
           <tr>
-            <th class="text-center px-3 py-2 w-10">#</th>
-            <th class="text-left px-3 py-2">代码</th>
-            <th class="text-left px-3 py-2">名称</th>
-            <th class="text-right px-3 py-2">价格</th>
-            <th class="text-right px-3 py-2">溢价率</th>
-            <th class="text-right px-3 py-2">双低值</th>
-            <th class="text-right px-3 py-2">评分</th>
+            <th class="text-center px-5 py-3 w-12 font-normal">#</th>
+            <th class="text-left px-3 py-3 font-normal">代码</th>
+            <th class="text-left px-3 py-3 font-normal">名称</th>
+            <th class="text-right px-3 py-3 font-normal">价格</th>
+            <th class="text-right px-3 py-3 font-normal">溢价率</th>
+            <th class="text-right px-3 py-3 font-normal">双低值</th>
+            <th class="text-right px-5 py-3 font-normal">评分</th>
           </tr>
         </thead>
         <tbody>
           <template x-for="r in items" :key="r.bond_code">
-            <tr class="border-t border-gray-50">
-              <td class="text-center px-3 py-2 text-gray-400 text-xs" x-text="r.rank"></td>
-              <td class="px-3 py-2 text-gray-500" x-text="r.bond_code"></td>
-              <td class="px-3 py-2" x-text="r.bond_name"></td>
-              <td class="px-3 py-2 text-right" x-text="r.cb_price?.toFixed(2)"></td>
-              <td class="px-3 py-2 text-right" x-text="r.premium_rate?.toFixed(2) + '%'"></td>
-              <td class="px-3 py-2 text-right" x-text="r.double_low?.toFixed(2)"></td>
-              <td class="px-3 py-2 text-right" x-text="r.score?.toFixed(3)"></td>
+            <tr class="border-t border-gray-50 hover:bg-gray-50/60">
+              <td class="text-center px-5 py-2.5 text-gray-400 text-xs" x-text="r.rank"></td>
+              <td class="px-3 py-2.5 text-gray-500 tabular-nums" x-text="r.bond_code"></td>
+              <td class="px-3 py-2.5 font-medium" x-text="r.bond_name"></td>
+              <td class="px-3 py-2.5 text-right tabular-nums" x-text="r.cb_price?.toFixed(2)"></td>
+              <td class="px-3 py-2.5 text-right tabular-nums" x-text="r.premium_rate?.toFixed(2) + '%'"></td>
+              <td class="px-3 py-2.5 text-right tabular-nums" x-text="r.double_low?.toFixed(2)"></td>
+              <td class="px-5 py-2.5 text-right tabular-nums text-gray-800" x-text="r.score?.toFixed(3)"></td>
             </tr>
           </template>
         </tbody>
       </table>
     </div>
-    <div x-show="tab==='stock'" class="bg-white border border-gray-100 rounded-xl overflow-hidden">
+    <div x-show="tab==='stock' && stockItems.length" class="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm shadow-gray-100/40">
       <table class="w-full text-sm">
         <thead class="bg-gray-50 text-xs text-gray-400">
           <tr>
-            <th class="text-center px-3 py-2 w-10">#</th>
-            <th class="text-left px-3 py-2">代码</th>
-            <th class="text-left px-3 py-2">名称</th>
-            <th class="text-right px-3 py-2">总市值(亿)</th>
-            <th class="text-right px-3 py-2">PE</th>
-            <th class="text-right px-3 py-2">扣非ROE</th>
+            <th class="text-center px-5 py-3 w-12 font-normal">#</th>
+            <th class="text-left px-3 py-3 font-normal">代码</th>
+            <th class="text-left px-3 py-3 font-normal">名称</th>
+            <th class="text-right px-3 py-3 font-normal">总市值(亿)</th>
+            <th class="text-right px-3 py-3 font-normal">PE</th>
+            <th class="text-right px-5 py-3 font-normal">扣非ROE</th>
           </tr>
         </thead>
         <tbody>
           <template x-for="r in stockItems" :key="r.stock_code">
-            <tr class="border-t border-gray-50">
-              <td class="text-center px-3 py-2 text-gray-400 text-xs" x-text="r.rank"></td>
-              <td class="px-3 py-2 text-gray-500" x-text="r.stock_code"></td>
-              <td class="px-3 py-2" x-text="r.stock_name"></td>
-              <td class="px-3 py-2 text-right" x-text="r.market_cap?.toFixed(2)"></td>
-              <td class="px-3 py-2 text-right" x-text="r.pe_ttm?.toFixed(2)"></td>
-              <td class="px-3 py-2 text-right" x-text="r.roe_ex?.toFixed(2) + '%'"></td>
+            <tr class="border-t border-gray-50 hover:bg-gray-50/60">
+              <td class="text-center px-5 py-2.5 text-gray-400 text-xs" x-text="r.rank"></td>
+              <td class="px-3 py-2.5 text-gray-500 tabular-nums" x-text="r.stock_code"></td>
+              <td class="px-3 py-2.5 font-medium" x-text="r.stock_name"></td>
+              <td class="px-3 py-2.5 text-right tabular-nums" x-text="r.market_cap?.toFixed(2)"></td>
+              <td class="px-3 py-2.5 text-right tabular-nums" x-text="r.pe_ttm?.toFixed(2)"></td>
+              <td class="px-5 py-2.5 text-right tabular-nums text-gray-800" x-text="r.roe_ex?.toFixed(2) + '%'"></td>
             </tr>
           </template>
         </tbody>
@@ -302,11 +441,26 @@
     Alpine.store('page', 'account')
   })
 
-  // 账户总览
+  // 账户总览（含持仓）
   function accountPage() {
     return {
       snap: null,
-      saved: false,
+      snapSaved: false, autoSaved: false, cbSaved: false, stockSaved: false,
+      cbRows: [], stockRows: [],
+      view: 'list',
+      selectedAccount: null,
+      prices: { stock: {}, cb: {} },   // code -> {name, price}
+      loaded: { stock: false, cb: false },
+      quotesLoading: false,
+      _uid: 0,
+      _sortTimers: {},
+      accounts: [
+        { id: 'stock',    label: '广发账户', sub: '股票仓位',   color: '#8b5cf6', totalKey: 'stock_total',     posType: 'stock' },
+        { id: 'cb',       label: '华泰账户', sub: '转债仓位',   color: '#14b8a6', totalKey: 'bond_total',      posType: 'cb'    },
+        { id: 'changqian',label: '长钱账户', sub: '国内基金',   color: '#f59e0b', totalKey: 'changqian_total', posType: null    },
+        { id: 'overseas', label: '海外长钱', sub: '海外基金',   color: '#60a5fa', totalKey: 'overseas_total',  posType: null    },
+        { id: 'cash',     label: '资金账户', sub: '现金仓位',   color: '#9ca3af', totalKey: 'cash_pool',       posType: null    },
+      ],
       form: {
         snapshot_date: new Date().toISOString().slice(0, 10),
         temperature: null, stock_total: null, stock_cash: null,
@@ -314,62 +468,155 @@
         cash_pool: null, overseas_total: null,
       },
       async load() {
-        const r = await fetch('/api/account/latest')
-        this.snap = await r.json()
-        if (this.snap) Object.assign(this.form, this.snap)
-      },
-      fmt(v) { return v == null ? '-' : (v/10000).toFixed(2) + '万' },
-      async save() {
-        await fetch('/api/account/snapshot', {
-          method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(this.form),
-        })
-        this.saved = true
-        await this.load()
-        setTimeout(() => this.saved = false, 2000)
-      },
-    }
-  }
-
-  // 持仓
-  function positionsPage() {
-    return {
-      tab: 'cb',
-      cbRows: [], stockRows: [],
-      dates: [], dateFilter: '',
-      saved: false,
-      async load() {
-        const [cb, stock, cbDates, stockDates] = await Promise.all([
+        const [snap, cb, stock] = await Promise.all([
+          fetch('/api/account/latest').then(r => r.json()),
           fetch('/api/positions/cb').then(r => r.json()),
           fetch('/api/positions/stock').then(r => r.json()),
-          fetch('/api/positions/cb/dates').then(r => r.json()),
-          fetch('/api/positions/stock/dates').then(r => r.json()),
         ])
-        this.cbRows = cb
-        this.stockRows = stock
-        this.dates = [...new Set([...cbDates, ...stockDates])].sort().reverse()
+        this.snap = snap
+        if (snap) Object.assign(this.form, snap)
+        this.cbRows = cb.map(r => ({ ...r, _id: ++this._uid, isNew: false }))
+        this.stockRows = stock.map(r => ({ ...r, _id: ++this._uid, isNew: false }))
       },
-      async loadByDate() {
-        if (!this.dateFilter) return this.load()
-        const [cb, stock] = await Promise.all([
-          fetch(`/api/positions/cb?date=${this.dateFilter}`).then(r => r.json()),
-          fetch(`/api/positions/stock?date=${this.dateFilter}`).then(r => r.json()),
-        ])
-        this.cbRows = cb; this.stockRows = stock
+      addRow(strategy) {
+        const row = { code: '', name: '', shares: 0, _id: ++this._uid, isNew: true }
+        ;(strategy === 'cb' ? this.cbRows : this.stockRows).push(row)
       },
-      currentRows() { return this.tab === 'cb' ? this.cbRows : this.stockRows },
-      addRow() { this.currentRows().push({code: '', name: '', shares: 0}) },
-      removeRow(i) { this.currentRows().splice(i, 1) },
-      async savePositions() {
+      removeRow(strategy, row) {
+        const rows = strategy === 'cb' ? this.cbRows : this.stockRows
+        const i = rows.indexOf(row)
+        if (i >= 0) rows.splice(i, 1)
+      },
+      fmtMoney(v) { return v == null ? '-' : '¥' + Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+      fmtCompactMoney(v) { return v == null ? '-' : '¥' + (v/10000).toFixed(2) + '万' },
+      fmtYuan(v) {
+        return this.fmtMoney(v)
+      },
+      num(v) { return Number.isFinite(Number(v)) ? Number(v) : 0 },
+      totalAssets() {
+        const f = this.form
+        return this.num(f.stock_total) + this.num(f.bond_total) + this.num(f.changqian_total) + this.num(f.cash_pool) + this.num(f.overseas_total)
+      },
+      sortedAccounts() {
+        return [...this.accounts].sort((a, b) => this.num(this.form[b.totalKey]) - this.num(this.form[a.totalKey]))
+      },
+      async openDetail(id) {
+        this.selectedAccount = id; this.view = 'detail'
+        if (id === 'stock' || id === 'cb') await this.loadQuotes(id)
+      },
+      async loadQuotes(strategy) {
+        this.quotesLoading = true
+        try {
+          const q = await fetch(`/api/positions/${strategy}/quotes`).then(r => r.json())
+          const map = {}
+          ;(q.items || []).forEach(it => { map[it.code] = { name: it.name, price: it.price } })
+          this.prices[strategy] = map
+          this.loaded[strategy] = true
+          this.sortRowsByValue(strategy)
+        } finally { this.quotesLoading = false }
+      },
+      async autofill(strategy, row) {
+        const code = String(row.code || '').trim()
+        if (!code) return
+        const q = await fetch(`/api/positions/${strategy}/quote?code=${code}`).then(r => r.json())
+        if (q && q.price != null) {
+          this.prices[strategy] = { ...this.prices[strategy], [String(code).padStart(6, '0')]: { name: q.name, price: q.price } }
+          if (q.name) row.name = q.name
+          this.scheduleSortRows(strategy)
+        }
+      },
+      rowPrice(strategy, code) {
+        return this.prices[strategy][String(code || '').padStart(6, '0')]?.price ?? null
+      },
+      rowValue(strategy, row) {
+        const p = this.rowPrice(strategy, row.code)
+        return p != null ? p * (row.shares || 0) : null
+      },
+      holdingsValue(strategy) {
+        const rows = strategy === 'stock' ? this.stockRows : this.cbRows
+        return rows.reduce((s, r) => s + (this.rowValue(strategy, r) || 0), 0)
+      },
+      rowWeight(strategy, row) {
+        const total = this.holdingsValue(strategy)
+        const v = this.rowValue(strategy, row)
+        return (total && v != null) ? v / total : null
+      },
+      accountTotal(strategy) {
+        const cash = strategy === 'stock' ? this.form.stock_cash : this.form.bond_cash
+        return this.holdingsValue(strategy) + this.num(cash)
+      },
+      sortRowsByValue(strategy) {
+        const rows = strategy === 'stock' ? this.stockRows : this.cbRows
+        rows.sort((a, b) => (this.rowValue(strategy, b) || 0) - (this.rowValue(strategy, a) || 0))
+      },
+      scheduleSortRows(strategy) {
+        clearTimeout(this._sortTimers[strategy])
+        this._sortTimers[strategy] = setTimeout(() => this.sortRowsByValue(strategy), 250)
+      },
+      back()          { this.view = 'list'; this.selectedAccount = null },
+      currentAccount(){ return this.accounts.find(a => a.id === this.selectedAccount) },
+      allocationBar() {
+        const total = this.totalAssets()
+        if (!total) return []
+        return this.accounts.map(a => ({ color: a.color, pct: (this.num(this.form[a.totalKey]) / total * 100).toFixed(1) }))
+      },
+      accountAmount(acc) { return this.num(this.form[acc.totalKey]) },
+      accountPct(acc) {
+        const total = this.totalAssets()
+        return total ? (this.num(this.form[acc.totalKey]) / total * 100).toFixed(1) : 0
+      },
+      posCount(acc) {
+        if (acc.posType === 'stock') return this.stockRows.length
+        if (acc.posType === 'cb')    return this.cbRows.length
+        return null
+      },
+      snapshotPayload() {
+        return {
+          snapshot_date: this.form.snapshot_date || new Date().toISOString().slice(0, 10),
+          temperature: this.num(this.form.temperature),
+          stock_total: this.num(this.form.stock_total),
+          stock_cash: this.num(this.form.stock_cash),
+          bond_total: this.num(this.form.bond_total),
+          bond_cash: this.num(this.form.bond_cash),
+          changqian_total: this.num(this.form.changqian_total),
+          cash_pool: this.num(this.form.cash_pool),
+          overseas_total: this.num(this.form.overseas_total),
+        }
+      },
+      async saveSnapshot(options = {}) {
+        const reload = options.reload !== false
+        // 总资产 = 持仓资产(实时) + 现金；仅在已拉取报价时回写，避免覆盖成空值
+        if (this.loaded.stock) this.form.stock_total = this.accountTotal('stock')
+        if (this.loaded.cb)    this.form.bond_total  = this.accountTotal('cb')
+        const payload = this.snapshotPayload()
+        const res = await fetch('/api/account/snapshot', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        })
+        if (!res.ok) throw new Error('保存账户失败')
+        if (reload) {
+          this.snap = payload
+          Object.assign(this.form, payload)
+          this.snapSaved = true
+          await this.load()
+          setTimeout(() => this.snapSaved = false, 2000)
+        } else {
+          this.snap = payload
+          this.autoSaved = true
+          setTimeout(() => this.autoSaved = false, 1200)
+        }
+      },
+      async savePositions(strategy) {
+        const src = strategy === 'cb' ? this.cbRows : this.stockRows
+        const rows = src.filter(r => r.code).map(r => ({ code: r.code, name: r.name, shares: r.shares }))
         const today = new Date().toISOString().slice(0, 10)
-        const strategy = this.tab
-        const rows = this.currentRows().filter(r => r.code)
         await fetch(`/api/positions/${strategy}?position_date=${today}`, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(rows),
         })
-        this.saved = true
-        setTimeout(() => this.saved = false, 2000)
+        src.forEach(r => { r.isNew = false })   // 保存后锁定，代码/名称不可再改
+        if (strategy === 'cb') { this.cbSaved = true; setTimeout(() => this.cbSaved = false, 2000) }
+        else { this.stockSaved = true; setTimeout(() => this.stockSaved = false, 2000) }
       },
     }
   }
@@ -378,21 +625,30 @@
     const ORDER = {SELL:'卖出', BUY:'买入', ADD:'加仓', TRIM:'减仓', HOLD:'持有', SKIP:'跳过'}
     return {
       plan: null,
+      fmtMoney(v) {
+        return v == null ? '-' : '¥' + Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      },
+      groupClass(action) {
+        if (action === 'BUY' || action === 'ADD') return 'text-green-600'
+        if (action === 'SELL') return 'text-red-500'
+        if (action === 'TRIM') return 'text-orange-500'
+        return 'text-gray-500'
+      },
       async load() {
         this.plan = await fetch('/api/plan').then(r => r.json())
       },
       cbGroups() {
         const orders = this.plan?.cb?.orders || []
-        return ['SELL','TRIM','BUY','ADD','HOLD'].map(action => ({
+        return ['SELL','TRIM','BUY','ADD'].map(action => ({
           label: ORDER[action] || action, action,
-          items: orders.filter(r => r.action === action)
+          items: orders.filter(r => r.action === action && r.shares !== 0)
         })).filter(g => g.items.length)
       },
       stockGroups() {
         const orders = this.plan?.stock?.orders || []
-        return ['SELL','BUY','ADD','TRIM','HOLD','SKIP'].map(action => ({
+        return ['SELL','BUY','ADD','TRIM'].map(action => ({
           label: ORDER[action] || action, action,
-          items: orders.filter(r => r.action === action)
+          items: orders.filter(r => r.action === action && r.shares !== 0)
         })).filter(g => g.items.length)
       },
     }
@@ -401,35 +657,41 @@
   function rankingsPage() {
     return {
       tab: 'cb', items: [], stockItems: [],
-      dates: [], selectedDate: '', tradeDate: '',
+      cbDates: [], stockDates: [],
+      cbDate: '', stockDate: '',
+      cbTradeDate: '', stockTradeDate: '',
       async load() {
         const [cbDates, stockDates] = await Promise.all([
           fetch('/api/rankings/cb/dates').then(r => r.json()),
           fetch('/api/rankings/stock/dates').then(r => r.json()),
         ])
-        this.dates = [...new Set([...cbDates, ...stockDates])].sort().reverse()
-        this.selectedDate = this.dates[0] || ''
-        if (this.selectedDate) await this.loadByDate()
+        this.cbDates = cbDates.sort().reverse()
+        this.stockDates = stockDates.sort().reverse()
+        this.cbDate = this.cbDates[0] || ''
+        this.stockDate = this.stockDates[0] || ''
+        if (this.cbDate) await this.loadCb()
       },
-      async loadByDate() {
-        if (!this.selectedDate) return
-        const r = await fetch(`/api/rankings/cb/${this.selectedDate}`).then(r => r.json())
-        this.items = r.items; this.tradeDate = r.trade_date || ''
-        if (this.tab === 'stock') await this.loadStock()
+      async loadCb() {
+        if (!this.cbDate) return
+        const r = await fetch(`/api/rankings/cb/${this.cbDate}`).then(r => r.json())
+        this.items = r.items || []
+        this.cbTradeDate = r.trade_date || ''
       },
       async loadStock() {
-        if (!this.selectedDate) return
-        const r = await fetch(`/api/rankings/stock/${this.selectedDate}`).then(r => r.json())
-        this.stockItems = r.items
+        if (!this.stockDate) return
+        const r = await fetch(`/api/rankings/stock/${this.stockDate}`).then(r => r.json())
+        this.stockItems = r.items || []
+        this.stockTradeDate = r.trade_date || ''
       },
       async exportMd() {
         const strategy = this.tab
-        const r = await fetch(`/api/rankings/${strategy}/${this.selectedDate}/export`)
+        const date = strategy === 'cb' ? this.cbDate : this.stockDate
+        const r = await fetch(`/api/rankings/${strategy}/${date}/export`)
         const text = await r.text()
         const blob = new Blob([text], {type: 'text/plain'})
         const a = document.createElement('a')
         a.href = URL.createObjectURL(blob)
-        a.download = `${strategy}_top20_${this.selectedDate}.md`
+        a.download = `${strategy}_top20_${date}.md`
         a.click()
       },
     }

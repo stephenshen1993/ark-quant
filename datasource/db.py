@@ -192,6 +192,7 @@ def insert_cb_orders(run_id: int, df: pd.DataFrame) -> None:
         for r in df.itertuples(index=False)
     ]
     with _conn() as conn:
+        conn.execute("DELETE FROM cb_orders WHERE run_id=?", (run_id,))
         conn.executemany(
             "INSERT INTO cb_orders (run_id,action,bond_code,bond_name,price,shares,amount) VALUES (?,?,?,?,?,?,?)",
             rows,
@@ -205,6 +206,7 @@ def insert_stock_orders(run_id: int, df: pd.DataFrame) -> None:
         for r in df.itertuples(index=False)
     ]
     with _conn() as conn:
+        conn.execute("DELETE FROM stock_orders WHERE run_id=?", (run_id,))
         conn.executemany(
             "INSERT INTO stock_orders (run_id,action,stock_code,stock_name,price,shares,amount) VALUES (?,?,?,?,?,?,?)",
             rows,

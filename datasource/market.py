@@ -148,9 +148,14 @@ def fetch_tencent_snapshot(codes: Iterable[str], batch_size: int = 60) -> pd.Dat
 
 def fetch_cb_prices_tencent(codes: list[str], batch_size: int = 50) -> dict[str, float]:
     """Live convertible-bond prices from Tencent (field 3 of the quote string)."""
+    return {c: q["price"] for c, q in fetch_cb_quotes_tencent(codes, batch_size).items()}
+
+
+def fetch_cb_quotes_tencent(codes: list[str], batch_size: int = 50) -> dict[str, dict]:
+    """Live CB name + price from Tencent. Returns {code: {"name":, "price":}}."""
     import requests
 
-    prices: dict[str, float] = {}
+    quotes: dict[str, dict] = {}
     codes = [str(c).zfill(6) for c in dict.fromkeys(codes) if str(c).strip()]
     for start in range(0, len(codes), batch_size):
         batch = codes[start : start + batch_size]
@@ -170,5 +175,5 @@ def fetch_cb_prices_tencent(codes: list[str], batch_size: int = 50) -> dict[str,
             code = "".join(ch for ch in fields[2] if ch.isdigit())[-6:].zfill(6)
             price = pd.to_numeric(fields[3], errors="coerce")
             if code and pd.notna(price) and price > 0:
-                prices[code] = float(price)
-    return prices
+                quotes[code] = {"name": fields[1], "price": float(price)}
+    return quotes

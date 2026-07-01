@@ -160,10 +160,35 @@ def main() -> None:
     args = parser.parse_args()
 
     setup_logging()
-    target_path = args.target or latest_target_file()
-    logging.info("目标榜单: %s", target_path)
-    target = pd.read_csv(target_path, dtype={"bond_code": str})
-    positions = load_positions(args.positions)
+
+    # 优先从 DB 读最新榜单和持仓，CSV 作为 fallback
+    target = None
+    positions = None
+    if args.target is None:
+        try:
+            from datasource.db import get_latest_rankings, get_latest_positions
+            db_r = get_latest_rankings("cb")
+            db_p = get_latest_positions("cb")
+            if db_r:
+                target = pd.DataFrame(db_r)[["bond_code", "bond_name"]]
+                target["bond_code"] = target["bond_code"].astype(str).str.zfill(6)
+                logging.info("榜单来源: DB (%d 只)", len(target))
+            if db_p:
+                positions = pd.DataFrame([
+                    {"bond_code": r["code"], "bond_name": r["name"], "shares": r["shares"]}
+                    for r in db_p
+                ])
+                positions["bond_code"] = positions["bond_code"].astype(str).str.zfill(6)
+                logging.info("持仓来源: DB (%d 只)", len(positions))
+        except Exception as _e:
+            logging.warning("DB 读取失败，回退到文件: %s", _e)
+
+    if target is None:
+        target_path = args.target or latest_target_file()
+        logging.info("目标榜单: %s", target_path)
+        target = pd.read_csv(target_path, dtype={"bond_code": str})
+    if positions is None:
+        positions = load_positions(args.positions)
 
     codes = list(dict.fromkeys(list(target["bond_code"].astype(str).str.zfill(6)) + list(positions["bond_code"])))
     prices = fetch_cb_prices_tencent(codes)
