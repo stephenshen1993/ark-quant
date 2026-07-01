@@ -10,7 +10,7 @@ Run the CB rotation strategy using the current positions file:
 source .venv/bin/activate && python3 -m strategies.cb_rotation.run $ARGUMENTS
 ```
 
-If `$ARGUMENTS` includes `--max-bonds N`, pass it through for a quick smoke test.
+If `$ARGUMENTS` includes `--max-universe N`, pass it through for a quick smoke test.
 
 After a successful run:
 1. Print the output file paths (candidates CSV, rebalance CSV, report MD).

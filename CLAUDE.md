@@ -26,7 +26,7 @@ python3 rebalance.py --temperature <T> \
 **可转债多因子轮动 (CB rotation):**
 ```bash
 python3 -m strategies.cb_rotation.run                  # 出 Top20 榜单
-python3 -m strategies.cb_rotation.run --max-bonds 30   # 快速冒烟测试
+python3 -m strategies.cb_rotation.run --max-universe 30   # 快速冒烟测试
 python3 -m strategies.cb_rotation.size_orders --cash <现金>  # 算具体买卖张数
 ```
 

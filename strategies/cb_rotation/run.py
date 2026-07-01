@@ -21,6 +21,7 @@ from datasource.market import (
     normalize_stock_code,
     stock_symbol_with_exchange,
 )
+from datasource.trade_calendar import is_market_hours
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -116,10 +117,9 @@ def enforce_snapshot_run_window(config: dict, now: datetime | None = None) -> No
         raise RuntimeError("当前仅支持 previous_close 收盘口径。")
     if not data_config.get("block_intraday_runs", True):
         return
-    current = (now or datetime.now()).time()
     market_open = datetime.strptime(data_config.get("intraday_block_start", "09:25"), "%H:%M").time()
     after_close = datetime.strptime(data_config.get("intraday_block_end", "15:10"), "%H:%M").time()
-    if market_open <= current < after_close:
+    if is_market_hours(now, market_open, after_close):
         raise RuntimeError(
             f"策略使用上一已完成交易日收盘数据，请在 {market_open:%H:%M} 前运行当日开盘建议，"
             f"或在 {after_close:%H:%M} 后运行下一交易日建议。"
@@ -135,12 +135,17 @@ def merge_latest_rows(existing: pd.DataFrame, new: pd.DataFrame, key: str) -> pd
 
 
 def fetch_with_cache(name: str, fetcher, config: dict) -> pd.DataFrame:
+    # 本地优先：收盘后数据不变，当日缓存直接复用
+    today_path = cache_path(name)
+    if today_path.exists():
+        logging.info("加载本地缓存: %s", today_path)
+        return pd.read_csv(today_path, dtype=str)
+
     try:
         df = fetcher()
         if isinstance(df, pd.DataFrame) and not df.empty:
-            path = cache_path(name)
-            df.to_csv(path, index=False, encoding="utf-8-sig")
-            logging.info("Saved data cache: %s", path)
+            df.to_csv(today_path, index=False, encoding="utf-8-sig")
+            logging.info("远端拉取并保存: %s", today_path)
             return df
     except Exception as exc:
         logging.warning("Fetch failed for %s: %s", name, exc)
@@ -1007,7 +1012,7 @@ def snapshot_raw_data(
     return day_dir
 
 
-def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -> RunArtifacts:
+def run(config_path: Path, positions_path: Path, max_universe: int | None = None) -> RunArtifacts:
     log_file = setup_logging()
     config = load_config(config_path)
     enforce_snapshot_run_window(config)
@@ -1015,9 +1020,9 @@ def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -
 
     raw_cb = fetch_cb_universe(ak, config)
     cb = normalize_cb_data(raw_cb)
-    if max_bonds:
-        cb = cb.head(max_bonds).copy()
-        logging.info("Limited universe to first %s bonds for test run.", max_bonds)
+    if max_universe:
+        cb = cb.head(max_universe).copy()
+        logging.info("Limited universe to first %s bonds for test run.", max_universe)
 
     cb = enrich_cb_with_redeem_data(ak, cb, config)
     enforce_cb_filter_coverage(cb, config)
@@ -1117,20 +1122,52 @@ def run(config_path: Path, positions_path: Path, max_bonds: int | None = None) -
         )
     except Exception as exc:  # Snapshot is a safety net; never fail a good run over it.
         logging.warning("Failed to save raw snapshot: %s", exc)
+    _cleanup_old_outputs("cb_rotation_")
+    _cleanup_old_raw_snapshots()
     return artifacts
+
+
+def _cleanup_old_outputs(prefix: str, keep: int = 90) -> None:
+    """Keep the `keep` most recent output files matching `prefix`."""
+    if not OUTPUT_DIR.exists():
+        return
+    files = sorted(OUTPUT_DIR.glob(f"{prefix}*"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for f in files[keep:]:
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
+
+def _cleanup_old_raw_snapshots(keep_days: int = 90) -> None:
+    """Remove data/raw/ directories older than `keep_days` days."""
+    if not RAW_DIR.exists():
+        return
+    import shutil
+    cutoff = date.today() - timedelta(days=keep_days)
+    for d in sorted(RAW_DIR.iterdir()):
+        if not d.is_dir():
+            continue
+        try:
+            dir_date = datetime.strptime(d.name, "%Y%m%d").date()
+        except ValueError:
+            continue
+        if dir_date < cutoff:
+            shutil.rmtree(d)
+            logging.info("Cleaned up old raw snapshot: %s", d)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run convertible bond multi-factor rotation strategy.")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG, help="Path to config JSON.")
     parser.add_argument("--positions", type=Path, default=DEFAULT_POSITIONS, help="Current positions CSV.")
-    parser.add_argument("--max-bonds", type=int, default=None, help="Limit bonds for quick smoke tests.")
+    parser.add_argument("--max-universe", type=int, default=None, help="Limit bonds for quick smoke tests.")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    artifacts = run(args.config, args.positions, args.max_bonds)
+    artifacts = run(args.config, args.positions, args.max_universe)
     print("候选持仓:", artifacts.candidates_csv)
     print("调仓建议:", artifacts.rebalance_csv)
     print("运行报告:", artifacts.report_md)

@@ -146,6 +146,61 @@ def fetch_tencent_snapshot(codes: Iterable[str], batch_size: int = 60) -> pd.Dat
     return snap
 
 
+def fetch_sina_snapshot(codes: Iterable[str], batch_size: int = 50) -> pd.DataFrame:
+    """Fallback snapshot from Sina hq.sinajs.cn — price/volume/amount only.
+
+    Sina does not provide PE, total market cap, or explicit limit-up/down. Those fields
+    are returned as NaN and should be merged with a cached snapshot when used as fallback.
+    """
+    import requests
+
+    codes = [str(c).zfill(6) for c in dict.fromkeys(codes) if str(c).strip()]
+    rows: list[dict] = []
+    for start in range(0, len(codes), batch_size):
+        batch = codes[start : start + batch_size]
+        query = ",".join(stock_symbol_with_exchange(c) for c in batch)
+        try:
+            resp = requests.get(f"http://hq.sinajs.cn/list={query}", timeout=10)
+            resp.encoding = "gbk"
+        except Exception as exc:
+            logging.warning("Sina snapshot batch failed (%s..): %s", batch[0], exc)
+            continue
+        for line in resp.text.split("\n"):
+            line = line.strip()
+            if not line or '="' not in line:
+                continue
+            parts = line.split('="', 1)
+            if len(parts) != 2:
+                continue
+            symbol = parts[0].replace("var hq_str_", "")
+            fields = parts[1].rstrip('"').split(",")
+            if len(fields) < 10:
+                continue
+            code = "".join(ch for ch in symbol if ch.isdigit())[-6:].zfill(6)
+            price = _to_num(fields[3])
+            prev_close = _to_num(fields[2])
+            volume_shares = _to_num(fields[8])
+            rows.append(
+                {
+                    "stock_code": code,
+                    "stock_name_q": fields[0],
+                    "price": price,
+                    "prev_close": prev_close,
+                    "volume_hand": volume_shares / 100 if pd.notna(volume_shares) else float("nan"),
+                    "amount_yuan": _to_num(fields[9]),
+                    "pe_ttm": float("nan"),
+                    "total_mv_yuan": float("nan"),
+                    "limit_up": float("nan"),
+                    "limit_down": float("nan"),
+                }
+            )
+    snap = pd.DataFrame(rows)
+    if not snap.empty:
+        snap["stock_code"] = snap["stock_code"].astype(str).str.zfill(6)
+        snap = snap.drop_duplicates("stock_code")
+    return snap
+
+
 def fetch_cb_prices_tencent(codes: list[str], batch_size: int = 50) -> dict[str, float]:
     """Live convertible-bond prices from Tencent (field 3 of the quote string)."""
     return {c: q["price"] for c, q in fetch_cb_quotes_tencent(codes, batch_size).items()}
@@ -177,3 +232,34 @@ def fetch_cb_quotes_tencent(codes: list[str], batch_size: int = 50) -> dict[str,
             if code and pd.notna(price) and price > 0:
                 quotes[code] = {"name": fields[1], "price": float(price)}
     return quotes
+
+
+# ── 本地优先缓存 ──────────────────────────────────────────────────────────────
+
+def load_or_fetch(
+    name: str,
+    fetcher,
+    today: str,
+    subdir: str | None = None,
+    log: bool = True,
+) -> pd.DataFrame:
+    """本地优先：DB 中有当天快照则直接读，否则远端拉取后存入 DB。
+
+    收盘后数据冻结，同一交易日多次运行策略时零 HTTP 调用。
+    """
+    import logging as _log
+    from datasource.db import get_raw_snapshot, save_raw_snapshot, init_db
+
+    init_db()
+    cached = get_raw_snapshot(today, name, subdir)
+    if cached is not None:
+        if log:
+            _log.info("加载本地(DB): %s/%s", today, name)
+        return pd.read_json(cached)
+
+    df = fetcher()
+    if isinstance(df, pd.DataFrame) and not df.empty:
+        save_raw_snapshot(today, name, df.to_json(), subdir)
+        if log:
+            _log.info("远端拉取并保存(DB): %s/%s", today, name)
+    return df

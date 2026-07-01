@@ -14,7 +14,7 @@
   <span class="text-xs text-gray-400 font-medium px-2 mb-2">ark-quant</span>
   <template x-data x-for="item in [
     {id:'account', label:'账户总览', icon:'📊'},
-    {id:'plan', label:'本期计划', icon:'📋'},
+    {id:'plan', label:'交易计划', icon:'📋'},
     {id:'rankings', label:'榜单', icon:'🏆'}
   ]">
     <button @click="$dispatch('nav', item.id)"
@@ -35,7 +35,7 @@
   <div x-show="$store.page === 'account'" x-data="accountPage()" x-init="load()">
 
     <!-- ① 列表视图 -->
-    <div x-show="view === 'list'" class="max-w-6xl">
+    <div x-show="view === 'list'" class="max-w-7xl">
       <!-- 标题栏 -->
       <div class="flex justify-between items-center mb-5">
         <div>
@@ -110,7 +110,7 @@
     </div>
 
     <!-- ② 详情视图 -->
-    <div x-show="view === 'detail'" class="max-w-5xl">
+    <div x-show="view === 'detail'" class="max-w-7xl">
       <!-- 顶栏 -->
       <div class="flex items-center gap-3 mb-5">
         <button @click="back()" class="text-gray-400 hover:text-gray-700 text-2xl leading-none pr-1">‹</button>
@@ -119,7 +119,7 @@
 
       <!-- 股票账户详情 -->
       <div x-show="selectedAccount === 'stock'">
-        <div class="grid grid-cols-3 gap-4 mb-5">
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-5">
           <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
             <div class="text-xs text-gray-400 mb-2">总资产 <span class="font-normal text-gray-300">持仓+现金</span></div>
             <div class="text-2xl font-semibold tabular-nums"
@@ -178,7 +178,7 @@
 
       <!-- 转债账户详情 -->
       <div x-show="selectedAccount === 'cb'">
-        <div class="grid grid-cols-3 gap-4 mb-5">
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-5">
           <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
             <div class="text-xs text-gray-400 mb-2">总资产 <span class="font-normal text-gray-300">持仓+现金</span></div>
             <div class="text-2xl font-semibold tabular-nums"
@@ -277,18 +277,16 @@
 
   </div>
 
-  <!-- 本期计划 -->
-  <div x-show="$store.page === 'plan'" x-data="planPage()" x-init="load()" class="max-w-6xl">
+  <!-- 交易计划 -->
+  <div x-show="$store.page === 'plan'" x-data="planPage()" x-init="load()" class="max-w-7xl">
     <div class="flex justify-between items-center mb-4">
-      <h1 class="text-xl font-semibold">本期计划</h1>
+      <h1 class="text-xl font-semibold">交易计划</h1>
       <span x-show="executionDate()" class="text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full"
         x-text="'适用 ' + executionDate() + ' 开盘执行'"></span>
     </div>
-    <div x-show="plan?.missing?.length" class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm text-amber-700">
-      缺少数据：<span x-text="plan?.missing?.join('、')"></span>，请先录入账户信息或运行策略。
-    </div>
+    <!-- 资产再平衡 -->
     <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40" x-show="plan?.transfer_steps?.length">
-      <div class="text-sm font-semibold mb-3">① 资金调拨</div>
+      <div class="text-sm font-semibold mb-3">① 资金分配</div>
       <template x-for="(step, i) in plan?.transfer_steps || []">
         <div class="flex gap-3 text-sm text-gray-700 py-2 border-b border-gray-50 last:border-0">
           <span class="text-xs w-5 h-5 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center shrink-0" x-text="i+1"></span>
@@ -296,58 +294,115 @@
         </div>
       </template>
     </div>
-    <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40" x-show="plan?.cb?.orders?.length">
-      <div class="text-sm font-semibold mb-3">② 转债订单
+    <!-- 转债 -->
+    <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40" x-show="plan?.cb?.orders?.length || plan?.cb?.rankings?.length">
+      <div class="text-sm font-semibold mb-3">② 转债调仓
         <span class="text-xs text-gray-400 font-normal ml-2" x-text="'基于 ' + plan?.cb?.data_date + ' 收盘'"></span>
       </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        <template x-for="group in cbGroups()" :key="group.label">
-          <div class="bg-gray-50 rounded-lg p-3">
-            <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
-            <table class="w-full text-sm">
-              <template x-for="r in group.items" :key="r.bond_code">
-                <tr class="border-b border-gray-50 last:border-0">
-                  <td class="py-1.5 pr-3 text-gray-400" x-text="r.bond_code"></td>
-                  <td class="py-1.5 pr-4 font-medium" x-text="r.bond_name"></td>
-                  <td class="py-1.5 pr-4 text-right whitespace-nowrap" :class="r.shares>0?'text-green-600':'text-red-500'" x-text="(r.shares>0?'+':'')+r.shares+'张'"></td>
-                  <td class="py-1.5 text-right text-gray-800 whitespace-nowrap tabular-nums" x-text="fmtMoney(Math.abs(r.amount || 0))"></td>
-                </tr>
-              </template>
-            </table>
+      <!-- 有订单：显示买卖单 -->
+      <template x-if="plan?.cb?.orders?.length">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <template x-for="group in cbGroups()" :key="group.label">
+            <div class="bg-gray-50 rounded-lg p-3">
+              <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
+              <table class="w-full text-sm">
+                <template x-for="r in group.items" :key="r.bond_code">
+                  <tr class="border-b border-gray-50 last:border-0">
+                    <td class="py-1.5 pr-3 text-gray-400" x-text="r.bond_code"></td>
+                    <td class="py-1.5 pr-4 font-medium" x-text="r.bond_name"></td>
+                    <td class="py-1.5 pr-2 text-right whitespace-nowrap" :class="r.shares>0?'text-green-600':'text-red-500'" x-text="(r.shares>0?'+':'')+r.shares+'张'"></td>
+                    <td class="py-1.5 text-right text-gray-800 whitespace-nowrap tabular-nums" x-text="fmtMoney(Math.abs(r.amount || 0))"></td>
+                  </tr>
+                </template>
+              </table>
+            </div>
+          </template>
+        </div>
+      </template>
+      <!-- 无订单：显示榜单预览 + 生成入口 -->
+      <template x-if="!plan?.cb?.orders?.length && plan?.cb?.rankings?.length">
+        <div>
+          <div class="flex items-center gap-2 mb-3 text-sm">
+            <span class="text-gray-400 text-xs">起始现金 <span class="text-gray-600 font-medium" x-text="fmtMoney(plan?.account?.bond_cash || 0)"></span>（卖出回款自动计入）</span>
+            <button @click="sizeOrders('cb')" :disabled="sizingCb"
+              class="ml-auto px-3 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 disabled:opacity-50"
+              x-text="sizingCb ? '计算中…' : '生成订单'"></button>
           </div>
-        </template>
-      </div>
+          <table class="w-full text-sm">
+          <thead><tr class="text-left text-gray-400 text-xs"><th class="pb-2">排名</th><th class="pb-2">代码</th><th class="pb-2">名称</th><th class="pb-2 text-right">价格</th><th class="pb-2 text-right">溢价率</th><th class="pb-2 text-right">双低</th><th class="pb-2 text-right">评分</th></tr></thead>
+          <template x-for="r in plan?.cb?.rankings || []">
+            <tr class="border-b border-gray-50 last:border-0">
+              <td class="py-1.5 pr-3 text-gray-400" x-text="r.rank"></td>
+              <td class="py-1.5 pr-3 text-gray-400" x-text="r.bond_code"></td>
+              <td class="py-1.5 pr-4 font-medium" x-text="r.bond_name"></td>
+              <td class="py-1.5 pr-4 text-right tabular-nums" x-text="r.cb_price?.toFixed(2)"></td>
+              <td class="py-1.5 pr-4 text-right tabular-nums" x-text="r.premium_rate?.toFixed(2) + '%'"></td>
+              <td class="py-1.5 pr-4 text-right tabular-nums" x-text="r.double_low?.toFixed(2)"></td>
+              <td class="py-1.5 text-right tabular-nums" x-text="r.score?.toFixed(3)"></td>
+            </tr>
+          </template>
+        </table>
+        </div>
+      </template>
     </div>
-    <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40" x-show="plan?.stock?.orders?.length">
-      <div class="text-sm font-semibold mb-3">③ 股票订单
+    <!-- 股票 -->
+    <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40" x-show="plan?.stock?.orders?.length || plan?.stock?.rankings?.length">
+      <div class="text-sm font-semibold mb-3">③ 股票调仓
         <span class="text-xs text-gray-400 font-normal ml-2" x-text="'基于 ' + plan?.stock?.data_date + ' 收盘'"></span>
       </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        <template x-for="group in stockGroups()" :key="group.label">
-          <div class="bg-gray-50 rounded-lg p-3">
-            <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
-            <table class="w-full text-sm">
-              <template x-for="r in group.items" :key="r.stock_code">
-                <tr class="border-b border-gray-50 last:border-0">
-                  <td class="py-1.5 pr-3 text-gray-400" x-text="r.stock_code"></td>
-                  <td class="py-1.5 pr-4 font-medium" x-text="r.stock_name"></td>
-                  <td class="py-1.5 pr-4 text-right whitespace-nowrap" :class="r.shares>0?'text-green-600':r.shares<0?'text-red-500':'text-gray-400'" x-text="(r.shares>0?'+':'')+r.shares+'股'"></td>
-                  <td class="py-1.5 text-right text-gray-800 whitespace-nowrap tabular-nums" x-text="r.amount ? fmtMoney(Math.abs(r.amount)) : ''"></td>
-                </tr>
-              </template>
-            </table>
+      <!-- 有订单：显示买卖单 -->
+      <template x-if="plan?.stock?.orders?.length">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <template x-for="group in stockGroups()" :key="group.label">
+            <div class="bg-gray-50 rounded-lg p-3">
+              <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
+              <table class="w-full text-sm">
+                <template x-for="r in group.items" :key="r.stock_code">
+                  <tr class="border-b border-gray-50 last:border-0">
+                    <td class="py-1.5 pr-3 text-gray-400" x-text="r.stock_code"></td>
+                    <td class="py-1.5 pr-4 font-medium" x-text="r.stock_name"></td>
+                    <td class="py-1.5 pr-2 text-right whitespace-nowrap" :class="r.shares>0?'text-green-600':r.shares<0?'text-red-500':'text-gray-400'" x-text="(r.shares>0?'+':'')+r.shares+'股'"></td>
+                    <td class="py-1.5 text-right text-gray-800 whitespace-nowrap tabular-nums" x-text="r.amount ? fmtMoney(Math.abs(r.amount)) : ''"></td>
+                  </tr>
+                </template>
+              </table>
+            </div>
+          </template>
+        </div>
+      </template>
+      <!-- 无订单：显示榜单预览 + 生成入口 -->
+      <template x-if="!plan?.stock?.orders?.length && plan?.stock?.rankings?.length">
+        <div>
+          <div class="flex items-center gap-2 mb-3 text-sm">
+            <span class="text-gray-400 text-xs">起始现金 <span class="text-gray-600 font-medium" x-text="fmtMoney(plan?.account?.stock_cash || 0)"></span>（卖出回款自动计入）</span>
+            <button @click="sizeOrders('stock')" :disabled="sizingStock"
+              class="ml-auto px-3 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 disabled:opacity-50"
+              x-text="sizingStock ? '计算中…' : '生成订单'"></button>
           </div>
-        </template>
-      </div>
+          <table class="w-full text-sm">
+            <thead><tr class="text-left text-gray-400 text-xs"><th class="pb-2">排名</th><th class="pb-2">代码</th><th class="pb-2">名称</th><th class="pb-2 text-right">总市值(亿)</th><th class="pb-2 text-right">PE</th><th class="pb-2 text-right">扣非ROE</th></tr></thead>
+            <template x-for="r in plan?.stock?.rankings || []">
+              <tr class="border-b border-gray-50 last:border-0">
+                <td class="py-1.5 pr-3 text-gray-400" x-text="r.rank"></td>
+                <td class="py-1.5 pr-3 text-gray-400" x-text="r.stock_code"></td>
+                <td class="py-1.5 pr-4 font-medium" x-text="r.stock_name"></td>
+                <td class="py-1.5 pr-4 text-right tabular-nums" x-text="r.market_cap != null ? r.market_cap.toFixed(2) : '-'"></td>
+                <td class="py-1.5 pr-4 text-right tabular-nums" x-text="r.pe_ttm != null ? r.pe_ttm.toFixed(2) : '-'"></td>
+                <td class="py-1.5 text-right tabular-nums" x-text="r.roe_ex != null ? r.roe_ex.toFixed(2) + '%' : '-'"></td>
+              </tr>
+            </template>
+          </table>
+        </div>
+      </template>
     </div>
   </div>
 
   <!-- 榜单 -->
-  <div x-show="$store.page === 'rankings'" x-data="rankingsPage()" x-init="load()" class="max-w-6xl">
+  <div x-show="$store.page === 'rankings'" x-data="rankingsPage()" x-init="load()" class="max-w-7xl">
     <div class="flex justify-between items-center mb-5">
       <div>
         <h1 class="text-xl font-semibold">榜单</h1>
-        <div class="text-sm text-gray-400 mt-1">策略候选池与执行参考</div>
+        <div class="text-sm text-gray-400 mt-1">策略输出</div>
       </div>
       <div class="flex gap-2 items-center">
         <select x-show="tab==='cb'" x-model="cbDate" @change="loadCb()" class="text-xs bg-white border border-gray-200 rounded-lg px-3 py-2 outline-none">
@@ -356,8 +411,21 @@
         <select x-show="tab==='stock'" x-model="stockDate" @change="loadStock()" class="text-xs bg-white border border-gray-200 rounded-lg px-3 py-2 outline-none">
           <template x-for="d in stockDates"><option :value="d" x-text="d"></option></template>
         </select>
-        <button @click="exportMd()" class="px-3 py-2 border border-gray-200 bg-white text-xs rounded-lg hover:bg-gray-50">导出 Markdown</button>
+        <button @click="exportMd()" class="px-3 py-2 border border-gray-200 bg-white text-xs rounded-lg hover:bg-gray-50">导出</button>
+        <button @click="runStrategy()" :disabled="running"
+          class="px-3 py-2 text-xs rounded-lg text-white"
+          :class="running ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700'">
+          <span x-show="!running">运行策略</span>
+          <span x-show="running" class="flex items-center gap-1">
+            <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+            运行中…
+          </span>
+        </button>
       </div>
+    </div>
+    <div x-show="error" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-sm text-red-700 flex justify-between items-center">
+      <span x-text="error"></span>
+      <button @click="error=''" class="text-red-400 hover:text-red-600 text-lg leading-none">&times;</button>
     </div>
     <div class="bg-white border border-gray-100 rounded-xl p-4 mb-5 shadow-sm shadow-gray-100/40">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -371,11 +439,15 @@
           x-text="'基于 ' + stockDate + ' 收盘 · 适用 ' + stockTradeDate + ' 开盘执行'"></div>
       </div>
     </div>
-    <div x-show="tab==='cb' && !items.length" class="bg-white border border-gray-100 rounded-xl p-6 text-sm text-gray-400 shadow-sm shadow-gray-100/40">
-      暂无转债榜单，请运行：<code class="bg-gray-100 px-1 rounded">python3 -m strategies.cb_rotation.run</code>
+    <div x-show="tab==='cb' && !running && !items.length" class="bg-white border border-gray-100 rounded-xl p-6 text-sm text-gray-400 shadow-sm shadow-gray-100/40">
+      暂无转债榜单，点击右上角「运行策略」生成。
     </div>
-    <div x-show="tab==='stock' && !stockItems.length" class="bg-white border border-gray-100 rounded-xl p-6 text-sm text-gray-400 shadow-sm shadow-gray-100/40">
-      暂无股票榜单，请运行：<code class="bg-gray-100 px-1 rounded">python3 -m strategies.stock_smallcap.run</code>
+    <div x-show="tab==='stock' && !running && !stockItems.length" class="bg-white border border-gray-100 rounded-xl p-6 text-sm text-gray-400 shadow-sm shadow-gray-100/40">
+      暂无股票榜单，点击右上角「运行策略」生成。
+    </div>
+    <div x-show="running" class="bg-white border border-gray-100 rounded-xl p-12 text-center shadow-sm shadow-gray-100/40">
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400 mx-auto mb-3"></div>
+      <div class="text-sm text-gray-400">正在生成榜单，请稍候…</div>
     </div>
     <div x-show="tab==='cb' && items.length" class="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm shadow-gray-100/40">
       <table class="w-full text-sm">
@@ -622,9 +694,9 @@
   }
 
   function planPage() {
-    const ORDER = {SELL:'卖出', BUY:'买入', ADD:'加仓', TRIM:'减仓', HOLD:'持有', SKIP:'跳过'}
     return {
       plan: null,
+      sizingCb: false, sizingStock: false,
       fmtMoney(v) {
         return v == null ? '-' : '¥' + Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
       },
@@ -640,17 +712,34 @@
       async load() {
         this.plan = await fetch('/api/plan').then(r => r.json())
       },
+      async sizeOrders(strategy) {
+        const key = strategy === 'cb' ? 'sizingCb' : 'sizingStock'
+        if (!this.plan?.account) { alert('请先在账户详情页录入账户信息'); return }
+        const cashField = strategy === 'cb' ? 'bond_cash' : 'stock_cash'
+        const cash = Math.round(this.plan.account[cashField] || 0)
+        this[key] = true
+        try {
+          const r = await fetch(`/api/plan/${strategy}/size-orders`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({cash}),
+          })
+          if (!r.ok) { const e = await r.json(); alert(e.detail?.message || '生成失败'); return }
+          await this.load()
+        } finally {
+          this[key] = false
+        }
+      },
       cbGroups() {
         const orders = this.plan?.cb?.orders || []
         return ['SELL','TRIM','BUY','ADD'].map(action => ({
-          label: ORDER[action] || action, action,
+          label: {SELL:'卖出', BUY:'买入', ADD:'加仓', TRIM:'减仓'}[action], action,
           items: orders.filter(r => r.action === action && r.shares !== 0)
         })).filter(g => g.items.length)
       },
       stockGroups() {
         const orders = this.plan?.stock?.orders || []
-        return ['SELL','BUY','ADD','TRIM'].map(action => ({
-          label: ORDER[action] || action, action,
+        return ['SELL','TRIM','BUY','ADD'].map(action => ({
+          label: {SELL:'卖出', BUY:'买入', ADD:'加仓', TRIM:'减仓'}[action], action,
           items: orders.filter(r => r.action === action && r.shares !== 0)
         })).filter(g => g.items.length)
       },
@@ -663,6 +752,7 @@
       cbDates: [], stockDates: [],
       cbDate: '', stockDate: '',
       cbTradeDate: '', stockTradeDate: '',
+      running: false, error: '',
       async load() {
         const [cbDates, stockDates] = await Promise.all([
           fetch('/api/rankings/cb/dates').then(r => r.json()),
@@ -685,6 +775,37 @@
         const r = await fetch(`/api/rankings/stock/${this.stockDate}`).then(r => r.json())
         this.stockItems = r.items || []
         this.stockTradeDate = r.trade_date || ''
+      },
+      async runStrategy() {
+        this.running = true
+        this.error = ''
+        const strategy = this.tab
+        try {
+          const res = await fetch(`/api/rankings/${strategy}/run`, { method: 'POST' })
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
+            const msg = typeof body.detail === 'object' ? body.detail.message : String(body.detail || `请求失败 (${res.status})`)
+            throw new Error(msg)
+          }
+          const data = await res.json()
+          // 刷新日期列表和榜单
+          const datesRes = await fetch(`/api/rankings/${strategy}/dates`).then(r => r.json())
+          if (strategy === 'cb') {
+            this.cbDates = datesRes.sort().reverse()
+            this.cbDate = this.cbDates[0] || ''
+            this.items = data.items || []
+            this.cbTradeDate = data.trade_date || ''
+          } else {
+            this.stockDates = datesRes.sort().reverse()
+            this.stockDate = this.stockDates[0] || ''
+            this.stockItems = data.items || []
+            this.stockTradeDate = data.trade_date || ''
+          }
+        } catch (e) {
+          this.error = e.message || '运行失败'
+        } finally {
+          this.running = false
+        }
       },
       async exportMd() {
         const strategy = this.tab

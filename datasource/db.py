@@ -131,6 +131,15 @@ def init_db() -> None:
             stock_name    TEXT,
             shares        INTEGER NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS raw_snapshots (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_date TEXT    NOT NULL,
+            name          TEXT    NOT NULL,
+            subdir        TEXT,
+            data_json     TEXT    NOT NULL,
+            created_at    TEXT    NOT NULL
+        );
         """)
 
 
@@ -372,3 +381,33 @@ def get_latest_rankings(strategy: str) -> list[dict]:
 def get_latest_orders(strategy: str) -> list[dict]:
     dates = get_ranking_dates(strategy)
     return get_orders(strategy, dates[0]) if dates else []
+
+
+# ── 原始数据快照（本地优先缓存） ──────────────────────────────────────────────
+
+def get_raw_snapshot(snapshot_date: str, name: str, subdir: str | None = None) -> str | None:
+    """Return JSON data for a cached snapshot, or None."""
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT data_json FROM raw_snapshots WHERE snapshot_date=? AND name=? AND subdir IS ?",
+            (snapshot_date, name, subdir),
+        ).fetchone()
+        return row["data_json"] if row else None
+
+
+def save_raw_snapshot(snapshot_date: str, name: str, data_json: str, subdir: str | None = None) -> None:
+    with _conn() as conn:
+        existing = conn.execute(
+            "SELECT id FROM raw_snapshots WHERE snapshot_date=? AND name=? AND subdir IS ?",
+            (snapshot_date, name, subdir),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE raw_snapshots SET data_json=?, created_at=? WHERE id=?",
+                (data_json, datetime.now().isoformat(), existing["id"]),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO raw_snapshots (snapshot_date, name, subdir, data_json, created_at) VALUES (?,?,?,?,?)",
+                (snapshot_date, name, subdir, data_json, datetime.now().isoformat()),
+            )

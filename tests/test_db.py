@@ -67,3 +67,16 @@ class TestDb(unittest.TestCase):
         history = db.get_account_history()
         self.assertEqual(len(history), 2)
         self.assertEqual(history[0]["snapshot_date"], "2026-06-22")
+
+    def test_raw_snapshot_round_trip(self):
+        db.save_raw_snapshot("20260702", "merged", '{"a":[1,2]}', "stock_smallcap")
+        cached = db.get_raw_snapshot("20260702", "merged", "stock_smallcap")
+        self.assertEqual(cached, '{"a":[1,2]}')
+
+    def test_raw_snapshot_miss_returns_none(self):
+        self.assertIsNone(db.get_raw_snapshot("20990101", "nonexistent", None))
+
+    def test_raw_snapshot_replace_on_duplicate(self):
+        db.save_raw_snapshot("20260702", "test", '{"v":1}', None)
+        db.save_raw_snapshot("20260702", "test", '{"v":2}', None)
+        self.assertEqual(db.get_raw_snapshot("20260702", "test", None), '{"v":2}')

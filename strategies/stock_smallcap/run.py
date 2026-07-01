@@ -25,8 +25,11 @@ except ImportError as exc:
     raise SystemExit("缺少基础依赖。请先运行: python3 -m pip install -r requirements.txt") from exc
 
 from datasource.market import (
+    fetch_sina_snapshot,
     fetch_tencent_snapshot,
+    load_or_fetch,
 )
+from datasource.trade_calendar import enforce_snapshot_run_window
 from strategies.cb_rotation.run import snapshot_raw_data
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -345,47 +348,86 @@ def save_outputs(ranked: pd.DataFrame, rebalance: pd.DataFrame, config: dict, lo
 
 
 def run(config_path: Path, positions_path: Path, max_universe: int | None = None) -> RunArtifacts:
+    enforce_snapshot_run_window()
     log_file = setup_logging()
     config = load_config(config_path)
     ak = require_akshare()
 
-    universe = fetch_universe(ak)
-    universe = filter_board_and_st(universe, config)
-    if max_universe:
-        universe = universe.head(max_universe).copy()
-        logging.info("Limited universe to first %s for test run.", max_universe)
+    today_str = date.today().strftime("%Y%m%d")
 
-    snap = fetch_tencent_snapshot(universe["stock_code"])
-    # Pre-market detection: Tencent resets amount_yuan to 0 before market open.
-    # Fall back to yesterday's cached snapshot so amount-based filters use full-day data.
-    cached_data_date: date | None = None
-    if snap.empty or (snap["amount_yuan"] == 0).all():
-        import glob as _glob
-        cached_snaps = sorted(_glob.glob("data/raw/*/stock_smallcap/universe_snapshot.csv"))
-        if cached_snaps:
-            logging.info("Pre-market detected (amount_yuan=0): using cached snapshot %s", cached_snaps[-1])
-            snap = pd.read_csv(cached_snaps[-1], dtype={"stock_code": str})
-            snap["stock_code"] = snap["stock_code"].astype(str).str.zfill(6)
-            try:
-                from datetime import datetime as _dt
-                cached_data_date = _dt.strptime(Path(cached_snaps[-1]).parts[-3], "%Y%m%d").date()
-            except (ValueError, IndexError):
-                pass
-        else:
-            logging.warning("Pre-market and no cached snapshot found; amount filter will likely remove everything.")
-    merged = universe.merge(snap, on="stock_code", how="inner")
-    logging.info("Snapshot coverage: %s/%s", len(merged), len(universe))
+    def _fetch_merged():
+        universe = fetch_universe(ak)
+        universe = filter_board_and_st(universe, config)
+        if max_universe:
+            universe = universe.head(max_universe).copy()
+            logging.info("Limited universe to first %s for test run.", max_universe)
+
+        snap = fetch_tencent_snapshot(universe["stock_code"])
+        # Fallback chain: Tencent → Sina (live) → cached snapshot.
+        if snap.empty or (snap["amount_yuan"] == 0).all():
+            import glob as _glob
+
+            def _load_cached_snapshot():
+                cached_snaps = sorted(_glob.glob("data/raw/*/stock_smallcap/universe_snapshot.csv"))
+                if not cached_snaps:
+                    return None
+                cs = pd.read_csv(cached_snaps[-1], dtype={"stock_code": str})
+                cs["stock_code"] = cs["stock_code"].astype(str).str.zfill(6)
+                return cs
+
+            sina_snap = fetch_sina_snapshot(universe["stock_code"])
+            if not sina_snap.empty and not (sina_snap["amount_yuan"] == 0).all():
+                logging.info("Tencent unavailable, using Sina live snapshot")
+                snap = sina_snap
+                cached_snap = _load_cached_snapshot()
+                if cached_snap is not None:
+                    for col in ("pe_ttm", "total_mv_yuan", "limit_up", "limit_down"):
+                        if col in cached_snap.columns and col in snap.columns:
+                            snap[col] = snap["stock_code"].map(
+                                cached_snap.set_index("stock_code")[col]
+                            ).fillna(snap[col])
+            else:
+                cached_snap = _load_cached_snapshot()
+                if cached_snap is not None:
+                    logging.info("Both Tencent and Sina unavailable, using cached snapshot")
+                    snap = cached_snap
+                else:
+                    logging.warning("All data sources unavailable and no cached snapshot.")
+
+        merged = universe.merge(snap, on="stock_code", how="inner")
+        logging.info("Snapshot coverage: %s/%s", len(merged), len(universe))
+        return merged
+
+    merged = load_or_fetch("merged", _fetch_merged, today_str, "stock_smallcap")
+    merged["stock_code"] = merged["stock_code"].astype(str).str.zfill(6)
+    for col in ("total_mv_yuan", "amount_yuan", "pe_ttm", "price",
+                "volume_hand", "prev_close", "limit_up", "limit_down"):
+        if col in merged.columns:
+            merged[col] = pd.to_numeric(merged[col], errors="coerce")
 
     filtered = apply_filters(merged, config)
-    ranked = select_smallcap(ak, filtered, config)
-    if ranked.empty:
-        raise RuntimeError("没有股票通过全部过滤，无法生成榜单。请检查数据源或放宽配置。")
+
+    def _fetch_ranked():
+        r = select_smallcap(ak, filtered, config)
+        if r.empty:
+            raise RuntimeError("没有股票通过全部过滤，无法生成榜单。请检查数据源或放宽配置。")
+        return r
+
+    ranked = load_or_fetch("ranked", _fetch_ranked, today_str, "stock_smallcap")
+    # Restore dtypes after CSV round-trip
+    ranked["stock_code"] = ranked["stock_code"].astype(str).str.zfill(6)
+    for col in ("total_mv_yuan", "amount_yuan", "pe_ttm", "roe_pct", "price",
+                "volume_hand", "prev_close", "limit_up", "limit_down"):
+        if col in ranked.columns:
+            ranked[col] = pd.to_numeric(ranked[col], errors="coerce")
+    if "rank" not in ranked.columns or ranked["rank"].isna().any():
+        ranked["rank"] = range(1, len(ranked) + 1)
 
     current = load_current_positions(positions_path)
     target_df, rebalance = build_target_and_rebalance(current, ranked, config)
     notes = build_data_notes(config)
     today = date.today()
-    data_date = cached_data_date if cached_data_date is not None else today
+    data_date = today
     artifacts = save_outputs(ranked, rebalance, config, log_file, notes, data_date=data_date)
     logging.info("Saved report to %s", artifacts.report_md)
     try:
@@ -397,7 +439,43 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
         )
     except Exception as exc:
         logging.warning("Failed to save raw snapshot: %s", exc)
+    _cleanup_old_outputs("stock_smallcap_")
+    _cleanup_old_raw_snapshots()
     return artifacts
+
+
+def _cleanup_old_outputs(prefix: str, keep: int = 90) -> None:
+    """Keep the `keep` most recent output files matching `prefix`."""
+    if not OUTPUT_DIR.exists():
+        return
+    files = sorted(OUTPUT_DIR.glob(f"{prefix}*"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for f in files[keep:]:
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
+
+def _cleanup_old_raw_snapshots(keep_days: int = 90) -> None:
+    """Remove data/raw/ directories older than `keep_days` days."""
+    raw_dir = ROOT / "data" / "raw"
+    if not raw_dir.exists():
+        return
+    import shutil
+    from datetime import date as _date, timedelta as _td
+    from datetime import datetime as _dt
+
+    cutoff = _date.today() - _td(days=keep_days)
+    for d in sorted(raw_dir.iterdir()):
+        if not d.is_dir():
+            continue
+        try:
+            dir_date = _dt.strptime(d.name, "%Y%m%d").date()
+        except ValueError:
+            continue
+        if dir_date < cutoff:
+            shutil.rmtree(d)
+            logging.info("Cleaned up old raw snapshot: %s", d)
 
 
 def parse_args() -> argparse.Namespace:

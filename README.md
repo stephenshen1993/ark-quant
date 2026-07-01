@@ -132,7 +132,7 @@ CB rotation 使用上一已完成交易日收盘数据，交易时段（09:25–
 python3 -m strategies.cb_rotation.run
 
 # 快速冒烟测试
-python3 -m strategies.cb_rotation.run --max-bonds 30
+python3 -m strategies.cb_rotation.run --max-universe 30
 
 # 根据榜单 + 持仓 + 现金，计算具体买卖张数
 python3 -m strategies.cb_rotation.size_orders --cash 5000
