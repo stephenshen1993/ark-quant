@@ -8,8 +8,11 @@ router = APIRouter(prefix="/api/plan", tags=["plan"])
 
 
 @router.get("")
-def get_plan():
+def get_plan(temperature: float = None):
     account = db.get_latest_account_snapshot()
+    if temperature is not None and account:
+        account = dict(account)
+        account["temperature"] = temperature
 
     cb_orders = db.get_latest_orders("cb")
     cb_dates = db.get_ranking_dates("cb")

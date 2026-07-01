@@ -663,22 +663,23 @@
       },
 
       async loadPlan() {
-        this.plan = await fetch('/api/plan').then(r => r.json())
+        const t = Number(this.temperature) || 0
+        this.plan = await fetch(`/api/plan?temperature=${t}`).then(r => r.json())
       },
 
       async saveTDay() {
-        const p = this.plan || {}
-        const a = p.account || {}
+        // 只更新温度+日期，保留已有账户数据
+        const snap = await fetch('/api/account/latest').then(r => r.json().catch(() => ({})))
         await fetch('/api/account/snapshot', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             snapshot_date: this.tDate,
             temperature: Number(this.temperature) || 0,
-            stock_total: a.stock_total || 0, stock_cash: a.stock_cash || 0,
-            bond_total: a.bond_total || 0, bond_cash: a.bond_cash || 0,
-            changqian_total: a.changqian_total || 0,
-            cash_pool: a.cash_pool || 0,
-            overseas_total: a.overseas_total || 0,
+            stock_total: snap.stock_total || 0, stock_cash: snap.stock_cash || 0,
+            bond_total: snap.bond_total || 0, bond_cash: snap.bond_cash || 0,
+            changqian_total: snap.changqian_total || 0,
+            cash_pool: snap.cash_pool || 0,
+            overseas_total: snap.overseas_total || 0,
           }),
         })
         this.tDaySaved = true
