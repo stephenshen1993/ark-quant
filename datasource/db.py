@@ -321,6 +321,16 @@ def get_ranking_dates(strategy: str) -> list[str]:
         return [r["data_date"] for r in rows]
 
 
+def get_strategy_run_meta(strategy: str, data_date: str) -> dict | None:
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT id, strategy, data_date, trade_date, created_at "
+            "FROM strategy_runs WHERE strategy=? AND data_date=? ORDER BY id DESC LIMIT 1",
+            (strategy, data_date),
+        ).fetchone()
+        return dict(row) if row else None
+
+
 def get_rankings(strategy: str, data_date: str) -> list[dict]:
     table = "cb_rankings" if strategy == "cb" else "stock_rankings"
     with _conn() as conn:

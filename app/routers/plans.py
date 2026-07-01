@@ -15,11 +15,15 @@ def get_plan():
 
     cb_orders = db.get_latest_orders("cb")
     cb_dates = db.get_ranking_dates("cb")
+    cb_data_date = cb_dates[0] if cb_dates else None
+    cb_trade_date = _trade_date_for("cb", cb_data_date)
     if not cb_orders:
         missing.append("cb_orders")
 
     stock_orders = db.get_latest_orders("stock")
     stock_dates = db.get_ranking_dates("stock")
+    stock_data_date = stock_dates[0] if stock_dates else None
+    stock_trade_date = _trade_date_for("stock", stock_data_date)
     if not stock_orders:
         missing.append("stock_orders")
 
@@ -51,11 +55,20 @@ def get_plan():
         "account": account,
         "transfer_steps": transfer_steps,
         "cb": {
-            "data_date": cb_dates[0] if cb_dates else None,
+            "data_date": cb_data_date,
+            "trade_date": cb_trade_date,
             "orders": cb_orders,
         },
         "stock": {
-            "data_date": stock_dates[0] if stock_dates else None,
+            "data_date": stock_data_date,
+            "trade_date": stock_trade_date,
             "orders": stock_orders,
         },
     }
+
+
+def _trade_date_for(strategy: str, data_date: str | None) -> str | None:
+    if not data_date:
+        return None
+    meta = db.get_strategy_run_meta(strategy, data_date)
+    return meta.get("trade_date") if meta else None

@@ -281,8 +281,8 @@
   <div x-show="$store.page === 'plan'" x-data="planPage()" x-init="load()" class="max-w-6xl">
     <div class="flex justify-between items-center mb-4">
       <h1 class="text-xl font-semibold">本期计划</h1>
-      <span x-show="plan?.cb?.data_date || plan?.stock?.data_date" class="text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full"
-        x-text="'适用 ' + (plan?.stock?.data_date || plan?.cb?.data_date || '') + ' 执行'"></span>
+      <span x-show="executionDate()" class="text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full"
+        x-text="'适用 ' + executionDate() + ' 开盘执行'"></span>
     </div>
     <div x-show="plan?.missing?.length" class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm text-amber-700">
       缺少数据：<span x-text="plan?.missing?.join('、')"></span>，请先录入账户信息或运行策略。
@@ -298,7 +298,7 @@
     </div>
     <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40" x-show="plan?.cb?.orders?.length">
       <div class="text-sm font-semibold mb-3">② 转债订单
-        <span class="text-xs text-gray-400 font-normal ml-2" x-text="'基于 ' + plan?.cb?.data_date"></span>
+        <span class="text-xs text-gray-400 font-normal ml-2" x-text="'基于 ' + plan?.cb?.data_date + ' 收盘'"></span>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         <template x-for="group in cbGroups()" :key="group.label">
@@ -320,7 +320,7 @@
     </div>
     <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40" x-show="plan?.stock?.orders?.length">
       <div class="text-sm font-semibold mb-3">③ 股票订单
-        <span class="text-xs text-gray-400 font-normal ml-2" x-text="'基于 ' + plan?.stock?.data_date"></span>
+        <span class="text-xs text-gray-400 font-normal ml-2" x-text="'基于 ' + plan?.stock?.data_date + ' 收盘'"></span>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         <template x-for="group in stockGroups()" :key="group.label">
@@ -366,9 +366,9 @@
           <button @click="tab='stock'; loadStock()" :class="tab==='stock'?'bg-white text-gray-900 shadow-sm':'text-gray-500 hover:text-gray-700'" class="px-4 py-1.5 rounded-md text-sm">股票 Top 20</button>
         </div>
         <div x-show="tab==='cb' && cbTradeDate" class="text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full"
-          x-text="'基于 ' + cbDate + ' 收盘 · 适用 ' + cbTradeDate + ' 执行'"></div>
+          x-text="'基于 ' + cbDate + ' 收盘 · 适用 ' + cbTradeDate + ' 开盘执行'"></div>
         <div x-show="tab==='stock' && stockTradeDate" class="text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full"
-          x-text="'基于 ' + stockDate + ' 收盘 · 适用 ' + stockTradeDate + ' 执行'"></div>
+          x-text="'基于 ' + stockDate + ' 收盘 · 适用 ' + stockTradeDate + ' 开盘执行'"></div>
       </div>
     </div>
     <div x-show="tab==='cb' && !items.length" class="bg-white border border-gray-100 rounded-xl p-6 text-sm text-gray-400 shadow-sm shadow-gray-100/40">
@@ -627,6 +627,9 @@
       plan: null,
       fmtMoney(v) {
         return v == null ? '-' : '¥' + Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      },
+      executionDate() {
+        return this.plan?.stock?.trade_date || this.plan?.cb?.trade_date || ''
       },
       groupClass(action) {
         if (action === 'BUY' || action === 'ADD') return 'text-green-600'

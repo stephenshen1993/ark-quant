@@ -37,6 +37,10 @@ class TestPlansApi(unittest.TestCase):
         self.assertIn("stock", data)
         self.assertGreater(len(data["cb"]["orders"]), 0)
         self.assertGreater(len(data["stock"]["orders"]), 0)
+        self.assertEqual(data["cb"]["data_date"], "2026-06-27")
+        self.assertEqual(data["cb"]["trade_date"], "2026-06-29")
+        self.assertEqual(data["stock"]["data_date"], "2026-06-29")
+        self.assertEqual(data["stock"]["trade_date"], "2026-06-30")
 
     def test_missing_when_no_account(self):
         db._TEST_CONN.execute("DELETE FROM account_snapshots")

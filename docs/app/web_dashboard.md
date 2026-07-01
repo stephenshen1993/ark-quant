@@ -60,11 +60,12 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 页面包含：
 
 - 缺失数据提醒。
+- 适用开盘执行日。
 - 资金调拨步骤。
 - 转债订单。
 - 股票订单。
 
-计划页读取最新账户快照、最新可转债订单和最新股票订单。国内再平衡公式见 `docs/system/investment_system.md`，账户口径见 `docs/system/accounting_model.md`。
+计划页读取最新账户快照、最新可转债订单和最新股票订单。策略订单的口径是：基于 T 日收盘数据，生成 T+1 日开盘可执行计划。国内再平衡公式见 `docs/system/investment_system.md`，账户口径见 `docs/system/accounting_model.md`。
 
 ### 榜单
 
@@ -78,6 +79,8 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 - Markdown 导出
 
 榜单页展示的是策略候选结果，不等同于最终下单清单。最终执行应以本期计划和订单输出为准。
+
+榜单页的日期口径同样是：基于 T 日收盘，适用 T+1 日开盘执行。
 
 ## 数据来源
 
