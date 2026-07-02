@@ -56,7 +56,7 @@
           <div>
             <div @click="acc.posType ? toggleExpand(acc.id) : null"
               :class="acc.posType ? 'cursor-pointer hover:bg-gray-50' : ''"
-              class="grid items-center px-5 py-3.5 gap-4" style="grid-template-columns: 24px 1fr 160px 140px 20px;">
+              class="grid items-center px-5 py-3.5 gap-4" style="grid-template-columns: 24px 1fr 152px 124px 56px 20px;">
               <div :style="'background:' + acc.color" class="w-2.5 h-2.5 rounded-full justify-self-center"></div>
               <div class="min-w-0">
                 <span class="text-sm font-medium" x-text="acc.label"></span>
@@ -64,31 +64,24 @@
               </div>
               <span class="text-xs text-gray-400 text-right" x-text="accUpdateDate(acc)"></span>
               <template x-if="acc.posType">
-                <div class="text-right">
-                  <div class="text-sm font-semibold tabular-nums" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
-                  <div class="text-xs text-gray-400 tabular-nums" x-text="acctPct(acc)"></div>
-                </div>
+                <div class="text-sm font-semibold tabular-nums text-right" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
               </template>
               <template x-if="!acc.posType">
-                <div class="text-right">
-                  <template x-if="editingSimple === acc.id">
-                    <div class="flex items-baseline gap-1 justify-end">
-                      <span class="text-sm text-gray-400">¥</span>
-                      <input type="text" inputmode="decimal" x-model="form[acc.totalKey]"
-                        @blur="saveSimpleAccount(acc.id)"
-                        @keyup.enter="$el.blur()"
-                        x-init="$el.focus()"
-                        class="text-sm font-semibold tabular-nums bg-transparent text-right outline-none border-b border-gray-200 w-28" placeholder="0">
-                    </div>
-                  </template>
-                  <template x-if="editingSimple !== acc.id">
-                    <div @click.stop="editingSimple = acc.id" class="cursor-pointer">
-                      <div class="text-sm font-semibold tabular-nums" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
-                      <div class="text-xs text-gray-400 tabular-nums" x-text="acctPct(acc)"></div>
-                    </div>
-                  </template>
-                </div>
+                <template x-if="editingSimple === acc.id">
+                  <div class="flex items-baseline gap-1 justify-end">
+                    <span class="text-sm text-gray-400">¥</span>
+                    <input type="text" inputmode="decimal" x-model="form[acc.totalKey]"
+                      @blur="saveSimpleAccount(acc.id)"
+                      @keyup.enter="$el.blur()"
+                      x-init="$el.focus()"
+                      class="text-sm font-semibold tabular-nums bg-transparent text-right outline-none border-b border-gray-200 w-28" placeholder="0">
+                  </div>
+                </template>
+                <template x-if="editingSimple !== acc.id">
+                  <div @click.stop="editingSimple = acc.id" class="text-sm font-semibold tabular-nums text-right cursor-pointer" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
+                </template>
               </template>
+              <div class="text-xs text-gray-400 tabular-nums text-right" x-text="acctPct(acc)"></div>
               <span x-show="acc.posType" class="text-gray-300 text-sm justify-self-center" x-text="expanded === acc.id ? '▾' : '▸'"></span>
             </div>
             <!-- 展开区：stock -->
