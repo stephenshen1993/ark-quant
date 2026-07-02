@@ -49,8 +49,8 @@
             <div class="text-sm text-gray-400 mb-1">总资产</div>
             <div class="text-4xl font-semibold tracking-normal tabular-nums" x-text="fmtMoney(totalAssets())"></div>
           </div>
-          <div x-show="snap" class="text-xs text-gray-400">
-            <span x-text="snap.snapshot_date ? '更新于 ' + snap.snapshot_date : ''"></span>
+          <div x-show="snap?.created_at" class="text-xs text-gray-400">
+            <span x-text="'更新于 ' + snap.created_at.slice(0, 10)"></span>
           </div>
         </div>
         <!-- 占比条 -->
