@@ -59,10 +59,12 @@
               class="flex items-center px-5 py-3.5">
               <div :style="'background:' + acc.color" class="w-2.5 h-2.5 rounded-full mr-3 shrink-0"></div>
               <div class="flex-1 min-w-0">
-                <span class="text-sm font-medium" x-text="acc.label"></span>
-                <span class="text-xs text-gray-400 ml-2" x-text="acc.sub"></span>
+                <div class="flex items-baseline gap-2">
+                  <span class="text-sm font-medium" x-text="acc.label"></span>
+                  <span class="text-xs text-gray-400" x-text="acc.sub"></span>
+                </div>
+                <div class="text-xs text-gray-400 mt-0.5" x-text="accUpdateDate(acc)"></div>
               </div>
-              <span class="text-xs text-gray-400 mr-4" x-text="accUpdateDate(acc)"></span>
               <template x-if="acc.posType">
                 <div class="text-right mr-3">
                   <div class="text-sm font-semibold tabular-nums" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
