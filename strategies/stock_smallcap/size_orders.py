@@ -85,21 +85,24 @@ def size_rebalance(
 
     left = cash_left()
 
-    # 现金不足时，从排名最靠后/价格最贵的标的削减
+    # 等权导向：按当前持仓市值排序，轻者优先补、重者优先砍
+    def _weight(c): return desired[c] * prices[c]
+
+    # 现金不足时，从持仓最重的标的削减
     rank_map = {c: i for i, c in enumerate(target_codes)}
     while left < -0.01:
         candidates = [c for c in target_codes if desired[c] >= lot]
         if not candidates:
             break
-        c = max(candidates, key=lambda x: (rank_map[x], prices[x]))
+        c = max(candidates, key=lambda x: (_weight(x), rank_map[x]))
         desired[c] -= lot
         left += prices[c] * lot
 
-    # 残余现金贪心追加：优先排名靠前/便宜的标的加 1 手
+    # 残余现金贪心追加：持仓最轻的优先补
     improved = True
     while improved:
         improved = False
-        for c in sorted(target_codes, key=lambda x: rank_map[x]):
+        for c in sorted(target_codes, key=lambda x: (_weight(x), rank_map[x])):
             cap = int(max_single_weight * total_value / prices[c])
             if prices[c] * lot <= left and desired[c] + lot <= cap:
                 desired[c] += lot
@@ -112,7 +115,6 @@ def size_rebalance(
         changed = True
         while changed:
             changed = False
-            # 过滤：加仓金额 < 门槛的跳过
             for c in target_codes:
                 cur = held.get(c, 0)
                 tgt = desired[c]
@@ -123,11 +125,10 @@ def size_rebalance(
                         left += trade_val
                         desired[c] = cur
                         changed = True
-            # 回填：剩余现金分散到已有仓位
             improved = True
             while improved:
                 improved = False
-                for c in sorted(target_codes, key=lambda x: rank_map[x]):
+                for c in sorted(target_codes, key=lambda x: (_weight(x), rank_map[x])):
                     cap = int(max_single_weight * total_value / prices[c])
                     if c not in skipped and prices[c] * lot <= left and desired[c] + lot <= cap:
                         desired[c] += lot
