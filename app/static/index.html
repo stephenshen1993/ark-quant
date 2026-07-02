@@ -128,8 +128,6 @@
               <span class="text-xl font-semibold text-gray-400">¥</span>
               <input type="text" inputmode="decimal" x-model="form.stock_cash"
                 class="text-2xl font-semibold w-full bg-transparent outline-none" placeholder="0.00">
-              <button @click="saveSnapshot()" class="mt-2 text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-600">保存</button>
-              <span x-show="snapSaved" class="text-xs text-green-600 ml-2">已保存</span>
             </div>
           </div>
         </div>
@@ -164,7 +162,7 @@
           </table>
           <div class="flex items-center gap-3 px-5 py-3 border-t border-gray-50 bg-white">
             <button @click="addRow('stock')" class="text-xs text-gray-400 hover:text-gray-600">＋ 添加行</button>
-            <button @click="savePositions('stock')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-600">保存持仓</button>
+            <button @click="saveAccount('stock')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-600">保存</button>
             <span x-show="stockSaved" class="text-xs text-green-600">已保存</span>
           </div>
         </div>
@@ -189,8 +187,6 @@
               <span class="text-xl font-semibold text-gray-400">¥</span>
               <input type="text" inputmode="decimal" x-model="form.bond_cash"
                 class="text-2xl font-semibold w-full bg-transparent outline-none" placeholder="0.00">
-              <button @click="saveSnapshot()" class="mt-2 text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-600">保存</button>
-              <span x-show="snapSaved" class="text-xs text-green-600 ml-2">已保存</span>
             </div>
           </div>
         </div>
@@ -225,7 +221,7 @@
           </table>
           <div class="flex items-center gap-3 px-5 py-3 border-t border-gray-50 bg-white">
             <button @click="addRow('cb')" class="text-xs text-gray-400 hover:text-gray-600">＋ 添加行</button>
-            <button @click="savePositions('cb')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-600">保存持仓</button>
+            <button @click="saveAccount('cb')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-600">保存</button>
             <span x-show="cbSaved" class="text-xs text-green-600">已保存</span>
           </div>
         </div>
@@ -611,6 +607,33 @@
           this.autoSaved = true
           setTimeout(() => this.autoSaved = false, 1200)
         }
+      },
+      async saveAccount(strategy) {
+        // 1. 保存持仓
+        const src = strategy === 'cb' ? this.cbRows : this.stockRows
+        const rows = src.filter(r => r.code).map(r => ({ code: r.code, name: r.name, shares: r.shares }))
+        const today = new Date().toISOString().slice(0, 10)
+        await fetch(`/api/positions/${strategy}?position_date=${today}`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(rows),
+        })
+        src.forEach(r => { r.isNew = false })
+
+        // 2. 保存账户快照（现金 + 总资产回写）
+        if (this.loaded[strategy]) {
+          const totalKey = strategy === 'cb' ? 'bond_total' : 'stock_total'
+          this.form[totalKey] = this.accountTotal(strategy)
+        }
+        const payload = this.snapshotPayload()
+        await fetch('/api/account/snapshot', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        })
+        Object.assign(this.form, payload)
+
+        // 3. 标记已保存
+        if (strategy === 'cb') { this.cbSaved = true; setTimeout(() => this.cbSaved = false, 2000) }
+        else { this.stockSaved = true; setTimeout(() => this.stockSaved = false, 2000) }
       },
       async savePositions(strategy) {
         const src = strategy === 'cb' ? this.cbRows : this.stockRows
