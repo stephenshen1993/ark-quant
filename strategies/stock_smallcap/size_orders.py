@@ -106,18 +106,34 @@ def size_rebalance(
                 left -= prices[c] * lot
                 improved = True
 
-    # 摩擦成本过滤：加仓金额低于门槛的跳过，把预算还回去
+    # 摩擦成本过滤：反复跳过小单并贪心回填, 直到稳定
     skipped: dict[str, tuple[int, float]] = {}
     if min_trade_value > 0:
-        for c in target_codes:
-            cur = held.get(c, 0)
-            tgt = desired[c]
-            if tgt > cur:
-                trade_val = (tgt - cur) * prices[c]
-                if trade_val < min_trade_value:
-                    skipped[c] = (tgt - cur, trade_val)
-                    left += trade_val
-                    desired[c] = cur
+        changed = True
+        while changed:
+            changed = False
+            # 过滤：加仓金额 < 门槛的跳过
+            for c in target_codes:
+                cur = held.get(c, 0)
+                tgt = desired[c]
+                if tgt > cur:
+                    trade_val = (tgt - cur) * prices[c]
+                    if trade_val < min_trade_value:
+                        skipped[c] = (tgt - cur, trade_val)
+                        left += trade_val
+                        desired[c] = cur
+                        changed = True
+            # 回填：剩余现金分散到已有仓位
+            improved = True
+            while improved:
+                improved = False
+                for c in sorted(target_codes, key=lambda x: rank_map[x]):
+                    cap = int(max_single_weight * total_value / prices[c])
+                    if c not in skipped and prices[c] * lot <= left and desired[c] + lot <= cap:
+                        desired[c] += lot
+                        left -= prices[c] * lot
+                        improved = True
+                        changed = True
 
     # 生成订单行
     rows = []
