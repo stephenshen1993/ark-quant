@@ -56,32 +56,31 @@
           <div>
             <div @click="acc.posType ? toggleExpand(acc.id) : null"
               :class="acc.posType ? 'cursor-pointer hover:bg-gray-50' : ''"
-              class="grid items-center px-5 py-3.5 gap-4" style="grid-template-columns: 24px 1fr 152px 124px 56px 20px;">
+              class="grid items-center px-5 py-3.5 gap-4" style="grid-template-columns: 24px 1fr 124px 56px 152px 20px;">
               <div :style="'background:' + acc.color" class="w-2.5 h-2.5 rounded-full justify-self-center"></div>
               <div class="min-w-0">
                 <span class="text-sm font-medium" x-text="acc.label"></span>
                 <span class="text-xs text-gray-400 ml-2" x-text="acc.sub"></span>
               </div>
-              <span class="text-xs text-gray-400 text-right" x-text="accUpdateDate(acc)"></span>
-              <template x-if="acc.posType">
-                <div class="text-sm font-semibold tabular-nums text-right" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
-              </template>
-              <template x-if="!acc.posType">
-                <template x-if="editingSimple === acc.id">
-                  <div class="flex items-baseline gap-1 justify-end">
-                    <span class="text-sm text-gray-400">¥</span>
-                    <input type="text" inputmode="decimal" x-model="form[acc.totalKey]"
-                      @blur="saveSimpleAccount(acc.id)"
-                      @keyup.enter="$el.blur()"
-                      x-init="$el.focus()"
-                      class="text-sm font-semibold tabular-nums bg-transparent text-right outline-none border-b border-gray-200 w-28" placeholder="0">
-                  </div>
-                </template>
-                <template x-if="editingSimple !== acc.id">
-                  <div @click.stop="editingSimple = acc.id" class="text-sm font-semibold tabular-nums text-right cursor-pointer" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
-                </template>
-              </template>
+              <!-- amount: stock/cb -->
+              <div x-show="acc.posType" class="text-sm font-semibold tabular-nums text-right" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
+              <!-- amount: 简单账户 -->
+              <div x-show="!acc.posType" class="text-right">
+                <div x-show="editingSimple === acc.id" class="flex items-baseline gap-1 justify-end">
+                  <span class="text-sm text-gray-400">¥</span>
+                  <input type="text" inputmode="decimal" x-model="form[acc.totalKey]"
+                    @blur="saveSimpleAccount(acc.id)"
+                    @keyup.enter="$el.blur()"
+                    x-init="$el.focus()"
+                    class="text-sm font-semibold tabular-nums bg-transparent text-right outline-none border-b border-gray-200 w-28" placeholder="0">
+                </div>
+                <div x-show="editingSimple !== acc.id" @click.stop="editingSimple = acc.id" class="text-sm font-semibold tabular-nums text-right cursor-pointer" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
+              </div>
+              <!-- pct -->
               <div class="text-xs text-gray-400 tabular-nums text-right" x-text="acctPct(acc)"></div>
+              <!-- date -->
+              <span class="text-xs text-gray-400 text-right" x-text="accUpdateDate(acc)"></span>
+              <!-- arrow -->
               <span x-show="acc.posType" class="text-gray-300 text-sm justify-self-center" x-text="expanded === acc.id ? '▾' : '▸'"></span>
             </div>
             <!-- 展开区：stock -->
@@ -305,6 +304,7 @@
         temperature: null, stock_total: null, stock_cash: null,
         bond_total: null, bond_cash: null, changqian_total: null,
         cash_pool: null, overseas_total: null,
+        _stock_updated: '', _cb_updated: '',
       },
       async load() {
         const [snap, cb, stock] = await Promise.all([
@@ -318,7 +318,7 @@
         this.stockRows = stock.map(r => ({ ...r, _id: ++this._uid, isNew: false }))
         // per-account 更新日期
         this.form._stock_updated = stock.length > 0 ? stock[0].position_date : (snap?.snapshot_date || '')
-        this.form._bond_updated = cb.length > 0 ? cb[0].position_date : (snap?.snapshot_date || '')
+        this.form._cb_updated = cb.length > 0 ? cb[0].position_date : (snap?.snapshot_date || '')
         // 自动加载行情
         await Promise.all([this.loadQuotes('stock'), this.loadQuotes('cb')])
       },
