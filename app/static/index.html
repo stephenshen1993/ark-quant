@@ -60,9 +60,11 @@
         </div>
         <div x-show="totalAssets() > 0" class="flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-400">
           <template x-for="acc in accounts" :key="acc.id">
-            <span class="flex items-center gap-1">
-              <span class="inline-block w-2 h-2 rounded-full" :style="'background:' + acc.color"></span>
+            <span class="flex items-center gap-1.5">
+              <span class="inline-block w-2 h-2 rounded-full shrink-0" :style="'background:' + acc.color"></span>
               <span x-text="acc.label"></span>
+              <span class="text-gray-500 tabular-nums" x-text="fmtMoney(num(form[acc.totalKey]))"></span>
+              <span class="text-gray-300 tabular-nums" x-text="'(' + (totalAssets() > 0 ? (num(form[acc.totalKey]) / totalAssets() * 100).toFixed(1) : '0') + '%)'"></span>
             </span>
           </template>
         </div>
