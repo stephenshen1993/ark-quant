@@ -56,7 +56,7 @@
           <div>
             <div @click="acc.posType ? toggleExpand(acc.id) : null"
               :class="acc.posType ? 'cursor-pointer hover:bg-gray-50' : ''"
-              class="grid items-center px-5 py-3.5 gap-4" style="grid-template-columns: 24px 1fr 124px 56px 152px 20px;">
+              class="grid items-center px-5 py-3.5 gap-4" style="grid-template-columns: 24px 2fr 1fr 72px 1fr 24px;">
               <div :style="'background:' + acc.color" class="w-2.5 h-2.5 rounded-full justify-self-center"></div>
               <div class="min-w-0">
                 <span class="text-sm font-medium" x-text="acc.label"></span>
