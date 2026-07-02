@@ -16,7 +16,7 @@ import argparse
 import json
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, time
 from pathlib import Path
 
 try:
@@ -426,8 +426,13 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
     current = load_current_positions(positions_path)
     target_df, rebalance = build_target_and_rebalance(current, ranked, config)
     notes = build_data_notes(config)
+    now = datetime.now()
     today = date.today()
-    data_date = today
+    # 盘前运行 → 数据来自上个交易日；盘后运行 → 数据来自今日
+    if now.time() < time(9, 25):
+        data_date = today - timedelta(days=1)
+    else:
+        data_date = today
     artifacts = save_outputs(ranked, rebalance, config, log_file, notes, data_date=data_date)
     logging.info("Saved report to %s", artifacts.report_md)
     try:
