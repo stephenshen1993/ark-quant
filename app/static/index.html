@@ -51,56 +51,46 @@
       </section>
 
       <!-- 账户列表 -->
-      <section class="bg-white border border-gray-100 rounded-xl divide-y divide-gray-50 shadow-sm shadow-gray-100/40">
+      <table class="w-full bg-white border border-gray-100 rounded-xl shadow-sm shadow-gray-100/40">
         <template x-for="acc in accounts" :key="acc.id">
-          <div>
-            <div @click="acc.posType ? toggleExpand(acc.id) : null"
+          <tbody>
+            <tr @click="acc.posType ? toggleExpand(acc.id) : null"
               :class="acc.posType ? 'cursor-pointer hover:bg-gray-50' : ''"
-              class="flex items-center px-5 py-3.5 gap-6 w-full justify-between">
-              <div :style="'background:' + acc.color" class="w-2.5 h-2.5 rounded-full shrink-0"></div>
-              <div class="min-w-0">
-                <span class="text-sm font-medium" x-text="acc.label"></span>
-                <span class="text-xs text-gray-400 ml-2" x-text="acc.sub"></span>
-              </div>
-              <div class="text-xs text-gray-400 tabular-nums text-right shrink-0" x-text="acctPct(acc)"></div>
-              <div x-show="acc.posType" class="text-sm font-semibold tabular-nums text-right shrink-0" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
-              <div x-show="!acc.posType" class="text-right shrink-0">
-                <div x-show="editingSimple === acc.id" class="flex items-baseline gap-1 justify-end">
-                  <span class="text-sm text-gray-400">¥</span>
-                  <input type="text" inputmode="decimal" x-model="form[acc.totalKey]"
-                    @blur="saveSimpleAccount(acc.id)" @keyup.enter="$el.blur()" x-init="$el.focus()"
-                    class="text-sm font-semibold tabular-nums bg-transparent text-right outline-none border-b border-gray-200 w-28" placeholder="0">
-                </div>
-                <div x-show="editingSimple !== acc.id" @click.stop="editingSimple = acc.id" class="text-sm font-semibold tabular-nums cursor-pointer" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
-              </div>
-              <div class="text-xs text-gray-400 text-right shrink-0" x-text="accUpdateDate(acc)"></div>
-              <span x-show="acc.posType" class="text-gray-300 text-sm shrink-0" x-text="expanded === acc.id ? '▾' : '▸'"></span>
-            </div>
-            <!-- 展开区：stock -->
-            <div x-show="expanded === 'stock' && acc.id === 'stock'" x-transition class="border-t border-gray-100 bg-gray-50/30 px-5 py-4">
+              class="border-b border-gray-50 last:border-b-0">
+              <td class="pl-5 py-3.5 w-5"><div :style="'background:' + acc.color" class="w-2.5 h-2.5 rounded-full"></div></td>
+              <td class="py-3.5"><span class="text-sm font-medium" x-text="acc.label"></span><span class="text-xs text-gray-400 ml-2" x-text="acc.sub"></span></td>
+              <td class="py-3.5 text-right text-xs text-gray-400 tabular-nums" x-text="acctPct(acc)"></td>
+              <td class="py-3.5 text-right"><span x-show="acc.posType" class="text-sm font-semibold tabular-nums" x-text="fmtMoney(num(form[acc.totalKey]))"></span><span x-show="!acc.posType"><span x-show="editingSimple === acc.id" class="flex items-baseline gap-1 justify-end"><span class="text-sm text-gray-400">¥</span><input type="text" inputmode="decimal" x-model="form[acc.totalKey]" @blur="saveSimpleAccount(acc.id)" @keyup.enter="$el.blur()" x-init="$el.focus()" class="text-sm font-semibold tabular-nums bg-transparent text-right outline-none border-b border-gray-200 w-28" placeholder="0"></span><span x-show="editingSimple !== acc.id" @click.stop="editingSimple = acc.id" class="text-sm font-semibold tabular-nums cursor-pointer" x-text="fmtMoney(num(form[acc.totalKey]))"></span></span></td>
+              <td class="py-3.5 text-right text-xs text-gray-400" x-text="accUpdateDate(acc)"></td>
+              <td class="py-3.5 pr-5 text-center w-5"><span x-show="acc.posType" class="text-gray-300 text-sm" x-text="expanded === acc.id ? '▾' : '▸'"></span></td>
+            </tr>
+            <tr x-show="expanded === 'stock' && acc.id === 'stock'" class="border-b border-gray-50">
+              <td colspan="6" class="bg-gray-50/30 px-5 py-4">
               <div class="flex items-center gap-3 mb-3">
                 <span class="text-xs text-gray-400">现金 ¥</span>
                 <input type="text" inputmode="decimal" x-model="form.stock_cash" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
               </div>
-              <table class="w-full text-sm"><thead><tr class="text-xs text-gray-400 border-b border-gray-200"><th class="text-left font-normal py-1.5 w-20">代码</th><th class="text-left font-normal py-1.5">名称</th><th class="text-right font-normal py-1.5 w-20">股数</th><th class="text-right font-normal py-1.5 w-20">现价</th><th class="text-right font-normal py-1.5 w-24">市值</th><th class="text-right font-normal py-1.5 w-14">占比</th><th class="w-5"></th></tr></thead>
+              <table class="w-full text-sm"><thead><tr class="text-xs text-gray-400 border-b border-gray-200"><th class="text-left font-normal py-1.5">代码</th><th class="text-left font-normal py-1.5">名称</th><th class="text-right font-normal py-1.5">股数</th><th class="text-right font-normal py-1.5">现价</th><th class="text-right font-normal py-1.5">市值</th><th class="text-right font-normal py-1.5">占比</th><th></th></tr></thead>
               <tbody><template x-for="row in stockRows" :key="row._id"><tr class="border-b border-gray-100"><td class="py-1.5"><template x-if="row.isNew"><input type="text" x-model="row.code" @change="autofill('stock', row)" placeholder="代码" style="width:72px;border:none;border-bottom:1px solid #d1d5db;background:transparent;outline:none;padding:1px 0;font-size:12px;"></template><span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span></td><td class="py-1.5 text-gray-700 font-medium text-xs" x-text="row.name || '—'"></td><td class="py-1.5 text-right"><input type="number" min="0" step="100" x-model.number="row.shares" @input.debounce.600ms="scheduleSortRows('stock')" style="width:64px;border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0;text-align:right;font-size:12px;"></td><td class="py-1.5 text-right text-xs text-gray-500" x-text="rowPrice('stock', row.code)?.toFixed(2) ?? '-'"></td><td class="py-1.5 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('stock', row) != null ? fmtMoney(rowValue('stock', row)) : '-'"></td><td class="py-1.5 text-right text-xs text-gray-400" x-text="rowWeight('stock', row) != null ? (rowWeight('stock', row)*100).toFixed(1)+'%' : '-'"></td><td class="py-1.5 text-center"><button @click="removeRow('stock', row)" class="text-gray-300 hover:text-red-400 text-xs">✕</button></td></tr></template></tbody></table>
               <div x-show="stockRows.length === 0" class="text-xs text-gray-400 py-2">暂无持仓</div>
               <div class="flex items-center gap-3 mt-3"><button @click="addRow('stock')" class="text-xs text-gray-400 hover:text-gray-600">＋ 添加行</button><button @click="saveAccount('stock')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-700">保存</button><span x-show="stockSaved" class="text-xs text-green-600">已保存</span></div>
-            </div>
-            <!-- 展开区：cb -->
-            <div x-show="expanded === 'cb' && acc.id === 'cb'" x-transition class="border-t border-gray-100 bg-gray-50/30 px-5 py-4">
+              </td>
+            </tr>
+            <tr x-show="expanded === 'cb' && acc.id === 'cb'" class="border-b border-gray-50">
+              <td colspan="6" class="bg-gray-50/30 px-5 py-4">
               <div class="flex items-center gap-3 mb-3">
                 <span class="text-xs text-gray-400">现金 ¥</span>
                 <input type="text" inputmode="decimal" x-model="form.bond_cash" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
               </div>
-              <table class="w-full text-sm"><thead><tr class="text-xs text-gray-400 border-b border-gray-200"><th class="text-left font-normal py-1.5 w-20">代码</th><th class="text-left font-normal py-1.5">名称</th><th class="text-right font-normal py-1.5 w-20">张数</th><th class="text-right font-normal py-1.5 w-20">现价</th><th class="text-right font-normal py-1.5 w-24">市值</th><th class="text-right font-normal py-1.5 w-14">占比</th><th class="w-5"></th></tr></thead>
+              <table class="w-full text-sm"><thead><tr class="text-xs text-gray-400 border-b border-gray-200"><th class="text-left font-normal py-1.5">代码</th><th class="text-left font-normal py-1.5">名称</th><th class="text-right font-normal py-1.5">张数</th><th class="text-right font-normal py-1.5">现价</th><th class="text-right font-normal py-1.5">市值</th><th class="text-right font-normal py-1.5">占比</th><th></th></tr></thead>
               <tbody><template x-for="row in cbRows" :key="row._id"><tr class="border-b border-gray-100"><td class="py-1.5"><template x-if="row.isNew"><input type="text" x-model="row.code" @change="autofill('cb', row)" placeholder="代码" style="width:72px;border:none;border-bottom:1px solid #d1d5db;background:transparent;outline:none;padding:1px 0;font-size:12px;"></template><span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span></td><td class="py-1.5 text-gray-700 font-medium text-xs" x-text="row.name || '—'"></td><td class="py-1.5 text-right"><input type="number" min="0" step="10" x-model.number="row.shares" @input.debounce.600ms="scheduleSortRows('cb')" style="width:64px;border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0;text-align:right;font-size:12px;"></td><td class="py-1.5 text-right text-xs text-gray-500" x-text="rowPrice('cb', row.code)?.toFixed(2) ?? '-'"></td><td class="py-1.5 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('cb', row) != null ? fmtMoney(rowValue('cb', row)) : '-'"></td><td class="py-1.5 text-right text-xs text-gray-400" x-text="rowWeight('cb', row) != null ? (rowWeight('cb', row)*100).toFixed(1)+'%' : '-'"></td><td class="py-1.5 text-center"><button @click="removeRow('cb', row)" class="text-gray-300 hover:text-red-400 text-xs">✕</button></td></tr></template></tbody></table>
               <div x-show="cbRows.length === 0" class="text-xs text-gray-400 py-2">暂无持仓</div>
               <div class="flex items-center gap-3 mt-3"><button @click="addRow('cb')" class="text-xs text-gray-400 hover:text-gray-600">＋ 添加行</button><button @click="saveAccount('cb')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-700">保存</button><span x-show="cbSaved" class="text-xs text-green-600">已保存</span></div>
-            </div>
-          </div>
+              </td>
+            </tr>
+          </tbody>
         </template>
-      </section>
+      </table>
     </div>
   </div>
 
