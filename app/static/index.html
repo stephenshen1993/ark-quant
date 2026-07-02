@@ -73,8 +73,7 @@
       <!-- 账户列表 -->
       <section class="bg-white border border-gray-100 rounded-xl divide-y divide-gray-50 shadow-sm shadow-gray-100/40">
         <template x-for="acc in sortedAccounts()" :key="acc.id">
-          <div @click="openDetail(acc.id)"
-            class="flex items-center px-5 py-4 hover:bg-gray-50 cursor-pointer select-none">
+          <div class="flex items-center px-5 py-4" :class="acc.posType ? 'hover:bg-gray-50 cursor-pointer' : ''" @click="acc.posType && openDetail(acc.id)">
             <div :style="'background:' + acc.color" class="w-1 h-10 rounded-full mr-4 shrink-0"></div>
             <div class="flex-1 min-w-0">
               <div class="text-sm font-semibold" x-text="acc.label"></div>
@@ -89,11 +88,24 @@
               </div>
             </div>
             <div class="text-right mr-4 shrink-0">
-              <div class="text-base font-semibold tabular-nums" x-text="fmtCompactMoney(accountAmount(acc))"></div>
-              <div class="text-xs text-gray-400"
-                x-text="totalAssets() > 0 ? accountPct(acc) + '%' : '-'"></div>
+              <!-- 无持仓账户：内联编辑 -->
+              <template x-if="!acc.posType">
+                <div class="flex items-baseline gap-1 justify-end">
+                  <span class="text-sm text-gray-400">¥</span>
+                  <input type="text" inputmode="decimal" x-model="form[acc.totalKey]" @change="saveSnapshot({ reload: false })"
+                    class="text-base font-semibold tabular-nums bg-transparent text-right outline-none border-b border-gray-200 w-24" placeholder="0">
+                </div>
+              </template>
+              <!-- 有持仓账户：点击进入详情 -->
+              <template x-if="acc.posType">
+                <div>
+                  <div class="text-base font-semibold tabular-nums" x-text="fmtCompactMoney(accountAmount(acc))"></div>
+                  <div class="text-xs text-gray-400"
+                    x-text="totalAssets() > 0 ? accountPct(acc) + '%' : '-'"></div>
+                </div>
+              </template>
             </div>
-            <div class="text-gray-300 text-base">›</div>
+            <div x-show="acc.posType" class="text-gray-300 text-base">›</div>
           </div>
         </template>
       </section>
@@ -109,28 +121,15 @@
 
       <!-- 股票账户详情 -->
       <div x-show="selectedAccount === 'stock'">
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-5">
-          <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
-            <div class="text-xs text-gray-400 mb-2">总资产 <span class="font-normal text-gray-300">持仓+现金</span></div>
-            <div class="text-2xl font-semibold tabular-nums"
-              x-text="loaded.stock ? fmtYuan(accountTotal('stock')) : (quotesLoading ? '…' : '-')"></div>
-          </div>
-          <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
-            <div class="text-xs text-gray-400 mb-2">持仓资产 <span class="font-normal text-gray-300">实时</span></div>
-            <div class="text-2xl font-semibold tabular-nums"
-              x-text="loaded.stock ? fmtYuan(holdingsValue('stock')) : (quotesLoading ? '…' : '-')"></div>
-          </div>
-          <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
-            <div class="text-xs text-gray-400 mb-2">可用现金</div>
-            <div class="flex items-baseline gap-1 border-b border-gray-200 pb-1">
-              <span class="text-xl font-semibold text-gray-400">¥</span>
-              <input type="text" inputmode="decimal" x-model="form.stock_cash"
-                class="text-2xl font-semibold w-full bg-transparent outline-none" placeholder="0.00">
-            </div>
-          </div>
-        </div>
         <div class="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm shadow-gray-100/40">
-          <div class="text-sm font-semibold px-5 py-4">持仓明细 <span class="text-xs font-normal text-gray-400">（股数）</span></div>
+          <div class="flex items-center gap-3 px-5 py-3 border-b border-gray-50">
+            <span class="text-sm font-semibold">持仓明细 <span class="text-xs font-normal text-gray-400">（股数）</span></span>
+            <span class="text-xs text-gray-300">|</span>
+            <span class="text-xs text-gray-400">现金</span>
+            <span class="text-sm text-gray-400">¥</span>
+            <input type="text" inputmode="decimal" x-model="form.stock_cash"
+              class="text-sm font-semibold w-28 bg-transparent outline-none" placeholder="0">
+          </div>
           <table class="w-full text-sm">
             <thead class="bg-gray-50"><tr class="text-xs text-gray-400 border-y border-gray-50">
               <th class="text-left font-normal py-2 pl-5 w-20">代码</th>
@@ -168,28 +167,15 @@
 
       <!-- 转债账户详情 -->
       <div x-show="selectedAccount === 'cb'">
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-5">
-          <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
-            <div class="text-xs text-gray-400 mb-2">总资产 <span class="font-normal text-gray-300">持仓+现金</span></div>
-            <div class="text-2xl font-semibold tabular-nums"
-              x-text="loaded.cb ? fmtYuan(accountTotal('cb')) : (quotesLoading ? '…' : '-')"></div>
-          </div>
-          <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
-            <div class="text-xs text-gray-400 mb-2">持仓资产 <span class="font-normal text-gray-300">实时</span></div>
-            <div class="text-2xl font-semibold tabular-nums"
-              x-text="loaded.cb ? fmtYuan(holdingsValue('cb')) : (quotesLoading ? '…' : '-')"></div>
-          </div>
-          <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
-            <div class="text-xs text-gray-400 mb-2">可用现金</div>
-            <div class="flex items-baseline gap-1 border-b border-gray-200 pb-1">
-              <span class="text-xl font-semibold text-gray-400">¥</span>
-              <input type="text" inputmode="decimal" x-model="form.bond_cash"
-                class="text-2xl font-semibold w-full bg-transparent outline-none" placeholder="0.00">
-            </div>
-          </div>
-        </div>
         <div class="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm shadow-gray-100/40">
-          <div class="text-sm font-semibold px-5 py-4">持仓明细 <span class="text-xs font-normal text-gray-400">（张数）</span></div>
+          <div class="flex items-center gap-3 px-5 py-3 border-b border-gray-50">
+            <span class="text-sm font-semibold">持仓明细 <span class="text-xs font-normal text-gray-400">（张数）</span></span>
+            <span class="text-xs text-gray-300">|</span>
+            <span class="text-xs text-gray-400">现金</span>
+            <span class="text-sm text-gray-400">¥</span>
+            <input type="text" inputmode="decimal" x-model="form.bond_cash"
+              class="text-sm font-semibold w-28 bg-transparent outline-none" placeholder="0">
+          </div>
           <table class="w-full text-sm">
             <thead class="bg-gray-50"><tr class="text-xs text-gray-400 border-y border-gray-50">
               <th class="text-left font-normal py-2 pl-5 w-20">代码</th>
@@ -225,47 +211,6 @@
         </div>
       </div>
 
-      <!-- 长钱账户详情 -->
-      <div x-show="selectedAccount === 'changqian'">
-        <div class="bg-white border border-gray-100 rounded-xl p-6 shadow-sm shadow-gray-100/40" style="max-width:380px">
-          <div class="text-xs text-gray-400 mb-2">总资产</div>
-          <div class="flex items-baseline gap-1 border-b border-gray-200 pb-1">
-            <span class="text-2xl font-semibold text-gray-400">¥</span>
-            <input type="text" inputmode="decimal" x-model="form.changqian_total"
-              class="text-3xl font-semibold w-full bg-transparent outline-none" placeholder="0.00">
-          </div>
-          <button @click="saveSnapshot()" class="mt-3 text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-600">保存</button>
-          <span x-show="snapSaved" class="text-xs text-green-600 ml-2">已保存</span>
-        </div>
-      </div>
-
-      <!-- 现金池详情 -->
-      <div x-show="selectedAccount === 'cash'">
-        <div class="bg-white border border-gray-100 rounded-xl p-6 shadow-sm shadow-gray-100/40" style="max-width:380px">
-          <div class="text-xs text-gray-400 mb-2">余额</div>
-          <div class="flex items-baseline gap-1 border-b border-gray-200 pb-1">
-            <span class="text-2xl font-semibold text-gray-400">¥</span>
-            <input type="text" inputmode="decimal" x-model="form.cash_pool"
-              class="text-3xl font-semibold w-full bg-transparent outline-none" placeholder="0.00">
-          </div>
-          <button @click="saveSnapshot()" class="mt-3 text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-600">保存</button>
-          <span x-show="snapSaved" class="text-xs text-green-600 ml-2">已保存</span>
-        </div>
-      </div>
-
-      <!-- 海外长钱详情 -->
-      <div x-show="selectedAccount === 'overseas'">
-        <div class="bg-white border border-gray-100 rounded-xl p-6 shadow-sm shadow-gray-100/40" style="max-width:380px">
-          <div class="text-xs text-gray-400 mb-2">总资产</div>
-          <div class="flex items-baseline gap-1 border-b border-gray-200 pb-1">
-            <span class="text-2xl font-semibold text-gray-400">¥</span>
-            <input type="text" inputmode="decimal" x-model="form.overseas_total"
-              class="text-3xl font-semibold w-full bg-transparent outline-none" placeholder="0.00">
-          </div>
-          <button @click="saveSnapshot()" class="mt-3 text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-600">保存</button>
-          <span x-show="snapSaved" class="text-xs text-green-600 ml-2">已保存</span>
-        </div>
-      </div>
     </div>
 
   </div>
