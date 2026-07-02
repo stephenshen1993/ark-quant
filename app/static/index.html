@@ -51,7 +51,7 @@
       </section>
 
       <!-- 账户列表 -->
-      <table class="bg-white border border-gray-100 rounded-xl shadow-sm shadow-gray-100/40">
+      <table class="w-full bg-white border border-gray-100 rounded-xl shadow-sm shadow-gray-100/40">
         <template x-for="acc in accounts" :key="acc.id">
           <tbody>
             <tr @click="acc.posType ? toggleExpand(acc.id) : null"
