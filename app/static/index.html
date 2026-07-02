@@ -33,8 +33,7 @@
   <!-- 账户总览 -->
   <div x-show="$store.page === 'account'" x-data="accountPage()" x-init="load()">
 
-    <!-- ① 列表视图 -->
-    <div x-show="view === 'list'" class="max-w-7xl">
+    <div class="max-w-7xl">
       <!-- 标题栏 -->
       <div class="flex justify-between items-center mb-5">
         <div>
@@ -111,111 +110,37 @@
       </section>
     </div>
 
-    <!-- ② 详情视图 -->
-    <div x-show="view === 'detail'" class="max-w-7xl">
-      <!-- 顶栏 -->
-      <div class="flex items-center gap-3 mb-5">
-        <button @click="back()" class="text-gray-400 hover:text-gray-700 text-2xl leading-none pr-1">‹</button>
-        <h1 class="text-lg font-medium" x-text="currentAccount()?.label"></h1>
+        <!-- 股票持仓 -->
+    <section class="bg-white border border-gray-100 rounded-xl overflow-hidden mb-5 shadow-sm shadow-gray-100/40">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-50">
+        <span class="text-sm font-semibold">广发账户 <span class="text-xs font-normal text-gray-400">股票 · 持仓明细（股数）</span></span>
+        <div class="flex items-center gap-2"><span class="text-xs text-gray-400">现金 ¥</span><input type="text" inputmode="decimal" x-model="form.stock_cash" class="text-sm font-semibold w-24 bg-transparent outline-none" placeholder="0"></div>
       </div>
+      <table class="w-full text-sm"><thead class="bg-gray-50"><tr class="text-xs text-gray-400 border-y border-gray-50"><th class="text-left font-normal py-2 pl-5 w-20">代码</th><th class="text-left font-normal py-2 pl-2">名称</th><th class="text-right font-normal py-2 w-20">股数</th><th class="text-right font-normal py-2 w-20">现价</th><th class="text-right font-normal py-2 w-28">市值</th><th class="text-right font-normal py-2 w-16">占比</th><th class="w-5"></th></tr></thead>
+      <tbody><template x-for="row in stockRows" :key="row._id"><tr class="border-t border-gray-50 hover:bg-gray-50/60"><td class="py-2 pl-5"><template x-if="row.isNew"><input type="text" x-model="row.code" @change="autofill('stock', row)" placeholder="代码" style="width:72px;border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0;font-size:12px;"></template><span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span></td><td class="py-2 pl-2 text-gray-700 font-medium" x-text="row.name || '—'"></td><td class="py-2 text-right"><input type="number" min="0" step="100" x-model.number="row.shares" @input.debounce.600ms="scheduleSortRows('stock')" style="width:64px;border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0;text-align:right;font-size:12px;"></td><td class="py-2 text-right text-xs text-gray-500" x-text="rowPrice('stock', row.code)?.toFixed(2) ?? '-'"></td><td class="py-2 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('stock', row) != null ? fmtYuan(rowValue('stock', row)) : '-'"></td><td class="py-2 text-right text-xs text-gray-400" x-text="rowWeight('stock', row) != null ? (rowWeight('stock', row)*100).toFixed(1)+'%' : '-'"></td><td class="py-2 pl-1 pr-3 text-center"><button @click="removeRow('stock', row)" class="text-gray-200 hover:text-red-400">✕</button></td></tr></template></tbody></table>
+      <div class="flex items-center gap-3 px-5 py-3 border-t border-gray-50 bg-white"><button @click="addRow('stock')" class="text-xs text-gray-400 hover:text-gray-600">＋ 添加行</button><button @click="saveAccount('stock')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-600">保存</button><span x-show="stockSaved" class="text-xs text-green-600">已保存</span></div>
+    </section>
 
-      <!-- 股票账户详情 -->
-      <div x-show="selectedAccount === 'stock'">
-        <div class="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm shadow-gray-100/40">
-          <div class="flex items-center gap-3 px-5 py-3 border-b border-gray-50">
-            <span class="text-sm font-semibold">持仓明细 <span class="text-xs font-normal text-gray-400">（股数）</span></span>
-            <span class="text-xs text-gray-300">|</span>
-            <span class="text-xs text-gray-400">现金</span>
-            <span class="text-sm text-gray-400">¥</span>
-            <input type="text" inputmode="decimal" x-model="form.stock_cash"
-              class="text-sm font-semibold w-28 bg-transparent outline-none" placeholder="0">
-          </div>
-          <table class="w-full text-sm">
-            <thead class="bg-gray-50"><tr class="text-xs text-gray-400 border-y border-gray-50">
-              <th class="text-left font-normal py-2 pl-5 w-20">代码</th>
-              <th class="text-left font-normal py-2 pl-2">名称</th>
-              <th class="text-right font-normal py-2 w-20">股数</th>
-              <th class="text-right font-normal py-2 w-20">现价</th>
-              <th class="text-right font-normal py-2 w-28">市值</th>
-              <th class="text-right font-normal py-2 w-16">占比</th>
-              <th class="w-5"></th>
-            </tr></thead>
-            <tbody>
-              <template x-for="row in stockRows" :key="row._id">
-                <tr class="border-t border-gray-50 hover:bg-gray-50/60">
-                  <td class="py-2 pl-5">
-                    <template x-if="row.isNew"><input type="text" x-model="row.code" @change="autofill('stock', row)" placeholder="代码" style="width:72px;border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0;font-size:12px;"></template>
-                    <span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span>
-                  </td>
-                  <td class="py-2 pl-2 text-gray-700 font-medium" x-text="row.name || '—'"></td>
-                  <td class="py-2 text-right"><input type="number" min="0" step="100" x-model.number="row.shares" @input.debounce.600ms="scheduleSortRows('stock')" style="width:64px;border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0;text-align:right;font-size:12px;"></td>
-                  <td class="py-2 text-right text-xs text-gray-500" x-text="rowPrice('stock', row.code)?.toFixed(2) ?? '-'"></td>
-                  <td class="py-2 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('stock', row) != null ? fmtYuan(rowValue('stock', row)) : '-'"></td>
-                  <td class="py-2 text-right text-xs text-gray-400" x-text="rowWeight('stock', row) != null ? (rowWeight('stock', row)*100).toFixed(1)+'%' : '-'"></td>
-                  <td class="py-2 pl-1 pr-3 text-center"><button @click="removeRow('stock', row)" class="text-gray-200 hover:text-red-400">✕</button></td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-          <div class="flex items-center gap-3 px-5 py-3 border-t border-gray-50 bg-white">
-            <button @click="addRow('stock')" class="text-xs text-gray-400 hover:text-gray-600">＋ 添加行</button>
-            <button @click="saveAccount('stock')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-600">保存</button>
-            <span x-show="stockSaved" class="text-xs text-green-600">已保存</span>
-          </div>
-        </div>
+    <!-- 转债持仓 -->
+    <section class="bg-white border border-gray-100 rounded-xl overflow-hidden mb-5 shadow-sm shadow-gray-100/40">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-50">
+        <span class="text-sm font-semibold">华泰账户 <span class="text-xs font-normal text-gray-400">转债 · 持仓明细（张数）</span></span>
+        <div class="flex items-center gap-2"><span class="text-xs text-gray-400">现金 ¥</span><input type="text" inputmode="decimal" x-model="form.bond_cash" class="text-sm font-semibold w-24 bg-transparent outline-none" placeholder="0"></div>
       </div>
+      <table class="w-full text-sm"><thead class="bg-gray-50"><tr class="text-xs text-gray-400 border-y border-gray-50"><th class="text-left font-normal py-2 pl-5 w-20">代码</th><th class="text-left font-normal py-2 pl-2">名称</th><th class="text-right font-normal py-2 w-20">张数</th><th class="text-right font-normal py-2 w-20">现价</th><th class="text-right font-normal py-2 w-28">市值</th><th class="text-right font-normal py-2 w-16">占比</th><th class="w-5"></th></tr></thead>
+      <tbody><template x-for="row in cbRows" :key="row._id"><tr class="border-t border-gray-50 hover:bg-gray-50/60"><td class="py-2 pl-5"><template x-if="row.isNew"><input type="text" x-model="row.code" @change="autofill('cb', row)" placeholder="代码" style="width:72px;border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0;font-size:12px;"></template><span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span></td><td class="py-2 pl-2 text-gray-700 font-medium" x-text="row.name || '—'"></td><td class="py-2 text-right"><input type="number" min="0" step="10" x-model.number="row.shares" @input.debounce.600ms="scheduleSortRows('cb')" style="width:64px;border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0;text-align:right;font-size:12px;"></td><td class="py-2 text-right text-xs text-gray-500" x-text="rowPrice('cb', row.code)?.toFixed(2) ?? '-'"></td><td class="py-2 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('cb', row) != null ? fmtYuan(rowValue('cb', row)) : '-'"></td><td class="py-2 text-right text-xs text-gray-400" x-text="rowWeight('cb', row) != null ? (rowWeight('cb', row)*100).toFixed(1)+'%' : '-'"></td><td class="py-2 pl-1 pr-3 text-center"><button @click="removeRow('cb', row)" class="text-gray-200 hover:text-red-400">✕</button></td></tr></template></tbody></table>
+      <div class="flex items-center gap-3 px-5 py-3 border-t border-gray-50 bg-white"><button @click="addRow('cb')" class="text-xs text-gray-400 hover:text-gray-600">＋ 添加行</button><button @click="saveAccount('cb')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-600">保存</button><span x-show="cbSaved" class="text-xs text-green-600">已保存</span></div>
+    </section>
 
-      <!-- 转债账户详情 -->
-      <div x-show="selectedAccount === 'cb'">
-        <div class="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm shadow-gray-100/40">
-          <div class="flex items-center gap-3 px-5 py-3 border-b border-gray-50">
-            <span class="text-sm font-semibold">持仓明细 <span class="text-xs font-normal text-gray-400">（张数）</span></span>
-            <span class="text-xs text-gray-300">|</span>
-            <span class="text-xs text-gray-400">现金</span>
-            <span class="text-sm text-gray-400">¥</span>
-            <input type="text" inputmode="decimal" x-model="form.bond_cash"
-              class="text-sm font-semibold w-28 bg-transparent outline-none" placeholder="0">
-          </div>
-          <table class="w-full text-sm">
-            <thead class="bg-gray-50"><tr class="text-xs text-gray-400 border-y border-gray-50">
-              <th class="text-left font-normal py-2 pl-5 w-20">代码</th>
-              <th class="text-left font-normal py-2 pl-2">名称</th>
-              <th class="text-right font-normal py-2 w-20">张数</th>
-              <th class="text-right font-normal py-2 w-20">现价</th>
-              <th class="text-right font-normal py-2 w-28">市值</th>
-              <th class="text-right font-normal py-2 w-16">占比</th>
-              <th class="w-5"></th>
-            </tr></thead>
-            <tbody>
-              <template x-for="row in cbRows" :key="row._id">
-                <tr class="border-t border-gray-50 hover:bg-gray-50/60">
-                  <td class="py-2 pl-5">
-                    <template x-if="row.isNew"><input type="text" x-model="row.code" @change="autofill('cb', row)" placeholder="代码" style="width:72px;border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0;font-size:12px;"></template>
-                    <span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span>
-                  </td>
-                  <td class="py-2 pl-2 text-gray-700 font-medium" x-text="row.name || '—'"></td>
-                  <td class="py-2 text-right"><input type="number" min="0" step="10" x-model.number="row.shares" @input.debounce.600ms="scheduleSortRows('cb')" style="width:64px;border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0;text-align:right;font-size:12px;"></td>
-                  <td class="py-2 text-right text-xs text-gray-500" x-text="rowPrice('cb', row.code)?.toFixed(2) ?? '-'"></td>
-                  <td class="py-2 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('cb', row) != null ? fmtYuan(rowValue('cb', row)) : '-'"></td>
-                  <td class="py-2 text-right text-xs text-gray-400" x-text="rowWeight('cb', row) != null ? (rowWeight('cb', row)*100).toFixed(1)+'%' : '-'"></td>
-                  <td class="py-2 pl-1 pr-3 text-center"><button @click="removeRow('cb', row)" class="text-gray-200 hover:text-red-400">✕</button></td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-          <div class="flex items-center gap-3 px-5 py-3 border-t border-gray-50 bg-white">
-            <button @click="addRow('cb')" class="text-xs text-gray-400 hover:text-gray-600">＋ 添加行</button>
-            <button @click="saveAccount('cb')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-600">保存</button>
-            <span x-show="cbSaved" class="text-xs text-green-600">已保存</span>
-          </div>
-        </div>
-      </div>
-
+    <!-- 简单账户三列 -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="bg-white border border-gray-100 rounded-xl p-4 shadow-sm shadow-gray-100/40"><div class="text-xs text-gray-400 mb-1">长钱账户 <span class="text-gray-300">国内基金</span></div><div class="flex items-baseline gap-1"><span class="text-sm text-gray-400">¥</span><input type="text" inputmode="decimal" x-model="form.changqian_total" @change="saveSnapshot({ reload: false })" class="text-lg font-semibold w-full bg-transparent outline-none" placeholder="0"></div></div>
+      <div class="bg-white border border-gray-100 rounded-xl p-4 shadow-sm shadow-gray-100/40"><div class="text-xs text-gray-400 mb-1">资金账户 <span class="text-gray-300">现金仓位</span></div><div class="flex items-baseline gap-1"><span class="text-sm text-gray-400">¥</span><input type="text" inputmode="decimal" x-model="form.cash_pool" @change="saveSnapshot({ reload: false })" class="text-lg font-semibold w-full bg-transparent outline-none" placeholder="0"></div></div>
+      <div class="bg-white border border-gray-100 rounded-xl p-4 shadow-sm shadow-gray-100/40"><div class="text-xs text-gray-400 mb-1">海外长钱 <span class="text-gray-300">海外基金</span></div><div class="flex items-baseline gap-1"><span class="text-sm text-gray-400">¥</span><input type="text" inputmode="decimal" x-model="form.overseas_total" @change="saveSnapshot({ reload: false })" class="text-lg font-semibold w-full bg-transparent outline-none" placeholder="0"></div></div>
     </div>
-
   </div>
 
-  <!-- 交易 -->
+<!-- 交易 -->
   <div x-show="$store.page === 'trading'" x-data="tradingPage()" x-init="init()" class="max-w-7xl">
     <!-- T 日收盘数据 -->
     <div class="flex items-center gap-4 mb-5 p-4 bg-white border border-gray-100 rounded-xl shadow-sm">
