@@ -460,7 +460,7 @@
       showCbRank: false, showStockRank: false,
 
       async init() {
-        const [snap, planData] = await Promise.all([
+        const [snap] = await Promise.all([
           fetch('/api/account/latest').then(r => r.json().catch(() => null)),
           this.loadPlan(),
         ])
@@ -476,7 +476,6 @@
         this.stockDates = stD.sort().reverse(); this.stockDate = this.stockDates[0] || ''
         if (this.cbDate) await this.loadCb()
         if (this.stockDate) await this.loadStock()
-        this.plan = planData
       },
 
       async loadPlan() {
