@@ -56,32 +56,25 @@
           <div>
             <div @click="acc.posType ? toggleExpand(acc.id) : null"
               :class="acc.posType ? 'cursor-pointer hover:bg-gray-50' : ''"
-              class="grid items-center px-5 py-3.5 gap-4" style="grid-template-columns: 24px 2fr 1fr 72px 1fr 24px;">
-              <div :style="'background:' + acc.color" class="w-2.5 h-2.5 rounded-full justify-self-center"></div>
+              class="flex items-center px-5 py-3.5 gap-6">
+              <div :style="'background:' + acc.color" class="w-2.5 h-2.5 rounded-full shrink-0"></div>
               <div class="min-w-0">
                 <span class="text-sm font-medium" x-text="acc.label"></span>
                 <span class="text-xs text-gray-400 ml-2" x-text="acc.sub"></span>
               </div>
-              <!-- amount: stock/cb -->
-              <div x-show="acc.posType" class="text-sm font-semibold tabular-nums text-right" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
-              <!-- amount: 简单账户 -->
-              <div x-show="!acc.posType" class="text-right">
+              <div class="text-xs text-gray-400 tabular-nums text-right shrink-0" x-text="acctPct(acc)"></div>
+              <div x-show="acc.posType" class="text-sm font-semibold tabular-nums text-right shrink-0" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
+              <div x-show="!acc.posType" class="text-right shrink-0">
                 <div x-show="editingSimple === acc.id" class="flex items-baseline gap-1 justify-end">
                   <span class="text-sm text-gray-400">¥</span>
                   <input type="text" inputmode="decimal" x-model="form[acc.totalKey]"
-                    @blur="saveSimpleAccount(acc.id)"
-                    @keyup.enter="$el.blur()"
-                    x-init="$el.focus()"
+                    @blur="saveSimpleAccount(acc.id)" @keyup.enter="$el.blur()" x-init="$el.focus()"
                     class="text-sm font-semibold tabular-nums bg-transparent text-right outline-none border-b border-gray-200 w-28" placeholder="0">
                 </div>
-                <div x-show="editingSimple !== acc.id" @click.stop="editingSimple = acc.id" class="text-sm font-semibold tabular-nums text-right cursor-pointer" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
+                <div x-show="editingSimple !== acc.id" @click.stop="editingSimple = acc.id" class="text-sm font-semibold tabular-nums cursor-pointer" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
               </div>
-              <!-- pct -->
-              <div class="text-xs text-gray-400 tabular-nums text-right" x-text="acctPct(acc)"></div>
-              <!-- date -->
-              <span class="text-xs text-gray-400 text-right" x-text="accUpdateDate(acc)"></span>
-              <!-- arrow -->
-              <span x-show="acc.posType" class="text-gray-300 text-sm justify-self-center" x-text="expanded === acc.id ? '▾' : '▸'"></span>
+              <div class="text-xs text-gray-400 text-right shrink-0" x-text="accUpdateDate(acc)"></div>
+              <span x-show="acc.posType" class="text-gray-300 text-sm shrink-0" x-text="expanded === acc.id ? '▾' : '▸'"></span>
             </div>
             <!-- 展开区：stock -->
             <div x-show="expanded === 'stock' && acc.id === 'stock'" x-transition class="border-t border-gray-100 bg-gray-50/30 px-5 py-4">
