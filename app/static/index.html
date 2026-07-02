@@ -296,7 +296,7 @@
     </div>
     <!-- 资产再平衡 -->
     <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40" x-show="plan?.transfer_steps?.length">
-      <div class="text-sm font-semibold mb-3">① 资金分配</div>
+      <div class="text-sm font-semibold mb-3">① 资金调拨</div>
       <template x-for="(step, i) in plan?.transfer_steps || []">
         <div class="flex gap-3 text-sm text-gray-700 py-2 border-b border-gray-50 last:border-0">
           <span class="text-xs w-5 h-5 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center shrink-0" x-text="i+1"></span>
@@ -338,7 +338,7 @@
       </div>
       <!-- 生成订单（有排名但无订单时） -->
       <div x-show="cbItems.length && !plan?.cb?.orders?.length" class="flex items-center gap-2 mb-3 text-sm p-3 bg-gray-50 rounded-lg">
-        <span class="text-gray-400 text-xs">起始现金 <span class="text-gray-600 font-medium" x-text="fmtMoney(plan?.account?.bond_cash || 0)"></span>（卖出回款自动计入）</span>
+        <span class="text-gray-400 text-xs">可用现金（含调拨） <span class="text-gray-600 font-medium" x-text="fmtMoney(adjustedCash('cb'))"></span>（卖出回款自动计入）</span>
         <button @click="sizeOrders('cb')" :disabled="sizingCb"
           class="ml-auto px-3 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 disabled:opacity-50"
           x-text="sizingCb ? '计算中…' : '生成订单'"></button>
@@ -403,7 +403,7 @@
       </div>
       <!-- 生成订单（有排名但无订单时） -->
       <div x-show="stockItems.length && !plan?.stock?.orders?.length" class="flex items-center gap-2 mb-3 text-sm p-3 bg-gray-50 rounded-lg">
-        <span class="text-gray-400 text-xs">起始现金 <span class="text-gray-600 font-medium" x-text="fmtMoney(plan?.account?.stock_cash || 0)"></span>（卖出回款自动计入）</span>
+        <span class="text-gray-400 text-xs">可用现金（含调拨） <span class="text-gray-600 font-medium" x-text="fmtMoney(adjustedCash('stock'))"></span>（卖出回款自动计入）</span>
         <button @click="sizeOrders('stock')" :disabled="sizingStock"
           class="ml-auto px-3 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 disabled:opacity-50"
           x-text="sizingStock ? '计算中…' : '生成订单'"></button>
@@ -749,11 +749,22 @@
         if (action === 'TRIM') return 'text-orange-500'
         return 'text-gray-500'
       },
+      adjustedCash(strategy) {
+        const cf = strategy === 'cb' ? 'bond_cash' : 'stock_cash'
+        const dk = strategy === 'cb' ? 'bond' : 'stock'
+        const base = this.plan?.account?.[cf] || 0
+        const delta = this.plan?.transfer_deltas?.[dk] || 0
+        return Math.round(base + delta)
+      },
       async sizeOrders(strategy) {
         const key = strategy === 'cb' ? 'sizingCb' : 'sizingStock'
         if (!this.plan?.account) { alert('请先在账户详情页录入账户信息'); return }
         const cashField = strategy === 'cb' ? 'bond_cash' : 'stock_cash'
-        const cash = Math.round(this.plan.account[cashField] || 0)
+        const deltaKey = strategy === 'cb' ? 'bond' : 'stock'
+        // 基础现金 + 资金分配增量（调拨后实际可用现金）
+        const baseCash = this.plan.account[cashField] || 0
+        const delta = this.plan?.transfer_deltas?.[deltaKey] || 0
+        const cash = Math.round(baseCash + delta)
         this[key] = true
         try {
           const r = await fetch(`/api/plan/${strategy}/size-orders`, {

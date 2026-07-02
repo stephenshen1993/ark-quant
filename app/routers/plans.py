@@ -52,6 +52,7 @@ def get_plan(temperature: float = None):
         "generated_at": datetime.now().isoformat(),
         "account": account,
         "transfer_steps": transfer_steps,
+        "transfer_deltas": deltas if transfer_steps else {},
         "cb": {
             "data_date": cb_data_date,
             "trade_date": cb_trade_date,
