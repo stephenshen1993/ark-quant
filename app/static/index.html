@@ -241,7 +241,7 @@
                 <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
                 <table class="w-full text-sm">
                   <template x-for="r in group.items" :key="r.stock_code">
-                    <tr class="border-b border-gray-50 last:border-0"><td class="py-1.5 pr-3 text-gray-400" x-text="r.stock_code"></td><td class="py-1.5 pr-4 font-medium" x-text="r.stock_name"></td><td class="py-1.5 pr-2 text-right whitespace-nowrap" :class="r.shares>0?'text-green-600':r.shares<0?'text-red-500':'text-gray-400'" x-text="(r.shares>0?'+':'')+r.shares+'股'"></td><td class="py-1.5 text-right text-gray-800 whitespace-nowrap tabular-nums" x-text="r.amount ? fmtMoney(Math.abs(r.amount)) : ''"></td></tr>
+                    <tr class="border-b border-gray-50 last:border-0"><td class="py-1.5 pr-3 text-gray-400" x-text="r.stock_code"></td><td class="py-1.5 pr-4 font-medium" x-text="r.stock_name"></td><td class="py-1.5 pr-2 text-right whitespace-nowrap" :class="r.shares>0?'text-green-600':r.shares<0?'text-red-500':'text-gray-400'" x-text="(r.shares>0?'+':'')+r.shares+'股'"></td><td class="py-1.5 text-right text-gray-800 whitespace-nowrap tabular-nums" x-text="r.amount ? fmtMoney(Math.abs(r.amount)) : ''"></td><td class="py-1.5 pl-2 text-right text-xs text-gray-400 whitespace-nowrap tabular-nums" x-text="r.est_cost > 0 ? '费¥' + r.est_cost : ''"></td></tr>
                   </template>
                 </table>
               </div>

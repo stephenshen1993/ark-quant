@@ -151,8 +151,16 @@ def size_rebalance(
     return pd.DataFrame(rows), summary
 
 
+def _trade_cost(amount: float, action: str) -> float:
+    """A 股交易费用(元)：佣金最低 5 元 + 卖出印花税 0.05%。"""
+    commission = max(5.0, amount * 0.00025)
+    stamp = amount * 0.0005 if action in ("SELL", "TRIM") else 0.0
+    return round(commission + stamp, 2)
+
+
 def _row(action: str, code: str, name_map: dict, prices: dict, cur: int, tgt: int) -> dict:
     delta = tgt - cur
+    amount = round(abs(delta) * prices[code], 2)
     return {
         "action": action,
         "stock_code": code,
@@ -161,7 +169,8 @@ def _row(action: str, code: str, name_map: dict, prices: dict, cur: int, tgt: in
         "current_shares": cur,
         "target_shares": tgt,
         "delta_shares": delta,
-        "amount": round(abs(delta) * prices[code], 2),
+        "amount": amount,
+        "est_cost": _trade_cost(amount, action) if delta != 0 else 0.0,
     }
 
 

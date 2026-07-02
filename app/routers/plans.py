@@ -182,7 +182,7 @@ def _size_stock_orders(cash: float) -> dict:
             "message": f"缺少报价: {missing_prices[:5]}...",
         })
 
-    sheet, summary = size_rebalance(reb, positions, cash, prices)
+    sheet, summary = size_rebalance(reb, positions, cash, prices, min_trade_value=1000)
 
     db.init_db()
     run_id = db.get_latest_run_id("stock")
