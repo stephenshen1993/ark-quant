@@ -38,9 +38,7 @@
       <!-- 标题栏 -->
       <div class="flex justify-between items-center mb-5">
         <div>
-          <h1 class="text-xl font-semibold tracking-normal">账户总览</h1>
-          <div x-show="snap" class="text-sm text-gray-400 mt-1"
-            x-text="snap ? snap.snapshot_date + ' · 温度 ' + snap.temperature + '°' : ''"></div>
+          <h1 class="text-xl font-semibold tracking-normal">账户</h1>
         </div>
       </div>
 
@@ -52,7 +50,7 @@
             <div class="text-4xl font-semibold tracking-normal tabular-nums" x-text="fmtMoney(totalAssets())"></div>
           </div>
           <div x-show="snap" class="text-xs text-gray-400">
-            <span x-text="'快照 ' + snap.snapshot_date"></span>
+            <span x-text="snap.snapshot_date ? '更新于 ' + snap.snapshot_date : ''"></span>
           </div>
         </div>
         <!-- 占比条 -->
