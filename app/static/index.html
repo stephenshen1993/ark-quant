@@ -56,22 +56,21 @@
           <div>
             <div @click="acc.posType ? toggleExpand(acc.id) : null"
               :class="acc.posType ? 'cursor-pointer hover:bg-gray-50' : ''"
-              class="flex items-center px-5 py-3.5 gap-6">
-              <div :style="'background:' + acc.color" class="w-2.5 h-2.5 rounded-full shrink-0"></div>
+              class="grid items-center px-5 py-3.5 gap-4" style="grid-template-columns: 24px 1fr 160px 140px 20px;">
+              <div :style="'background:' + acc.color" class="w-2.5 h-2.5 rounded-full justify-self-center"></div>
               <div class="min-w-0">
                 <span class="text-sm font-medium" x-text="acc.label"></span>
                 <span class="text-xs text-gray-400 ml-2" x-text="acc.sub"></span>
               </div>
-              <div class="flex-1"></div>
-              <span class="text-xs text-gray-400 w-32 text-right shrink-0" x-text="accUpdateDate(acc)"></span>
+              <span class="text-xs text-gray-400 text-right" x-text="accUpdateDate(acc)"></span>
               <template x-if="acc.posType">
-                <div class="text-right w-36 shrink-0">
+                <div class="text-right">
                   <div class="text-sm font-semibold tabular-nums" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
                   <div class="text-xs text-gray-400 tabular-nums" x-text="acctPct(acc)"></div>
                 </div>
               </template>
               <template x-if="!acc.posType">
-                <div class="text-right w-36 shrink-0">
+                <div class="text-right">
                   <template x-if="editingSimple === acc.id">
                     <div class="flex items-baseline gap-1 justify-end">
                       <span class="text-sm text-gray-400">¥</span>
@@ -90,7 +89,7 @@
                   </template>
                 </div>
               </template>
-              <span x-show="acc.posType" class="text-gray-300 text-sm w-4 text-center shrink-0" x-text="expanded === acc.id ? '▾' : '▸'"></span>
+              <span x-show="acc.posType" class="text-gray-300 text-sm justify-self-center" x-text="expanded === acc.id ? '▾' : '▸'"></span>
             </div>
             <!-- 展开区：stock -->
             <div x-show="expanded === 'stock' && acc.id === 'stock'" x-transition class="border-t border-gray-100 bg-gray-50/30 px-5 py-4">
