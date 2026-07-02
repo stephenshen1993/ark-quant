@@ -59,8 +59,8 @@
               class="border-b border-gray-50 last:border-b-0">
               <td class="pl-5 py-3.5 w-5"><div :style="'background:' + acc.color" class="w-2.5 h-2.5 rounded-full"></div></td>
               <td class="py-3.5"><span class="text-sm font-medium" x-text="acc.label"></span><span class="text-xs text-gray-400 ml-2" x-text="acc.sub"></span></td>
-              <td class="py-3.5 text-right text-xs text-gray-400 tabular-nums" x-text="acctPct(acc)"></td>
               <td class="py-3.5 text-right"><span x-show="acc.posType" class="text-sm font-semibold tabular-nums" x-text="fmtMoney(num(form[acc.totalKey]))"></span><span x-show="!acc.posType"><span x-show="editingSimple === acc.id" class="flex items-baseline gap-1 justify-end"><span class="text-sm text-gray-400">¥</span><input type="text" inputmode="decimal" x-model="form[acc.totalKey]" @blur="saveSimpleAccount(acc.id)" @keyup.enter="$el.blur()" x-init="$el.focus()" class="text-sm font-semibold tabular-nums bg-transparent text-right outline-none border-b border-gray-200 w-28" placeholder="0"></span><span x-show="editingSimple !== acc.id" @click.stop="editingSimple = acc.id" class="text-sm font-semibold tabular-nums cursor-pointer" x-text="fmtMoney(num(form[acc.totalKey]))"></span></span></td>
+              <td class="py-3.5 text-right text-xs text-gray-400 tabular-nums" x-text="acctPct(acc)"></td>
               <td class="py-3.5 text-right text-xs text-gray-400" x-text="accUpdateDate(acc)"></td>
               <td class="py-3.5 pr-5 text-center w-5"><span x-show="acc.posType" class="text-gray-300 text-sm" x-text="expanded === acc.id ? '▾' : '▸'"></span></td>
             </tr>
