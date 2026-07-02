@@ -1,0 +1,314 @@
+# 账户页手风琴重设计 — Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 把账户页从"总览+两个平铺表格+三个卡片"改为"总览 → 手风琴列表 → 展开编辑"的层级结构
+
+**Architecture:** 单一 Alpine.js 组件，`expanded` 状态控制手风琴，stock/cb 的持仓表嵌入展开区，简单账户用 `editing` 状态做内联编辑。所有改动在 `app/static/index.html`。
+
+**Tech Stack:** Alpine.js 3 + Tailwind CSS CDN
+
+## Global Constraints
+
+- 只改 `app/static/index.html`，不动后端 API
+- 不引入新依赖
+- 交易页不动
+- 测试套件 75 个全过才算完成
+
+---
+
+### Task 1: 简化总资产卡片 + 准备账户数据
+
+**Files:**
+- Modify: `app/static/index.html`
+
+**Interfaces:**
+- Consumes: (none — first task)
+- Produces:
+  - 总资产卡片只显示数字，删除占比条和图例
+  - `accounts` 数组新增 `updatedAtKey`、`posUpdatedAtKey` 字段
+  - `form` 新增 `stock_updated_at`、`bond_updated_at` 临时字段
+  - JS: 新增 `expanded` (null | 'stock' | 'cb')、内联编辑状态
+  - JS: 删除 `allocationBar()` 方法
+
+- [ ] **Step 1: 删除占比条和图例 HTML**
+
+在 `app/static/index.html` 中，找到总资产 section（约 line 44-72），把整个占比条和图例区删掉，只保留数字和"暂无数据"提示。结果：
+
+```html
+      <!-- 总资产 -->
+      <section class="bg-white border border-gray-100 rounded-xl p-6 mb-5 shadow-sm shadow-gray-100/40">
+        <div class="flex items-baseline gap-3">
+          <span class="text-sm text-gray-400">总资产</span>
+          <span class="text-4xl font-semibold tracking-normal tabular-nums" x-text="fmtMoney(totalAssets())"></span>
+        </div>
+        <div x-show="!snap" class="text-sm text-gray-400 mt-2">暂无账户数据。</div>
+      </section>
+```
+
+- [ ] **Step 2: 删除 `allocationBar()` JS 方法**
+
+删除约 line 372-376 的方法。
+
+- [ ] **Step 3: 更新 accounts 数组和 JS state**
+
+在 JS 的 `accountPage()` return 对象中：
+
+```javascript
+// 替换 accounts 数组，新增 updatedAtKey 和 posUpdatedAtKey
+accounts: [
+  { id: 'stock',    label: '广发账户', sub: '股票仓位',   color: '#8b5cf6', totalKey: 'stock_total',     cashKey: 'stock_cash',     posType: 'stock' },
+  { id: 'cb',       label: '华泰账户', sub: '转债仓位',   color: '#14b8a6', totalKey: 'bond_total',      cashKey: 'bond_cash',      posType: 'cb'    },
+  { id: 'changqian',label: '长钱账户', sub: '国内基金',   color: '#f59e0b', totalKey: 'changqian_total', cashKey: null,             posType: null, updatedAtKey: 'snapshot_date' },
+  { id: 'overseas', label: '海外长钱', sub: '海外基金',   color: '#60a5fa', totalKey: 'overseas_total',  cashKey: null,             posType: null, updatedAtKey: 'snapshot_date' },
+  { id: 'cash',     label: '资金账户', sub: '现金仓位',   color: '#9ca3af', totalKey: 'cash_pool',       cashKey: null,             posType: null, updatedAtKey: 'snapshot_date' },
+],
+```
+
+新增 state：
+```javascript
+expanded: null,           // 当前展开的账户 id，null = 全部折叠
+editingSimple: null,      // 当前内联编辑的简单账户 id
+```
+
+- [ ] **Step 4: 在 load() 中设置 per-account 更新日期**
+
+在 `load()` 方法中，加载完 positions 后提取日期：
+
+```javascript
+// 在 load() 末尾，this.stockRows = ... 之后：
+const stockPosDate = stock.length > 0 ? stock[0].position_date : (snap?.snapshot_date || '')
+const bondPosDate = cb.length > 0 ? cb[0].position_date : (snap?.snapshot_date || '')
+this.form._stock_updated = stockPosDate
+this.form._bond_updated = bondPosDate
+```
+
+- [ ] **Step 5: 刷新页面确认总资产卡片正常**
+
+Run: 打开 http://localhost:8000，确认总资产只显示数字，无占比条和图例。
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add app/static/index.html
+git commit -m "refactor: 简化总资产卡片 — 删除占比条和图例，准备账户列表数据
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+---
+
+### Task 2: 构建账户列表 + 手风琴展开/折叠
+
+**Files:**
+- Modify: `app/static/index.html:72-103`（替换旧的 stock/cb 表格和简单账户卡片）
+
+**Interfaces:**
+- Consumes: `accounts` 数组、`expanded` state（Task 1）
+- Produces: 5行账户列表，点击 stock/cb 行切换展开/折叠
+
+- [ ] **Step 1: 删除旧的 stock 表格、cb 表格、简单账户三列卡片**
+
+删除约 line 74-101 的所有旧 HTML（三个 section/div）。
+
+- [ ] **Step 2: 构建账户列表 HTML**
+
+在 `<!-- 总资产 --></section>` 之后插入：
+
+```html
+      <!-- 账户列表 -->
+      <section class="bg-white border border-gray-100 rounded-xl divide-y divide-gray-50 shadow-sm shadow-gray-100/40">
+        <template x-for="acc in accounts" :key="acc.id">
+          <div>
+            <!-- 列表行 -->
+            <div @click="acc.posType ? toggleExpand(acc.id) : null"
+              :class="acc.posType ? 'cursor-pointer hover:bg-gray-50' : ''"
+              class="flex items-center px-5 py-3.5">
+              <!-- 颜色点 -->
+              <div :style="'background:' + acc.color" class="w-2.5 h-2.5 rounded-full mr-3 shrink-0"></div>
+              <!-- 名称 + 副标题 -->
+              <div class="flex-1 min-w-0">
+                <span class="text-sm font-medium" x-text="acc.label"></span>
+                <span class="text-xs text-gray-400 ml-2" x-text="acc.sub"></span>
+              </div>
+              <!-- 更新时间（stock/cb 用持仓日期，简单账户用快照日期） -->
+              <span class="text-xs text-gray-400 mr-4" x-text="acc.posType ? '更新于 ' + (form['_' + acc.id + '_updated'] || '').slice(0,10) : (snap?.snapshot_date ? '更新于 ' + snap.snapshot_date.slice(0,10) : '')"></span>
+              <!-- 金额 + 占比（stock/cb） 或 内联编辑（简单账户） -->
+              <template x-if="acc.posType">
+                <div class="text-right mr-3">
+                  <div class="text-sm font-semibold tabular-nums" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
+                  <div class="text-xs text-gray-400 tabular-nums" x-text="(totalAssets() > 0 ? (num(form[acc.totalKey]) / totalAssets() * 100).toFixed(1) : '0') + '%'"></div>
+                </div>
+              </template>
+              <template x-if="!acc.posType">
+                <div class="text-right mr-3">
+                  <template x-if="editingSimple === acc.id">
+                    <div class="flex items-baseline gap-1 justify-end">
+                      <span class="text-sm text-gray-400">¥</span>
+                      <input type="text" inputmode="decimal" x-model="form[acc.totalKey]"
+                        @blur="saveSimpleAccount(acc.id)"
+                        @keyup.enter="$el.blur()"
+                        x-init="$el.focus()"
+                        class="text-sm font-semibold tabular-nums bg-transparent text-right outline-none border-b border-gray-200 w-28" placeholder="0">
+                    </div>
+                  </template>
+                  <template x-if="editingSimple !== acc.id">
+                    <div @click.stop="editingSimple = acc.id" class="cursor-pointer">
+                      <div class="text-sm font-semibold tabular-nums" x-text="fmtMoney(num(form[acc.totalKey]))"></div>
+                      <div class="text-xs text-gray-400 tabular-nums" x-text="(totalAssets() > 0 ? (num(form[acc.totalKey]) / totalAssets() * 100).toFixed(1) : '0') + '%'"></div>
+                    </div>
+                  </template>
+                </div>
+              </template>
+              <!-- 展开/折叠箭头（仅 stock/cb） -->
+              <span x-show="acc.posType" class="text-gray-300 text-sm"
+                x-text="expanded === acc.id ? '▾' : '▸'"></span>
+            </div>
+
+            <!-- 展开区：stock 持仓表 -->
+            <div x-show="expanded === 'stock' && acc.id === 'stock'" x-transition class="border-t border-gray-100 bg-gray-50/30 px-5 py-4">
+              <div class="flex items-center gap-3 mb-3">
+                <span class="text-xs text-gray-400">现金 ¥</span>
+                <input type="text" inputmode="decimal" x-model="form.stock_cash" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
+              </div>
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-xs text-gray-400 border-b border-gray-200">
+                    <th class="text-left font-normal py-1.5 w-20">代码</th>
+                    <th class="text-left font-normal py-1.5">名称</th>
+                    <th class="text-right font-normal py-1.5 w-20">股数</th>
+                    <th class="text-right font-normal py-1.5 w-20">现价</th>
+                    <th class="text-right font-normal py-1.5 w-24">市值</th>
+                    <th class="text-right font-normal py-1.5 w-14">占比</th>
+                    <th class="w-5"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="row in stockRows" :key="row._id">
+                    <tr class="border-b border-gray-100">
+                      <td class="py-1.5">
+                        <template x-if="row.isNew">
+                          <input type="text" x-model="row.code" @change="autofill('stock', row)" placeholder="代码"
+                            style="width:72px;border:none;border-bottom:1px solid #d1d5db;background:transparent;outline:none;padding:1px 0;font-size:12px;">
+                        </template>
+                        <span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span>
+                      </td>
+                      <td class="py-1.5 text-gray-700 font-medium text-xs" x-text="row.name || '—'"></td>
+                      <td class="py-1.5 text-right">
+                        <input type="number" min="0" step="100" x-model.number="row.shares" @input.debounce.600ms="scheduleSortRows('stock')"
+                          style="width:64px;border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0;text-align:right;font-size:12px;">
+                      </td>
+                      <td class="py-1.5 text-right text-xs text-gray-500" x-text="rowPrice('stock', row.code)?.toFixed(2) ?? '-'"></td>
+                      <td class="py-1.5 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('stock', row) != null ? fmtMoney(rowValue('stock', row)) : '-'"></td>
+                      <td class="py-1.5 text-right text-xs text-gray-400" x-text="rowWeight('stock', row) != null ? (rowWeight('stock', row)*100).toFixed(1)+'%' : '-'"></td>
+                      <td class="py-1.5 text-center"><button @click="removeRow('stock', row)" class="text-gray-300 hover:text-red-400 text-xs">✕</button></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <div x-show="stockRows.length === 0" class="text-xs text-gray-400 py-2">暂无持仓</div>
+              <div class="flex items-center gap-3 mt-3">
+                <button @click="addRow('stock')" class="text-xs text-gray-400 hover:text-gray-600">＋ 添加行</button>
+                <button @click="saveAccount('stock')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-700">保存</button>
+                <span x-show="stockSaved" class="text-xs text-green-600">已保存</span>
+              </div>
+            </div>
+
+            <!-- 展开区：cb 持仓表 -->
+            <div x-show="expanded === 'cb' && acc.id === 'cb'" x-transition class="border-t border-gray-100 bg-gray-50/30 px-5 py-4">
+              <div class="flex items-center gap-3 mb-3">
+                <span class="text-xs text-gray-400">现金 ¥</span>
+                <input type="text" inputmode="decimal" x-model="form.bond_cash" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
+              </div>
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-xs text-gray-400 border-b border-gray-200">
+                    <th class="text-left font-normal py-1.5 w-20">代码</th>
+                    <th class="text-left font-normal py-1.5">名称</th>
+                    <th class="text-right font-normal py-1.5 w-20">张数</th>
+                    <th class="text-right font-normal py-1.5 w-20">现价</th>
+                    <th class="text-right font-normal py-1.5 w-24">市值</th>
+                    <th class="text-right font-normal py-1.5 w-14">占比</th>
+                    <th class="w-5"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="row in cbRows" :key="row._id">
+                    <tr class="border-b border-gray-100">
+                      <td class="py-1.5">
+                        <template x-if="row.isNew">
+                          <input type="text" x-model="row.code" @change="autofill('cb', row)" placeholder="代码"
+                            style="width:72px;border:none;border-bottom:1px solid #d1d5db;background:transparent;outline:none;padding:1px 0;font-size:12px;">
+                        </template>
+                        <span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span>
+                      </td>
+                      <td class="py-1.5 text-gray-700 font-medium text-xs" x-text="row.name || '—'"></td>
+                      <td class="py-1.5 text-right">
+                        <input type="number" min="0" step="10" x-model.number="row.shares" @input.debounce.600ms="scheduleSortRows('cb')"
+                          style="width:64px;border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0;text-align:right;font-size:12px;">
+                      </td>
+                      <td class="py-1.5 text-right text-xs text-gray-500" x-text="rowPrice('cb', row.code)?.toFixed(2) ?? '-'"></td>
+                      <td class="py-1.5 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('cb', row) != null ? fmtMoney(rowValue('cb', row)) : '-'"></td>
+                      <td class="py-1.5 text-right text-xs text-gray-400" x-text="rowWeight('cb', row) != null ? (rowWeight('cb', row)*100).toFixed(1)+'%' : '-'"></td>
+                      <td class="py-1.5 text-center"><button @click="removeRow('cb', row)" class="text-gray-300 hover:text-red-400 text-xs">✕</button></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <div x-show="cbRows.length === 0" class="text-xs text-gray-400 py-2">暂无持仓</div>
+              <div class="flex items-center gap-3 mt-3">
+                <button @click="addRow('cb')" class="text-xs text-gray-400 hover:text-gray-600">＋ 添加行</button>
+                <button @click="saveAccount('cb')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-700">保存</button>
+                <span x-show="cbSaved" class="text-xs text-green-600">已保存</span>
+              </div>
+            </div>
+          </div>
+        </template>
+      </section>
+```
+
+- [ ] **Step 3: 添加手风琴和内联编辑 JS 方法**
+
+在 `accountPage()` return 对象中新增：
+
+```javascript
+toggleExpand(id) {
+  this.expanded = this.expanded === id ? null : id
+},
+async saveSimpleAccount(id) {
+  this.editingSimple = null
+  await this.saveSnapshot({ reload: false })
+},
+```
+
+- [ ] **Step 4: 删除不再需要的 JS**
+
+- 删除 `allocationBar()` 方法（如果 Task 1 没删完）
+- 确保 `accounts` 数组的字段和 HTML 中引用的字段一致
+
+- [ ] **Step 5: 刷新页面验证**
+
+打开 http://localhost:8000，确认：
+- 账户列表 5 行显示正常（颜色点、名称、副标题、金额、占比、日期）
+- stock/cb 行有 ▸ 箭头
+- 点击 stock 行展开表格，箭头变 ▾
+- 表格内可编辑股数，现价和市值正常
+- 点击 cb 行展开，stock 自动折叠
+- 简单账户无箭头，金额可点击
+- 总资产卡片只显示数字
+
+- [ ] **Step 6: 跑测试**
+
+```bash
+source .venv/bin/activate && python3 -m unittest discover tests/ -v
+```
+Expected: 75 passed
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add app/static/index.html
+git commit -m "refactor: 账户页手风琴 layout — 列表+展开编辑, 简单账户内联编辑
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
