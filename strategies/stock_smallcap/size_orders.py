@@ -109,6 +109,15 @@ def size_rebalance(
                 left -= prices[c] * lot
                 improved = True
 
+    # 填充后兜底：现金为负则从最重仓位再砍
+    while left < -0.01:
+        candidates = [c for c in target_codes if desired[c] >= lot]
+        if not candidates:
+            break
+        c = max(candidates, key=lambda x: (_weight(x), rank_map[x]))
+        desired[c] -= lot
+        left += prices[c] * lot
+
     # 摩擦成本过滤：所有交易(买/卖/加减仓)低于门槛的都跳过, 贪心回填直到稳定
     skipped: dict[str, tuple[int, float]] = {}
     if min_trade_value > 0:
@@ -139,6 +148,14 @@ def size_rebalance(
                         left -= prices[c] * lot
                         improved = True
                         changed = True
+            # 回填后兜底
+            while left < -0.01:
+                candidates = [c for c in target_codes if desired[c] >= lot and c not in skipped]
+                if not candidates:
+                    break
+                c = max(candidates, key=lambda x: (_weight(x), rank_map[x]))
+                desired[c] -= lot
+                left += prices[c] * lot
 
     # 生成订单行
     rows = []
