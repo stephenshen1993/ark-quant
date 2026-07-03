@@ -460,14 +460,13 @@
       showCbRank: false, showStockRank: false,
 
       async init() {
-        const [snap] = await Promise.all([
-          fetch('/api/account/latest').then(r => r.json().catch(() => null)),
-          this.loadPlan(),
-        ])
+        // 先取快照拿温度, 再用正确温度生成计划
+        const snap = await fetch('/api/account/latest').then(r => r.json().catch(() => null))
         if (snap) {
           this.tDate = snap.snapshot_date || this.tDate
           this.temperature = snap.temperature || 0
         }
+        await this.loadPlan()
         const [cbD, stD] = await Promise.all([
           fetch('/api/rankings/cb/dates').then(r => r.json()),
           fetch('/api/rankings/stock/dates').then(r => r.json()),
