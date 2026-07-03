@@ -48,14 +48,19 @@ def get_plan(temperature: float = None):
         except Exception:
             transfer_steps = []
 
-    def _cash_left(orders, cash_key: str) -> float | None:
+    def _order_summary(orders, cash_key: str) -> dict | None:
         if not orders or not account:
             return None
         delta = deltas.get(cash_key, 0) if transfer_steps else 0
         base = account.get(f"{cash_key}_cash", 0)
         sells = sum(o.get("amount", 0) for o in orders if o.get("delta_shares", 0) < 0)
         buys  = sum(o.get("amount", 0) for o in orders if o.get("delta_shares", 0) > 0)
-        return round(base + delta + sells - buys, 2)
+        book = round(base + sells - buys, 2)
+        return {
+            "book_balance": book,
+            "transfer_delta": round(delta, 2),
+            "cash_left": round(book + delta, 2),
+        }
 
     return {
         "generated_at": datetime.now().isoformat(),
@@ -67,14 +72,14 @@ def get_plan(temperature: float = None):
             "trade_date": cb_trade_date,
             "orders": cb_orders,
             "rankings": cb_rankings,
-            "summary": {"cash_left": _cash_left(cb_orders, "bond")},
+            "summary": _order_summary(cb_orders, "bond"),
         },
         "stock": {
             "data_date": stock_data_date,
             "trade_date": stock_trade_date,
             "orders": stock_orders,
             "rankings": stock_rankings,
-            "summary": {"cash_left": _cash_left(stock_orders, "stock")},
+            "summary": _order_summary(stock_orders, "stock"),
         },
     }
 
@@ -127,16 +132,26 @@ def _size_cb_orders(cash: float) -> dict:
     if not prices:
         raise HTTPException(500, {"code": "DATA_SOURCE_UNAVAILABLE", "message": "无法获取转债实时价格。"})
 
-    sheet, summary = size_rebalance(target, positions, cash, prices)
+    sheet, summary = size_rebalance(target, positions, cash, prices, min_trade_value=1000)
 
     db.init_db()
     run_id = db.get_latest_run_id("cb")
     if run_id is not None:
         db.insert_cb_orders(run_id, sheet)
 
+    account = db.get_latest_account_snapshot()
+    acct_cash = account["bond_cash"] if account else 0
+    sells = sum(r["amount"] for r in sheet.to_dict("records") if r.get("delta_shares", 0) < 0)
+    buys  = sum(r["amount"] for r in sheet.to_dict("records") if r.get("delta_shares", 0) > 0)
+    book_balance = round(acct_cash + sells - buys, 2)
+
     return {
         "orders": sheet.to_dict("records"),
-        "summary": {k: (float(v) if isinstance(v, (int, float)) else v) for k, v in summary.items()},
+        "summary": {
+            "book_balance": book_balance,
+            "transfer_delta": round(cash - acct_cash, 2),
+            "cash_left": round(book_balance + (cash - acct_cash), 2),
+        },
     }
 
 
@@ -200,7 +215,17 @@ def _size_stock_orders(cash: float) -> dict:
     if run_id is not None:
         db.insert_stock_orders(run_id, sheet)
 
+    account = db.get_latest_account_snapshot()
+    acct_cash = account["stock_cash"] if account else 0
+    sells = sum(r["amount"] for r in sheet.to_dict("records") if r.get("delta_shares", 0) < 0)
+    buys  = sum(r["amount"] for r in sheet.to_dict("records") if r.get("delta_shares", 0) > 0)
+    book_balance = round(acct_cash + sells - buys, 2)
+
     return {
         "orders": sheet.to_dict("records"),
-        "summary": {k: (float(v) if isinstance(v, (int, float)) else v) for k, v in summary.items()},
+        "summary": {
+            "book_balance": book_balance,
+            "transfer_delta": round(cash - acct_cash, 2),
+            "cash_left": round(book_balance + (cash - acct_cash), 2),
+        },
     }
