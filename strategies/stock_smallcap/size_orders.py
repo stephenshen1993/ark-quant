@@ -109,22 +109,26 @@ def size_rebalance(
                 left -= prices[c] * lot
                 improved = True
 
-    # 摩擦成本过滤：反复跳过小单并贪心回填, 直到稳定
+    # 摩擦成本过滤：所有交易(买/卖/加减仓)低于门槛的都跳过, 贪心回填直到稳定
     skipped: dict[str, tuple[int, float]] = {}
     if min_trade_value > 0:
         changed = True
         while changed:
             changed = False
-            for c in target_codes:
+            for c in list(target_codes) + list(set(held) - set(target_codes)):
                 cur = held.get(c, 0)
-                tgt = desired[c]
-                if tgt > cur:
-                    trade_val = (tgt - cur) * prices[c]
-                    if trade_val < min_trade_value:
-                        skipped[c] = (tgt - cur, trade_val)
-                        left += trade_val
+                tgt = desired.get(c, 0)  # 退出标的 tgt=0
+                if cur == tgt:
+                    continue
+                trade_val = abs(tgt - cur) * prices[c]
+                if trade_val < min_trade_value:
+                    skipped[c] = (tgt - cur, trade_val)
+                    left += (tgt - cur) * prices[c]  # 撤销: 买入退款, 卖出放弃回款
+                    if c in desired:
                         desired[c] = cur
-                        changed = True
+                    else:
+                        desired[c] = cur  # 退出标的不卖了, 保留持仓
+                    changed = True
             improved = True
             while improved:
                 improved = False
@@ -141,7 +145,10 @@ def size_rebalance(
     exit_codes = set(held) - set(target_codes)
     for c in sorted(exit_codes):
         sh = held[c]
-        rows.append(_row("SELL", c, name_map, prices, sh, 0))
+        if c in skipped:
+            rows.append(_row("HOLD", c, name_map, prices, sh, sh))
+        else:
+            rows.append(_row("SELL", c, name_map, prices, sh, 0))
 
     for c in target_codes:
         cur, tgt = held.get(c, 0), desired[c]
