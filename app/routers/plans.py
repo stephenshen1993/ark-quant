@@ -48,6 +48,15 @@ def get_plan(temperature: float = None):
         except Exception:
             transfer_steps = []
 
+    def _cash_left(orders, cash_key: str) -> float | None:
+        if not orders or not account:
+            return None
+        delta = deltas.get(cash_key, 0) if transfer_steps else 0
+        base = account.get(f"{cash_key}_cash", 0)
+        sells = sum(o.get("amount", 0) for o in orders if o.get("delta_shares", 0) < 0)
+        buys  = sum(o.get("amount", 0) for o in orders if o.get("delta_shares", 0) > 0)
+        return round(base + delta + sells - buys, 2)
+
     return {
         "generated_at": datetime.now().isoformat(),
         "account": account,
@@ -58,12 +67,14 @@ def get_plan(temperature: float = None):
             "trade_date": cb_trade_date,
             "orders": cb_orders,
             "rankings": cb_rankings,
+            "summary": {"cash_left": _cash_left(cb_orders, "bond")},
         },
         "stock": {
             "data_date": stock_data_date,
             "trade_date": stock_trade_date,
             "orders": stock_orders,
             "rankings": stock_rankings,
+            "summary": {"cash_left": _cash_left(stock_orders, "stock")},
         },
     }
 

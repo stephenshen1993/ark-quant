@@ -181,6 +181,9 @@
                 </table>
               </div>
             </template>
+            <div x-show="plan?.cb?.summary?.cash_left != null" class="text-xs text-gray-400 mt-2 pt-2 border-t border-gray-100">
+              交易后余额 <span class="text-gray-600 font-medium tabular-nums" x-text="fmtMoney(plan?.cb?.summary?.cash_left)"></span>
+            </div>
           </div>
         </div>
       </template>
@@ -246,6 +249,9 @@
                 </table>
               </div>
             </template>
+            <div x-show="plan?.stock?.summary?.cash_left != null" class="text-xs text-gray-400 mt-2 pt-2 border-t border-gray-100">
+              交易后余额 <span class="text-gray-600 font-medium tabular-nums" x-text="fmtMoney(plan?.stock?.summary?.cash_left)"></span>
+            </div>
           </div>
         </div>
       </template>
@@ -569,6 +575,7 @@
         const dk = strategy === 'cb' ? 'bond' : 'stock'
         const base = this.plan?.account?.[cf] || 0
         const delta = this.plan?.transfer_deltas?.[dk] || 0
+        // 正delta(入金)当日可用, 负delta(转出)必须预留
         return Math.round(base + delta)
       },
       async sizeOrders(strategy) {
