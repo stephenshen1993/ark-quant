@@ -17,11 +17,17 @@ class TestDb(unittest.TestCase):
         db._TEST_CONN.close()
         db._TEST_CONN = None
 
-    def test_insert_and_get_account_snapshot(self):
-        db.insert_account_snapshot("2026-06-29", 45.0, 209555, 274, 227183, 110, 110606, 59013, 93030)
-        snap = db.get_latest_account_snapshot()
-        self.assertEqual(snap["snapshot_date"], "2026-06-29")
-        self.assertAlmostEqual(snap["temperature"], 45.0)
+    def test_account_summary_is_derived_from_context_and_account_snapshots(self):
+        db.insert_account_context("2026-06-29", 45.0)
+        db.insert_account_value_snapshot("stock", "2026-06-29", 209555, 274)
+        db.insert_account_value_snapshot("cb", "2026-06-29", 227183, 110)
+        db.insert_account_value_snapshot("changqian", "2026-06-29", 110606)
+        db.insert_account_value_snapshot("cash", "2026-06-29", 59013)
+        db.insert_account_value_snapshot("overseas", "2026-06-29", 93030)
+        summary = db.get_current_account_summary()
+        self.assertEqual(summary["snapshot_date"], "2026-06-29")
+        self.assertAlmostEqual(summary["temperature"], 45.0)
+        self.assertAlmostEqual(summary["total_assets"], 699387)
 
     def test_insert_cb_rankings(self):
         run_id = db.insert_strategy_run("cb", date(2026, 6, 27))

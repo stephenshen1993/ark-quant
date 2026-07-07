@@ -9,7 +9,7 @@ router = APIRouter(prefix="/api/plan", tags=["plan"])
 
 @router.get("")
 def get_plan(temperature: float = None):
-    account = db.get_latest_account_snapshot()
+    account = db.get_current_account_summary()
     if temperature is not None and account:
         account = dict(account)
         account["temperature"] = temperature
@@ -53,8 +53,10 @@ def get_plan(temperature: float = None):
             return None
         delta = deltas.get(cash_key, 0) if transfer_steps else 0
         base = account.get(f"{cash_key}_cash", 0)
-        sells = sum(o.get("amount", 0) for o in orders if o.get("delta_shares", 0) < 0)
-        buys  = sum(o.get("amount", 0) for o in orders if o.get("delta_shares", 0) > 0)
+        def shares(order: dict) -> int:
+            return order.get("delta_shares", order.get("shares", 0)) or 0
+        sells = sum(o.get("amount", 0) for o in orders if shares(o) < 0)
+        buys  = sum(o.get("amount", 0) for o in orders if shares(o) > 0)
         book = round(base + sells - buys, 2)
         return {
             "book_balance": book,
@@ -132,14 +134,14 @@ def _size_cb_orders(cash: float) -> dict:
     if not prices:
         raise HTTPException(500, {"code": "DATA_SOURCE_UNAVAILABLE", "message": "无法获取转债实时价格。"})
 
-    sheet, summary = size_rebalance(target, positions, cash, prices, min_trade_value=1000)
+    sheet, summary = size_rebalance(target, positions, cash, prices)
 
     db.init_db()
     run_id = db.get_latest_run_id("cb")
     if run_id is not None:
         db.insert_cb_orders(run_id, sheet)
 
-    account = db.get_latest_account_snapshot()
+    account = db.get_current_account_summary()
     acct_cash = account["bond_cash"] if account else 0
     sells = sum(r["amount"] for r in sheet.to_dict("records") if r.get("delta_shares", 0) < 0)
     buys  = sum(r["amount"] for r in sheet.to_dict("records") if r.get("delta_shares", 0) > 0)
@@ -215,7 +217,7 @@ def _size_stock_orders(cash: float) -> dict:
     if run_id is not None:
         db.insert_stock_orders(run_id, sheet)
 
-    account = db.get_latest_account_snapshot()
+    account = db.get_current_account_summary()
     acct_cash = account["stock_cash"] if account else 0
     sells = sum(r["amount"] for r in sheet.to_dict("records") if r.get("delta_shares", 0) < 0)
     buys  = sum(r["amount"] for r in sheet.to_dict("records") if r.get("delta_shares", 0) > 0)

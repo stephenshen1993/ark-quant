@@ -164,6 +164,76 @@ class ConvertibleBondRotationTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "cb_close_daily"):
                 run.enrich_cb_with_daily_market_data(object(), cb, {"data": {"strict_original_rules": True}})
 
+    def test_drop_uncovered_cb_market_data_removes_missing_turnover_rows(self) -> None:
+        cb = pd.DataFrame([
+            {"bond_code": "113703", "turnover_yuan": pd.NA, "turnover_trade_date": pd.NA},
+            {"bond_code": "110084", "turnover_yuan": 59_237_310.78, "turnover_trade_date": "2026-07-06"},
+        ])
+
+        cleaned = run.drop_uncovered_cb_market_data(cb)
+
+        self.assertEqual(cleaned["bond_code"].tolist(), ["110084"])
+
+    def test_fetch_stock_factors_with_cache_backfills_missing_symbols_from_recent_cache(self) -> None:
+        with TemporaryDirectory() as temp_dir, patch.object(run, "CACHE_DIR", Path(temp_dir)):
+            fallback = pd.DataFrame(
+                [
+                    {
+                        "stock_code": "000002",
+                        "stock_momentum_20d": 0.02,
+                        "stock_volatility_20d": 0.18,
+                        "market_cap_estimate": 2.0e9,
+                        "stock_factor_trade_date": "2026-07-03",
+                    }
+                ]
+            )
+            fallback.to_csv(Path(temp_dir) / "stock_factors_20260703_latest.csv", index=False)
+            fetched = pd.DataFrame(
+                [
+                    {
+                        "stock_code": "000001",
+                        "stock_momentum_20d": 0.01,
+                        "stock_volatility_20d": 0.16,
+                        "market_cap_estimate": 1.0e9,
+                        "stock_factor_trade_date": "2026-07-07",
+                    }
+                ]
+            )
+
+            with patch.object(run, "fetch_stock_factors", return_value=fetched):
+                out = run.fetch_stock_factors_with_cache(
+                    object(),
+                    ["000001", "000002"],
+                    date(2026, 7, 7),
+                    {"data": {"use_cache_on_failure": True, "max_cache_age_days": 7}},
+                )
+
+        self.assertEqual(sorted(out["stock_code"].astype(str).str.zfill(6).tolist()), ["000001", "000002"])
+
+    def test_drop_uncovered_factor_data_removes_missing_factor_rows(self) -> None:
+        candidates = pd.DataFrame(
+            [
+                {
+                    "bond_code": "113001",
+                    "stock_code": "000001",
+                    "stock_momentum_20d": 0.01,
+                    "stock_volatility_20d": 0.16,
+                    "market_cap": 1.0e9,
+                },
+                {
+                    "bond_code": "113002",
+                    "stock_code": "000002",
+                    "stock_momentum_20d": pd.NA,
+                    "stock_volatility_20d": 0.18,
+                    "market_cap": 2.0e9,
+                },
+            ]
+        )
+
+        cleaned = run.drop_uncovered_factor_data(candidates)
+
+        self.assertEqual(cleaned["bond_code"].tolist(), ["113001"])
+
     def test_latest_cache_uses_business_date_in_filename(self) -> None:
         stale_date = date.today() - timedelta(days=8)
         with TemporaryDirectory() as temp_dir:

@@ -47,7 +47,7 @@
           <span class="text-sm text-gray-400">总资产</span>
           <span class="text-4xl font-semibold tracking-normal tabular-nums" x-text="fmtMoney(totalAssets())"></span>
         </div>
-        <div x-show="!snap" class="text-sm text-gray-400 mt-2">暂无账户数据。</div>
+        <div x-show="!summary" class="text-sm text-gray-400 mt-2">暂无账户数据。</div>
       </section>
 
       <!-- 账户列表 -->
@@ -277,7 +277,7 @@
   // 账户总览（含持仓）
   function accountPage() {
     return {
-      snap: null,
+      summary: null,
       expanded: null, editingSimple: null,
       cbSaved: false, stockSaved: false,
       cbRows: [], stockRows: [],
@@ -300,18 +300,18 @@
         _stock_updated: '', _cb_updated: '',
       },
       async load() {
-        const [snap, cb, stock] = await Promise.all([
-          fetch('/api/account/latest').then(r => r.json()),
+        const [summary, cb, stock] = await Promise.all([
+          fetch('/api/account/summary').then(r => r.json()),
           fetch('/api/positions/cb').then(r => r.json()),
           fetch('/api/positions/stock').then(r => r.json()),
         ])
-        this.snap = snap
-        if (snap) Object.assign(this.form, snap)
+        this.summary = summary
+        if (summary) Object.assign(this.form, summary)
         this.cbRows = cb.map(r => ({ ...r, _id: ++this._uid, isNew: false }))
         this.stockRows = stock.map(r => ({ ...r, _id: ++this._uid, isNew: false }))
         // per-account 更新日期
-        this.form._stock_updated = stock.length > 0 ? stock[0].position_date : (snap?.snapshot_date || '')
-        this.form._cb_updated = cb.length > 0 ? cb[0].position_date : (snap?.snapshot_date || '')
+        this.form._stock_updated = stock.length > 0 ? stock[0].position_date : (summary?.snapshot_date || '')
+        this.form._cb_updated = cb.length > 0 ? cb[0].position_date : (summary?.snapshot_date || '')
         // 自动加载行情
         await Promise.all([this.loadQuotes('stock'), this.loadQuotes('cb')])
       },
@@ -364,9 +364,14 @@
         const v = this.rowValue(strategy, row)
         return (total && v != null) ? v / total : null
       },
+      accountCash(strategy) {
+        const key = strategy === 'stock' ? 'stock_cash' : 'bond_cash'
+        const raw = this.form[key]
+        if (raw !== null && raw !== undefined && raw !== '') return this.num(raw)
+        return this.num(this.summary?.[key])
+      },
       accountTotal(strategy) {
-        const cash = strategy === 'stock' ? this.form.stock_cash : this.form.bond_cash
-        return this.holdingsValue(strategy) + this.num(cash)
+        return this.holdingsValue(strategy) + this.accountCash(strategy)
       },
       sortRowsByValue(strategy) {
         const rows = strategy === 'stock' ? this.stockRows : this.cbRows
@@ -382,47 +387,42 @@
         return total > 0 ? (this.num(this.form[acc.totalKey]) / total * 100).toFixed(1) + '%' : '0%'
       },
       accUpdateDate(acc) {
+        const accountTime = this.summary?.account_updated_at?.[acc.id]
+        if (accountTime) return this.formatUpdateDate(accountTime)
         if (acc.posType) {
           const d = this.form['_' + acc.id + '_updated'] || ''
-          return d ? '更新于 ' + d.slice(0, 10) : ''
+          return d ? this.formatUpdateDate(d) : ''
         }
-        return this.snap?.snapshot_date ? '更新于 ' + this.snap.snapshot_date.slice(0, 10) : ''
+        return this.form.snapshot_date ? this.formatUpdateDate(this.form.snapshot_date) : ''
+      },
+      formatUpdateDate(value) {
+        if (!value) return ''
+        return '更新于 ' + String(value).slice(0, 10)
       },
       async saveSimpleAccount(id) {
         this.editingSimple = null
-        await this.saveSnapshot({ reload: false })
+        await this.saveAccountSnapshot(id)
       },
-      snapshotPayload() {
+      accountSnapshotPayload(id) {
+        const acc = this.accounts.find(a => a.id === id)
+        const cash = id === 'stock' ? this.accountCash('stock')
+          : id === 'cb' ? this.accountCash('cb')
+          : null
         return {
           snapshot_date: this.form.snapshot_date || new Date().toISOString().slice(0, 10),
-          temperature: this.num(this.form.temperature),
-          stock_total: this.num(this.form.stock_total),
-          stock_cash: this.num(this.form.stock_cash),
-          bond_total: this.num(this.form.bond_total),
-          bond_cash: this.num(this.form.bond_cash),
-          changqian_total: this.num(this.form.changqian_total),
-          cash_pool: this.num(this.form.cash_pool),
-          overseas_total: this.num(this.form.overseas_total),
+          total: acc ? this.num(this.form[acc.totalKey]) : 0,
+          cash,
         }
       },
-      async saveSnapshot(options = {}) {
-        const reload = options.reload !== false
-        // 总资产 = 持仓资产(实时) + 现金；仅在已拉取报价时回写，避免覆盖成空值
-        if (this.loaded.stock) this.form.stock_total = this.accountTotal('stock')
-        if (this.loaded.cb)    this.form.bond_total  = this.accountTotal('cb')
-        const payload = this.snapshotPayload()
-        const res = await fetch('/api/account/snapshot', {
+      async saveAccountSnapshot(id) {
+        const res = await fetch(`/api/account/${id}/snapshot`, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(payload),
+          body: JSON.stringify(this.accountSnapshotPayload(id)),
         })
         if (!res.ok) throw new Error('保存账户失败')
-        if (reload) {
-          this.snap = payload
-          Object.assign(this.form, payload)
-          await this.load()
-        } else {
-          this.snap = payload
-        }
+        const saved = await res.json()
+        this.summary = saved
+        Object.assign(this.form, saved)
       },
       async saveAccount(strategy) {
         // 1. 保存持仓
@@ -440,12 +440,7 @@
           const totalKey = strategy === 'cb' ? 'bond_total' : 'stock_total'
           this.form[totalKey] = this.accountTotal(strategy)
         }
-        const payload = this.snapshotPayload()
-        await fetch('/api/account/snapshot', {
-          method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(payload),
-        })
-        Object.assign(this.form, payload)
+        await this.saveAccountSnapshot(strategy)
 
         // 3. 标记已保存
         if (strategy === 'cb') { this.cbSaved = true; setTimeout(() => this.cbSaved = false, 2000) }
@@ -470,11 +465,11 @@
       showCbRank: false, showStockRank: false,
 
       async init() {
-        // 先取快照拿温度, 再用正确温度生成计划
-        const snap = await fetch('/api/account/latest').then(r => r.json().catch(() => null))
-        if (snap) {
-          this.tDate = snap.snapshot_date || this.tDate
-          this.temperature = snap.temperature || 0
+        // 先取账户聚合视图拿温度, 再用正确温度生成计划
+        const summary = await fetch('/api/account/summary').then(r => r.json().catch(() => null))
+        if (summary) {
+          this.tDate = summary.snapshot_date || this.tDate
+          this.temperature = summary.temperature || 0
         }
         await this.loadPlan()
         const [cbD, stD] = await Promise.all([
@@ -493,18 +488,11 @@
       },
 
       async saveTDay() {
-        // 只更新温度+日期，保留已有账户数据
-        const snap = await fetch('/api/account/latest').then(r => r.json().catch(() => ({})))
-        await fetch('/api/account/snapshot', {
+        await fetch('/api/account/context', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             snapshot_date: this.tDate,
             temperature: Number(this.temperature) || 0,
-            stock_total: snap.stock_total || 0, stock_cash: snap.stock_cash || 0,
-            bond_total: snap.bond_total || 0, bond_cash: snap.bond_cash || 0,
-            changqian_total: snap.changqian_total || 0,
-            cash_pool: snap.cash_pool || 0,
-            overseas_total: snap.overseas_total || 0,
           }),
         })
         this.tDaySaved = true

@@ -134,6 +134,18 @@ def merge_latest_rows(existing: pd.DataFrame, new: pd.DataFrame, key: str) -> pd
     return pd.concat([existing, new], ignore_index=True).drop_duplicates(subset=[key], keep="last")
 
 
+def complete_rows(df: pd.DataFrame, fields: Iterable[str]) -> pd.Series:
+    if df.empty:
+        return pd.Series(False, index=df.index)
+    required = list(fields)
+    if not required:
+        return pd.Series(True, index=df.index)
+    missing_cols = [field for field in required if field not in df.columns]
+    if missing_cols:
+        return pd.Series(False, index=df.index)
+    return df[required].notna().all(axis=1)
+
+
 def fetch_with_cache(name: str, fetcher, config: dict) -> pd.DataFrame:
     # 本地优先：收盘后数据不变，当日缓存直接复用
     today_path = cache_path(name)
@@ -242,6 +254,43 @@ def assert_required_fields(df: pd.DataFrame, fields: Iterable[str], stage: str, 
                 f"{stage} 存在未覆盖全部候选的原策略必需字段: {counts}。"
                 "本次停止运行，避免用缺失值参与排序。"
             )
+
+
+def drop_uncovered_cb_market_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop candidates that have no previous-close CB market data."""
+    if "turnover_yuan" not in df.columns:
+        return df
+    missing = df["turnover_yuan"].isna()
+    if "turnover_trade_date" in df.columns:
+        missing |= df["turnover_trade_date"].isna()
+    if not missing.any():
+        return df
+    dropped = df.loc[missing, "bond_code"].astype(str).tolist() if "bond_code" in df.columns else []
+    logging.warning(
+        "Dropping %s CB candidates without previous-close turnover data: %s",
+        int(missing.sum()),
+        dropped,
+    )
+    return df.loc[~missing].copy()
+
+
+def drop_uncovered_factor_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop candidates that still lack required ranking factors after cache fallback."""
+    fields = ["stock_momentum_20d", "stock_volatility_20d", "market_cap"]
+    missing = ~complete_rows(df, fields)
+    if not missing.any():
+        return df
+    labels = []
+    for _, row in df.loc[missing].iterrows():
+        bond_code = row.get("bond_code", "")
+        stock_code = row.get("stock_code", "")
+        labels.append(f"{bond_code}/{stock_code}".strip("/"))
+    logging.warning(
+        "Dropping %s CB candidates without complete stock factor data: %s",
+        int(missing.sum()),
+        labels,
+    )
+    return df.loc[~missing].copy()
 
 
 def fetch_cb_universe(ak, config: dict) -> pd.DataFrame:
@@ -496,9 +545,11 @@ def fetch_stock_factors_with_cache(ak, stock_codes: Iterable[str], end: date, co
     codes = sorted({normalize_stock_code(c) for c in stock_codes if pd.notna(c)})
     name = f"stock_factors_{end:%Y%m%d}"
     cached_today = cache_path(name, stamp="latest")
+    required_fields = ["stock_momentum_20d", "stock_volatility_20d", "stock_factor_trade_date"]
     if cached_today.exists():
         cached = pd.read_csv(cached_today, dtype={"stock_code": str})
         cached["stock_code"] = cached["stock_code"].astype(str).str.zfill(6)
+        cached = cached[complete_rows(cached, required_fields)]
         cached_codes = set(cached["stock_code"].astype(str).str.zfill(6))
         if set(codes).issubset(cached_codes):
             logging.info("Using same-day stock factor cache: %s", cached_today)
@@ -508,16 +559,46 @@ def fetch_stock_factors_with_cache(ak, stock_codes: Iterable[str], end: date, co
     if cached_today.exists():
         cached = pd.read_csv(cached_today, dtype={"stock_code": str})
         cached["stock_code"] = cached["stock_code"].astype(str).str.zfill(6)
+        cached = cached[complete_rows(cached, required_fields)]
 
     cached_codes = set(cached["stock_code"]) if not cached.empty else set()
     factors = fetch_stock_factors(ak, [code for code in codes if code not in cached_codes], end, config)
     factors = merge_latest_rows(cached, factors, "stock_code")
+    factor_codes = set(factors["stock_code"].astype(str).str.zfill(6)) if not factors.empty else set()
+    missing_codes = [code for code in codes if code not in factor_codes]
+    data_config = config.get("data", {})
+    if missing_codes and data_config.get("use_cache_on_failure", True):
+        max_age_days = int(data_config.get("max_cache_age_days", 7))
+        cutoff = date.today() - timedelta(days=max_age_days)
+        fallback_files = sorted(CACHE_DIR.glob("stock_factors_*.csv"), reverse=True) if CACHE_DIR.exists() else []
+        for path in fallback_files:
+            if path == cached_today:
+                continue
+            stamps = re.findall(r"(?<!\d)(20\d{6})(?!\d)", path.stem)
+            cache_date = (
+                datetime.strptime(stamps[-1], "%Y%m%d").date()
+                if stamps
+                else datetime.fromtimestamp(path.stat().st_mtime).date()
+            )
+            if cache_date < cutoff:
+                continue
+            fallback = pd.read_csv(path, dtype={"stock_code": str})
+            fallback["stock_code"] = fallback["stock_code"].astype(str).str.zfill(6)
+            fallback = fallback[complete_rows(fallback, required_fields)]
+            fill = fallback[fallback["stock_code"].isin(missing_codes)].copy()
+            if fill.empty:
+                continue
+            logging.warning("Using cached stock factors from %s for %s missing symbols.", path, len(fill))
+            factors = merge_latest_rows(factors, fill, "stock_code")
+            factor_codes = set(factors["stock_code"].astype(str).str.zfill(6))
+            missing_codes = [code for code in codes if code not in factor_codes]
+            if not missing_codes:
+                break
     if not factors.empty:
         factors.to_csv(cached_today, index=False, encoding="utf-8-sig")
         logging.info("Saved stock factor cache: %s", cached_today)
         return factors
 
-    data_config = config.get("data", {})
     if data_config.get("use_cache_on_failure", True):
         cached = latest_cache("stock_factors", int(data_config.get("max_cache_age_days", 7)))
         if cached is not None:
@@ -1029,6 +1110,7 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
     cb = apply_cb_prefilters(cb, config)
     cb = enrich_cb_with_daily_market_data(ak, cb, config)
     if config.get("data", {}).get("strict_original_rules", True):
+        cb = drop_uncovered_cb_market_data(cb)
         assert_required_fields(cb, ["turnover_yuan"], "可转债成交额过滤", require_all_rows=True)
         # Drop suspended/illiquid bonds whose last trade date lags behind the dataset max.
         # Must run before require_fresh_dates so suspended bonds don't abort the whole run.
@@ -1072,6 +1154,7 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
 
     filtered = apply_filters(merged, config)
     if config.get("data", {}).get("strict_original_rules", True):
+        filtered = drop_uncovered_factor_data(filtered)
         assert_required_fields(
             filtered,
             ["stock_momentum_20d", "stock_volatility_20d", "market_cap"],

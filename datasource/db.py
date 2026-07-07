@@ -16,6 +16,14 @@ DB_PATH = Path(__file__).resolve().parents[1] / "data" / "ark_quant.db"
 
 _TEST_CONN: sqlite3.Connection | None = None  # 测试注入点
 
+ACCOUNT_VALUE_FIELDS = {
+    "stock": ("stock_total", "stock_cash"),
+    "cb": ("bond_total", "bond_cash"),
+    "changqian": ("changqian_total", None),
+    "cash": ("cash_pool", None),
+    "overseas": ("overseas_total", None),
+}
+
 
 def get_connection() -> sqlite3.Connection:
     """Legacy getter for backward compatibility (used in test_db.py)."""
@@ -113,7 +121,26 @@ def init_db() -> None:
             changqian_total REAL,
             cash_pool       REAL,
             overseas_total  REAL,
+            changqian_updated_at TEXT,
+            cash_pool_updated_at TEXT,
+            overseas_updated_at  TEXT,
             created_at      TEXT    NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS account_value_snapshots (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id    TEXT    NOT NULL,
+            snapshot_date TEXT    NOT NULL,
+            total         REAL    NOT NULL,
+            cash          REAL,
+            created_at    TEXT    NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS account_contexts (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_date TEXT    NOT NULL,
+            temperature   REAL,
+            created_at    TEXT    NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS cb_positions (
@@ -141,6 +168,45 @@ def init_db() -> None:
             created_at    TEXT    NOT NULL
         );
         """)
+
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(account_snapshots)").fetchall()}
+        for col in ("changqian_updated_at", "cash_pool_updated_at", "overseas_updated_at"):
+            if col not in cols:
+                conn.execute(f"ALTER TABLE account_snapshots ADD COLUMN {col} TEXT")
+        _migrate_legacy_account_snapshots(conn)
+
+
+def _migrate_legacy_account_snapshots(conn: sqlite3.Connection) -> None:
+    """Move old wide account snapshots into the account-level snapshot model once."""
+    legacy_count = conn.execute("SELECT COUNT(*) AS c FROM account_snapshots").fetchone()["c"]
+    context_count = conn.execute("SELECT COUNT(*) AS c FROM account_contexts").fetchone()["c"]
+    value_count = conn.execute("SELECT COUNT(*) AS c FROM account_value_snapshots").fetchone()["c"]
+    if not legacy_count or (context_count and value_count):
+        return
+
+    rows = conn.execute("SELECT * FROM account_snapshots ORDER BY id").fetchall()
+    for row in rows:
+        item = dict(row)
+        created_at = item.get("created_at") or datetime.now().isoformat()
+        if not context_count:
+            conn.execute(
+                "INSERT INTO account_contexts (snapshot_date,temperature,created_at) VALUES (?,?,?)",
+                (item["snapshot_date"], item.get("temperature"), created_at),
+            )
+        if not value_count:
+            for account_id, (total_key, cash_key) in ACCOUNT_VALUE_FIELDS.items():
+                conn.execute(
+                    """INSERT INTO account_value_snapshots
+                       (account_id,snapshot_date,total,cash,created_at)
+                       VALUES (?,?,?,?,?)""",
+                    (
+                        account_id,
+                        item["snapshot_date"],
+                        item.get(total_key) or 0,
+                        item.get(cash_key) if cash_key else None,
+                        created_at,
+                    ),
+                )
 
 
 def _next_weekday(d: date) -> date:
@@ -227,15 +293,42 @@ def insert_account_snapshot(
     stock_total: float, stock_cash: float,
     bond_total: float, bond_cash: float,
     changqian_total: float, cash_pool: float, overseas_total: float,
+    changqian_updated_at: str | None = None,
+    cash_pool_updated_at: str | None = None,
+    overseas_updated_at: str | None = None,
+) -> int:
+    insert_account_context(snapshot_date, temperature)
+    ids = [
+        insert_account_value_snapshot("stock", snapshot_date, stock_total, stock_cash),
+        insert_account_value_snapshot("cb", snapshot_date, bond_total, bond_cash),
+        insert_account_value_snapshot("changqian", snapshot_date, changqian_total),
+        insert_account_value_snapshot("cash", snapshot_date, cash_pool),
+        insert_account_value_snapshot("overseas", snapshot_date, overseas_total),
+    ]
+    return ids[-1]
+
+
+def insert_account_value_snapshot(
+    account_id: str,
+    snapshot_date: str,
+    total: float,
+    cash: float | None = None,
 ) -> int:
     with _conn() as conn:
         cur = conn.execute(
-            """INSERT INTO account_snapshots
-               (snapshot_date,temperature,stock_total,stock_cash,bond_total,bond_cash,
-                changqian_total,cash_pool,overseas_total,created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
-            (snapshot_date, temperature, stock_total, stock_cash, bond_total, bond_cash,
-             changqian_total, cash_pool, overseas_total, datetime.now().isoformat()),
+            """INSERT INTO account_value_snapshots
+               (account_id,snapshot_date,total,cash,created_at)
+               VALUES (?,?,?,?,?)""",
+            (account_id, snapshot_date, total, cash, datetime.now().isoformat()),
+        )
+        return cur.lastrowid
+
+
+def insert_account_context(snapshot_date: str, temperature: float) -> int:
+    with _conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO account_contexts (snapshot_date,temperature,created_at) VALUES (?,?,?)",
+            (snapshot_date, temperature, datetime.now().isoformat()),
         )
         return cur.lastrowid
 
@@ -264,21 +357,109 @@ def get_latest_run_id(strategy: str) -> int | None:
         return row["id"] if row else None
 
 
-def get_latest_account_snapshot() -> dict | None:
+def get_current_account_summary() -> dict | None:
     with _conn() as conn:
-        row = conn.execute(
-            "SELECT * FROM account_snapshots ORDER BY id DESC LIMIT 1"
+        context = conn.execute(
+            "SELECT * FROM account_contexts ORDER BY id DESC LIMIT 1"
         ).fetchone()
-        return dict(row) if row else None
+        values = conn.execute(
+            """
+            SELECT v.*
+            FROM account_value_snapshots v
+            JOIN (
+                SELECT account_id, MAX(id) AS id
+                FROM account_value_snapshots
+                GROUP BY account_id
+            ) latest ON latest.id = v.id
+            """
+        ).fetchall()
+        if not context and not values:
+            return None
+        base = {}
+        if context:
+            ctx = dict(context)
+            base["id"] = ctx["id"]
+            base["snapshot_date"] = ctx["snapshot_date"]
+            base["temperature"] = ctx["temperature"]
+            base["created_at"] = ctx["created_at"]
+        elif values:
+            first = dict(values[0])
+            base["snapshot_date"] = first["snapshot_date"]
+            base["created_at"] = first["created_at"]
+        snap = {
+            "id": base.get("id"),
+            "snapshot_date": base.get("snapshot_date"),
+            "temperature": base.get("temperature"),
+            "stock_total": base.get("stock_total", 0) or 0,
+            "stock_cash": base.get("stock_cash", 0) or 0,
+            "bond_total": base.get("bond_total", 0) or 0,
+            "bond_cash": base.get("bond_cash", 0) or 0,
+            "changqian_total": base.get("changqian_total", 0) or 0,
+            "cash_pool": base.get("cash_pool", 0) or 0,
+            "overseas_total": base.get("overseas_total", 0) or 0,
+            "created_at": base.get("created_at"),
+        }
+        updated_at: dict[str, str] = {}
+        for value in values:
+            item = dict(value)
+            account_id = item["account_id"]
+            updated_at[account_id] = item["created_at"]
+            if account_id == "stock":
+                snap["stock_total"] = item["total"]
+                snap["stock_cash"] = item["cash"] or 0
+            elif account_id == "cb":
+                snap["bond_total"] = item["total"]
+                snap["bond_cash"] = item["cash"] or 0
+            elif account_id == "changqian":
+                snap["changqian_total"] = item["total"]
+            elif account_id == "cash":
+                snap["cash_pool"] = item["total"]
+            elif account_id == "overseas":
+                snap["overseas_total"] = item["total"]
+        snap["account_updated_at"] = updated_at
+        snap["total_assets"] = (
+            snap["stock_total"] + snap["bond_total"] + snap["changqian_total"]
+            + snap["cash_pool"] + snap["overseas_total"]
+        )
+        return snap
+
+
+def get_latest_account_snapshot() -> dict | None:
+    """Compatibility alias for callers that still expect the old name."""
+    return get_current_account_summary()
 
 
 def get_account_history() -> list[dict]:
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT snapshot_date, stock_total, bond_total, changqian_total, cash_pool, overseas_total "
-            "FROM account_snapshots ORDER BY snapshot_date"
+            """
+            SELECT snapshot_date, account_id, total
+            FROM account_value_snapshots
+            ORDER BY snapshot_date, id
+            """
         ).fetchall()
-        return [dict(r) for r in rows]
+        grouped: dict[str, dict] = {}
+        for row in rows:
+            item = dict(row)
+            target = grouped.setdefault(item["snapshot_date"], {
+                "snapshot_date": item["snapshot_date"],
+                "stock_total": 0,
+                "bond_total": 0,
+                "changqian_total": 0,
+                "cash_pool": 0,
+                "overseas_total": 0,
+            })
+            if item["account_id"] == "stock":
+                target["stock_total"] = item["total"]
+            elif item["account_id"] == "cb":
+                target["bond_total"] = item["total"]
+            elif item["account_id"] == "changqian":
+                target["changqian_total"] = item["total"]
+            elif item["account_id"] == "cash":
+                target["cash_pool"] = item["total"]
+            elif item["account_id"] == "overseas":
+                target["overseas_total"] = item["total"]
+        return list(grouped.values())
 
 
 def get_latest_positions(strategy: str) -> list[dict]:

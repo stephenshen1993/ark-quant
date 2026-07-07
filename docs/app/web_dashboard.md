@@ -86,14 +86,16 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 | 页面 | 后端 API | 主要来源 |
 | --- | --- | --- |
-| 账户总览 | `/api/account/latest` | 数据库账户快照 |
-| 账户历史 | `/api/account/history` | 数据库账户快照历史 |
+| 账户总览 | `/api/account/summary` | 账户上下文 + 各账户最新快照 |
+| 账户历史 | `/api/account/history` | 账户级快照聚合历史 |
+| 计划上下文保存 | `/api/account/context` | 日期、温度 |
+| 单账户保存 | `/api/account/{account_id}/snapshot` | 指定账户资产快照 |
 | 持仓详情 | `/api/positions/{strategy}` | 数据库持仓快照 |
 | 持仓报价 | `/api/positions/{strategy}/quotes` | 腾讯行情或策略数据封装 |
 | 单个代码补全 | `/api/positions/{strategy}/quote` | 腾讯行情或策略数据封装 |
 | 榜单日期 | `/api/rankings/{strategy}/dates` | 策略运行入库结果 |
 | 榜单内容 | `/api/rankings/{strategy}/{data_date}` | 策略运行入库结果 |
-| 本期计划 | `/api/plan` | 账户快照 + 最新订单 + 体系再平衡 |
+| 本期计划 | `/api/plan` | 账户聚合视图 + 最新订单 + 体系再平衡 |
 
 `strategy` 当前取值为 `cb` 或 `stock`。
 
@@ -105,9 +107,8 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 4. 进入华泰账户，确认转债持仓，录入可用现金。
 5. 进入长钱账户、资金账户、海外长钱，录入对应金额。
 6. 返回账户总览，检查总资产和占比。
-7. 点击“保存账户”显式保存一次快照。
 
-股票和转债账户详情页输入可用现金后会自动保存。手动点击“保存账户”仍建议保留，作为当天账户状态确认动作。
+股票和转债账户详情页输入可用现金后会保存对应账户快照；长钱、资金账户、海外长钱在列表内联编辑后也只保存各自账户。日期和温度在计划上下文中单独保存。
 
 ## 持仓维护流程
 
