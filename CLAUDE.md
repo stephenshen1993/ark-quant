@@ -78,4 +78,4 @@ Propose directory or structural changes before making them. Do not delete files 
 ## MCP Tools
 
 - Use **Context7** for current AKShare / pandas / library API documentation.
-- Use **Serena** for symbol lookup, call-chain tracing, and refactoring. Activate `/Users/Admin/Workspace/investment/ark-quant` as the project before semantic analysis.
+- Use **Serena** for symbol lookup, call-chain tracing, and refactoring. Activate `/Users/Admin/Workspace/personal/projects/ark-quant` as the project before semantic analysis.
