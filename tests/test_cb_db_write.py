@@ -39,6 +39,7 @@ class TestCbDbWrite(unittest.TestCase):
     def test_insert_cb_orders(self):
         """insert_strategy_run + insert_cb_orders => get_orders returns correct row."""
         run_id = db.insert_strategy_run("cb", date(2026, 6, 27))
+        db.insert_cb_rankings(run_id, pd.DataFrame([{"bond_code": "113062"}]))
         orders_df = pd.DataFrame([{
             "action": "BUY", "bond_code": "123150", "bond_name": "九强转债",
             "price": 128.67, "delta_shares": 90, "amount": 11580.3,
@@ -53,6 +54,8 @@ class TestCbDbWrite(unittest.TestCase):
         """get_latest_run_id returns the most recently inserted run."""
         id1 = db.insert_strategy_run("cb", date(2026, 6, 26))
         id2 = db.insert_strategy_run("cb", date(2026, 6, 27))
+        db.insert_cb_rankings(id1, pd.DataFrame([{"bond_code": "113062"}]))
+        db.insert_cb_rankings(id2, pd.DataFrame([{"bond_code": "123150"}]))
         self.assertEqual(db.get_latest_run_id("cb"), id2)
         self.assertGreater(id2, id1)
 

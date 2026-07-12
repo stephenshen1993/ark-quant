@@ -15,7 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, time
 from pathlib import Path
 
@@ -44,6 +44,8 @@ class RunArtifacts:
     candidates_csv: Path
     rebalance_csv: Path
     report_md: Path
+    run_id: int | None = None
+    data_date: date | None = None
 
 
 def setup_logging() -> Path:
@@ -289,6 +291,24 @@ def build_data_notes(config: dict) -> list[str]:
     ]
 
 
+def latest_completed_data_date(now: datetime | None = None) -> date:
+    """Return the data date for a previous-close stock screen."""
+    current = now or datetime.now()
+    candidate = current.date()
+    if current.weekday() >= 5 or current.time() < time(9, 25):
+        candidate = candidate - timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate = candidate - timedelta(days=1)
+    return candidate
+
+
+def persist_rankings(data_date: date, rankings: pd.DataFrame) -> int:
+    from datasource.db import create_complete_strategy_run, init_db
+
+    init_db()
+    return create_complete_strategy_run("stock", data_date, None, rankings)
+
+
 def save_outputs(ranked: pd.DataFrame, rebalance: pd.DataFrame, config: dict, log_file: Path, notes: list[str], data_date: "date | None" = None) -> RunArtifacts:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -334,16 +354,6 @@ def save_outputs(ranked: pd.DataFrame, rebalance: pd.DataFrame, config: dict, lo
         ),
         encoding="utf-8",
     )
-    if data_date is not None:
-        try:
-            from datasource.db import init_db, insert_strategy_run, insert_stock_rankings
-            init_db()
-            _run_id = insert_strategy_run("stock", data_date)
-            hold_n = config.get("selection", {}).get("hold_n", 20)
-            insert_stock_rankings(_run_id, ranked.head(hold_n))
-        except Exception as _exc:
-            logging.warning("DB write failed (stock rankings): %s", _exc)
-
     return RunArtifacts(candidates_csv, rebalance_csv, report_md)
 
 
@@ -426,18 +436,17 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
     current = load_current_positions(positions_path)
     target_df, rebalance = build_target_and_rebalance(current, ranked, config)
     notes = build_data_notes(config)
-    now = datetime.now()
     today = date.today()
-    # 盘前运行 → 数据来自上个交易日；盘后运行 → 数据来自今日
-    if now.time() < time(9, 25):
-        data_date = today - timedelta(days=1)
-    else:
-        data_date = today
+    data_date = latest_completed_data_date()
     artifacts = save_outputs(ranked, rebalance, config, log_file, notes, data_date=data_date)
     logging.info("Saved report to %s", artifacts.report_md)
+    hold_n = config.get("selection", {}).get("hold_n", 20)
+    run_id = persist_rankings(data_date, ranked.head(hold_n))
+    artifacts = replace(artifacts, run_id=run_id, data_date=data_date)
+    logging.info("DB write OK: stock rankings run_id=%s data_date=%s", run_id, data_date)
     try:
         snapshot_raw_data(
-            today,
+            data_date,
             {"universe_snapshot": merged, "filtered": filtered, "smallcap_pool": ranked, "rebalance_plan": rebalance},
             config,
             subdir="stock_smallcap",

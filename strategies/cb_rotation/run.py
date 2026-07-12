@@ -4,7 +4,7 @@ import argparse
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Iterable
@@ -39,6 +39,8 @@ class RunArtifacts:
     candidates_xlsx: Path
     rebalance_csv: Path
     report_md: Path
+    run_id: int | None = None
+    data_date: date | None = None
 
 
 def setup_logging() -> Path:
@@ -1060,6 +1062,13 @@ def resolve_trade_date(df: pd.DataFrame) -> date:
     return date.today()
 
 
+def persist_rankings(data_date: date, rankings: pd.DataFrame) -> int:
+    from datasource.db import create_complete_strategy_run, init_db
+
+    init_db()
+    return create_complete_strategy_run("cb", data_date, None, rankings)
+
+
 def snapshot_raw_data(
     trade_date: date, frames: dict[str, pd.DataFrame], config: dict, subdir: str | None = None
 ) -> Path | None:
@@ -1182,15 +1191,10 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
     rebalance = build_rebalance_plan(current, target)
     artifacts = save_outputs(target, rebalance, config, log_file, data_notes)
     logging.info("Saved report to %s", artifacts.report_md)
-    try:
-        from datasource.db import init_db, insert_strategy_run, insert_cb_rankings
-        init_db()
-        _data_date = resolve_trade_date(scored)
-        _run_id = insert_strategy_run("cb", _data_date)
-        insert_cb_rankings(_run_id, target)
-        logging.info("DB write OK: cb rankings run_id=%s data_date=%s", _run_id, _data_date)
-    except Exception as _exc:
-        logging.warning("DB write failed (cb rankings): %s", _exc)
+    data_date = resolve_trade_date(scored)
+    run_id = persist_rankings(data_date, target)
+    artifacts = replace(artifacts, run_id=run_id, data_date=data_date)
+    logging.info("DB write OK: cb rankings run_id=%s data_date=%s", run_id, data_date)
     try:
         snapshot_raw_data(
             resolve_trade_date(scored),

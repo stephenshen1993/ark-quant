@@ -77,7 +77,20 @@ def run_strategy(strategy: Literal["cb", "stock"]):
         )
 
     try:
-        _run_strategy_impl(strategy)
+        artifacts = _run_strategy_impl(strategy)
+        run_id = getattr(artifacts, "run_id", None)
+        if run_id is None:
+            raise RuntimeError("Strategy persistence did not return a run_id")
+        strategy_run = db.get_strategy_run(run_id, strategy)
+        if strategy_run is None:
+            raise RuntimeError(f"Persisted strategy run {run_id} is incomplete or missing")
+        response = _build_response(
+            strategy,
+            strategy_run["data_date"],
+            run_id=run_id,
+        )
+        if not response["items"]:
+            raise RuntimeError(f"Persisted strategy run {run_id} has no rankings")
     except (Exception, SystemExit) as exc:
         msg = str(exc) if str(exc) else type(exc).__name__
         code = _classify_error(msg)
@@ -85,11 +98,7 @@ def run_strategy(strategy: Literal["cb", "stock"]):
     finally:
         lock.release()
 
-    # 运行成功后返回最新榜单
-    dates = db.get_ranking_dates(strategy)
-    if not dates:
-        return {"data_date": None, "trade_date": None, "items": []}
-    return _build_response(strategy, dates[0])
+    return response
 
 
 def _classify_error(msg: str) -> str:
@@ -103,18 +112,25 @@ def _classify_error(msg: str) -> str:
     return "STRATEGY_ERROR"
 
 
-def _run_strategy_impl(strategy: str) -> None:
+def _run_strategy_impl(strategy: str):
     if strategy == "cb":
         from strategies.cb_rotation.run import run, DEFAULT_CONFIG, DEFAULT_POSITIONS
 
-        run(DEFAULT_CONFIG, DEFAULT_POSITIONS)
+        return run(DEFAULT_CONFIG, DEFAULT_POSITIONS)
     else:
         from strategies.stock_smallcap.run import run, DEFAULT_CONFIG, DEFAULT_POSITIONS
 
-        run(DEFAULT_CONFIG, DEFAULT_POSITIONS)
+        return run(DEFAULT_CONFIG, DEFAULT_POSITIONS)
 
 
-def _build_response(strategy: str, data_date: str) -> dict:
-    items = db.get_rankings(strategy, data_date)
+def _build_response(strategy: str, data_date: str, *, run_id: int | None = None) -> dict:
+    items = (
+        db.get_rankings_by_run_id(strategy, run_id)
+        if run_id is not None
+        else db.get_rankings(strategy, data_date)
+    )
     trade_date = items[0]["trade_date"] if items else None
-    return {"data_date": data_date, "trade_date": trade_date, "items": items}
+    response = {"data_date": data_date, "trade_date": trade_date, "items": items}
+    if run_id is not None:
+        response["run_id"] = run_id
+    return response

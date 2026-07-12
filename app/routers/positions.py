@@ -1,16 +1,30 @@
 from __future__ import annotations
-from typing import Literal, Optional
-from fastapi import APIRouter
-from pydantic import BaseModel
+from typing import Annotated, Literal, Optional
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, ConfigDict, Field
 from datasource import db
 
 router = APIRouter(prefix="/api/positions", tags=["positions"])
 
 
-class PositionIn(BaseModel):
+NonnegativeFinite = Annotated[float, Field(ge=0, allow_inf_nan=False)]
+
+
+class StrictRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class PositionIn(StrictRequest):
     code: str
     name: str = ""
-    shares: int
+    shares: NonnegativeFinite
+
+
+def _validate_snapshot_query(date: Optional[str], asof: bool) -> None:
+    if date == "":
+        raise HTTPException(status_code=400, detail="date must not be empty")
+    if asof and date is None:
+        raise HTTPException(status_code=400, detail="asof requires date")
 
 
 @router.get("/{strategy}/dates")
@@ -19,9 +33,17 @@ def get_dates(strategy: Literal["cb", "stock"]):
 
 
 @router.get("/{strategy}/quotes")
-def get_quotes(strategy: Literal["cb", "stock"]):
-    """最新持仓 + 实时报价，返回每只市值/占比与持仓总市值。"""
-    positions = db.get_latest_positions(strategy)
+def get_quotes(strategy: Literal["cb", "stock"], date: Optional[str] = None, asof: bool = False):
+    """指定日期持仓 + 实时报价，返回每只市值/占比与持仓总市值。"""
+    _validate_snapshot_query(date, asof)
+    try:
+        positions = (
+            db.get_positions_asof(strategy, date) if date is not None and asof
+            else db.get_positions_by_date(strategy, date) if date is not None
+            else db.get_latest_positions(strategy)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     codes = [str(p["code"]).zfill(6) for p in positions]
     if not codes:
         return {"total_value": 0, "items": []}
@@ -69,14 +91,42 @@ def get_quote(strategy: Literal["cb", "stock"], code: str):
     return {"code": code, "name": None, "price": None}
 
 
+@router.get("/{strategy}/snapshot")
+def get_position_snapshot(
+    strategy: Literal["cb", "stock"],
+    date: Optional[str] = None,
+    asof: bool = False,
+):
+    _validate_snapshot_query(date, asof)
+    try:
+        if date is not None and asof:
+            return db.get_position_snapshot_asof(strategy, date)
+        if date is not None:
+            return db.get_position_snapshot_by_date(strategy, date)
+        return db.get_latest_position_snapshot(strategy)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/{strategy}")
-def get_positions(strategy: Literal["cb", "stock"], date: Optional[str] = None):
-    if date:
-        return db.get_positions_by_date(strategy, date)
-    return db.get_latest_positions(strategy)
+def get_positions(strategy: Literal["cb", "stock"], date: Optional[str] = None, asof: bool = False):
+    _validate_snapshot_query(date, asof)
+    try:
+        if date is not None:
+            if asof:
+                return db.get_positions_asof(strategy, date)
+            return db.get_positions_by_date(strategy, date)
+        return db.get_latest_positions(strategy)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/{strategy}")
 def post_positions(strategy: Literal["cb", "stock"], body: list[PositionIn], position_date: str):
-    db.insert_positions(strategy, position_date, [p.model_dump() for p in body])
-    return {"ok": True}
+    try:
+        snapshot = db.append_position_snapshot(
+            strategy, position_date, [p.model_dump() for p in body]
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "position_snapshot": snapshot}

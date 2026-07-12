@@ -11,7 +11,7 @@
 | 文件 | 用途 |
 | --- | --- |
 | `docs/system/investment_system.md` | 投资体系、资产桶、目标仓位公式、执行红线 |
-| `portfolios/accounts_state.json` | 最近一次账户总额、可用现金、温度 |
+| `portfolios/accounts_state.json` | 最近一次账户总额、可用现金 |
 | `portfolios/current_cb_positions.csv` | 当前可转债持仓，单位为张 |
 | `portfolios/current_stock_positions.csv` | 当前小市值股票持仓，单位为股 |
 | `config/cb_rotation.json` | 可转债策略参数 |
@@ -58,10 +58,9 @@ B = 国内总资产 - 现金目标
 
 ## 四、盘后运行顺序
 
-1. 查询最新全市场温度。
-2. 更新 `portfolios/accounts_state.json`：
+1. 需要时刷新有知有行官网的全市场温度，保存为本地温度快照；交易计划默认复用已保存快照。
+2. 更新账户状态：
    - `updated_at`
-   - `temperature`
    - 股票账户可用现金
    - 转债账户可用现金
    - 长钱账户总额
@@ -96,7 +95,9 @@ source .venv/bin/activate && python3 -m strategies.stock_smallcap.run
 海外长钱总资产：___
 ```
 
-温度可以由系统查询；股票和转债账户总资产应优先由本地持仓乘以行情价格估算，除非券商口径明显不同或持仓文件过期。
+温度由系统查询有知有行官网并保存为本地快照；如果官网不可访问或页面结构变化导致解析失败，应暂停刷新温度并修复数据源，不手动估温替代。股票和转债账户总资产应优先由本地持仓乘以行情价格估算，除非券商口径明显不同或持仓文件过期。
+
+生成交易计划前必须确认账户快照、温度快照、可转债榜单和股票榜单指向同一个 T 日，不能用旧榜单和新温度混合生成订单。
 
 如果 `current_cb_positions.csv` 或 `current_stock_positions.csv` 不是最新实盘持仓，必须先更新持仓文件，再生成订单。
 

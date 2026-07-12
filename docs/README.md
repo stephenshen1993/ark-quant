@@ -10,6 +10,8 @@
 | 理解账户、资产、现金和金额显示口径 | `system/accounting_model.md` |
 | 盘后/盘前按看板完成日常操作 | `operations/daily_dashboard_workflow.md` |
 | 生成盘后/盘前体系级交易计划 | `operations/system_rebalance_runbook.md` |
+| 查看工程收口与底座评估建议 | `operations/engineering_closure_2026-07-13.md` |
+| 查看平台无关的投资体系规则 | `system/investment_policy.md` |
 | 理解整体投资体系 | `system/investment_system.md` |
 | 查看最近体系复盘 | `reviews/portfolio_snapshot_2026-06-15.md` |
 | 查看策略研究和数据源调研 | `research/` |
@@ -23,9 +25,11 @@ docs/
 │   └── web_dashboard.md
 ├── operations/                       # 日常运行手册和执行流程
 │   ├── daily_dashboard_workflow.md
+│   ├── engineering_closure_2026-07-13.md
 │   └── system_rebalance_runbook.md
 ├── system/                           # 长期投资体系、资产桶、仓位公式
 │   ├── accounting_model.md
+│   ├── investment_policy.md
 │   └── investment_system.md
 ├── strategies/                       # 策略设计、差距分析、实现说明
 │   ├── cb_rotation_gap.md

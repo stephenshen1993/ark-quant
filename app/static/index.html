@@ -31,7 +31,7 @@
 <main class="flex-1 overflow-auto p-8" x-data @nav.window="$store.page = $event.detail">
 
   <!-- 账户总览 -->
-  <div x-show="$store.page === 'account'" x-data="accountPage()" x-init="load()">
+  <div x-show="$store.page === 'account'" x-data="accountPage()" x-init="ensureLoaded($store.page)" x-effect="ensureLoaded($store.page)">
 
     <div class="max-w-7xl">
       <!-- 标题栏 -->
@@ -95,23 +95,25 @@
   </div>
 
 <!-- 交易 -->
-  <div x-show="$store.page === 'trading'" x-data="tradingPage()" x-init="init()" class="max-w-7xl">
+  <template x-if="$store.page === 'trading'">
+  <div x-data="tradingPage()" class="max-w-7xl">
     <!-- T 日收盘数据 -->
     <div class="flex items-center gap-4 mb-5 p-4 bg-white border border-gray-100 rounded-xl shadow-sm">
       <h1 class="text-xl font-semibold">交易</h1>
       <span x-show="executionDate()" class="text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full"
         x-text="'适用 ' + executionDate() + ' 开盘执行'"></span>
       <div class="flex items-center gap-3 ml-auto">
-        <label class="text-xs text-gray-400 flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">日期
-          <input type="date" x-model="tDate" class="text-xs text-gray-600 bg-transparent outline-none w-28">
-        </label>
-        <label class="text-xs text-gray-400 flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">温度
-          <input type="number" x-model.number="temperature" placeholder="45" class="text-xs text-gray-600 bg-transparent outline-none w-10 text-center">
-        </label>
-        <span x-show="tDaySaved" class="text-xs text-green-600">已保存</span>
-        <button @click="saveTDay()" class="px-3 py-1.5 bg-gray-900 text-white text-xs rounded-lg hover:bg-gray-700">保存</button>
+        <span class="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">
+          温度 <span class="text-gray-700 font-medium tabular-nums" x-text="temperatureText()"></span>
+        </span>
+        <span x-show="temperatureLabel()" class="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2"
+          x-text="temperatureLabel()"></span>
+        <span x-show="temperatureUpdatedAt()" class="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2"
+          x-text="'更新 ' + temperatureUpdatedAt()"></span>
+        <button @click="refreshTemperature()" class="px-3 py-1.5 border border-gray-200 bg-white text-xs rounded-lg hover:bg-gray-50">刷新温度</button>
       </div>
     </div>
+    <div x-show="planError" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-sm text-red-700 whitespace-pre-line" x-text="planError"></div>
     <!-- 资产再平衡 -->
     <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40" x-show="plan?.transfer_steps?.length">
       <div class="text-sm font-semibold mb-3">① 资金调拨</div>
@@ -130,11 +132,11 @@
         </div>
         <div class="flex gap-2 items-center">
           <button @click="exportMd('cb')" class="px-2 py-1 border border-gray-200 bg-white text-xs rounded hover:bg-gray-50" x-show="cbItems.length">导出</button>
-          <button @click="runStrategy('cb')" :disabled="running"
+          <button @click="runStrategy('cb')" :disabled="running.cb"
             class="px-3 py-1.5 text-xs rounded-lg text-white"
-            :class="running ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700'">
-            <span x-show="!running">运行策略</span>
-            <span x-show="running" class="flex items-center gap-1">⋯ 运行中</span>
+            :class="running.cb ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700'">
+            <span x-show="!running.cb">运行策略</span>
+            <span x-show="running.cb" class="flex items-center gap-1">⋯ 运行中</span>
           </button>
         </div>
       </div>
@@ -190,7 +192,7 @@
         </div>
       </template>
       <!-- 无排名提示 -->
-      <div x-show="!cbItems.length && !running" class="text-sm text-gray-400 py-4">暂无排名，点击「运行策略」生成。</div>
+      <div x-show="!cbItems.length && !running.cb" class="text-sm text-gray-400 py-4" x-text="'暂无 ' + tDate + ' 转债榜单，点击「运行策略」生成。'"></div>
     </div>
     <!-- ③ 股票 -->
     <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
@@ -200,11 +202,11 @@
         </div>
         <div class="flex gap-2 items-center">
           <button @click="exportMd('stock')" class="px-2 py-1 border border-gray-200 bg-white text-xs rounded hover:bg-gray-50" x-show="stockItems.length">导出</button>
-          <button @click="runStrategy('stock')" :disabled="running"
+          <button @click="runStrategy('stock')" :disabled="running.stock"
             class="px-3 py-1.5 text-xs rounded-lg text-white"
-            :class="running ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700'">
-            <span x-show="!running">运行策略</span>
-            <span x-show="running" class="flex items-center gap-1">⋯ 运行中</span>
+            :class="running.stock ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700'">
+            <span x-show="!running.stock">运行策略</span>
+            <span x-show="running.stock" class="flex items-center gap-1">⋯ 运行中</span>
           </button>
         </div>
       </div>
@@ -260,9 +262,10 @@
         </div>
       </template>
       <!-- 无排名提示 -->
-      <div x-show="!stockItems.length && !running" class="text-sm text-gray-400 py-4">暂无排名，点击「运行策略」生成。</div>
+      <div x-show="!stockItems.length && !running.stock" class="text-sm text-gray-400 py-4" x-text="'暂无 ' + tDate + ' 股票榜单，点击「运行策略」生成。'"></div>
     </div>
   </div>
+  </template>
 
 
 
@@ -285,9 +288,10 @@
       loaded: { stock: false, cb: false },
       _uid: 0,
       _sortTimers: {},
+      loadedOnce: false,
       accounts: [
-        { id: 'stock',    label: '广发账户', sub: '股票仓位',   color: '#8b5cf6', totalKey: 'stock_total',     posType: 'stock' },
-        { id: 'cb',       label: '华泰账户', sub: '转债仓位',   color: '#14b8a6', totalKey: 'bond_total',      posType: 'cb'    },
+        { id: 'stock',    label: '广发账户', sub: '股票仓位',   color: '#8b5cf6', totalKey: 'stock_total',     cashKey: 'stock_cash', posType: 'stock' },
+        { id: 'cb',       label: '华泰账户', sub: '转债仓位',   color: '#14b8a6', totalKey: 'bond_total',      cashKey: 'bond_cash',  posType: 'cb'    },
         { id: 'changqian',label: '长钱账户', sub: '国内基金',   color: '#f59e0b', totalKey: 'changqian_total', posType: null    },
         { id: 'overseas', label: '海外长钱', sub: '海外基金',   color: '#60a5fa', totalKey: 'overseas_total',  posType: null    },
         { id: 'cash',     label: '资金账户', sub: '现金仓位',   color: '#9ca3af', totalKey: 'cash_pool',       posType: null    },
@@ -300,20 +304,42 @@
         _stock_updated: '', _cb_updated: '',
       },
       async load() {
-        const [summary, cb, stock] = await Promise.all([
-          fetch('/api/account/summary').then(r => r.json()),
-          fetch('/api/positions/cb').then(r => r.json()),
-          fetch('/api/positions/stock').then(r => r.json()),
+        const summary = await fetch('/api/account/summary').then(r => r.json())
+        this.applySummary(summary)
+        const positionDate = this.form.snapshot_date
+        const [cb, stock] = await Promise.all([
+          fetch(`/api/positions/cb?date=${positionDate}&asof=true`).then(r => r.json()),
+          fetch(`/api/positions/stock?date=${positionDate}&asof=true`).then(r => r.json()),
         ])
-        this.summary = summary
-        if (summary) Object.assign(this.form, summary)
         this.cbRows = cb.map(r => ({ ...r, _id: ++this._uid, isNew: false }))
         this.stockRows = stock.map(r => ({ ...r, _id: ++this._uid, isNew: false }))
         // per-account 更新日期
-        this.form._stock_updated = stock.length > 0 ? stock[0].position_date : (summary?.snapshot_date || '')
-        this.form._cb_updated = cb.length > 0 ? cb[0].position_date : (summary?.snapshot_date || '')
+        const contextDate = summary?.context?.snapshot_date || ''
+        this.form._stock_updated = stock.length > 0 ? stock[0].position_date : contextDate
+        this.form._cb_updated = cb.length > 0 ? cb[0].position_date : contextDate
         // 自动加载行情
         await Promise.all([this.loadQuotes('stock'), this.loadQuotes('cb')])
+      },
+      ensureLoaded(page) {
+        if (page !== 'account' || this.loadedOnce) return
+        this.loadedOnce = true
+        this.load().catch(err => {
+          this.loadedOnce = false
+          console.error(err)
+        })
+      },
+      accountItem(id) {
+        return (this.summary?.accounts || []).find(item => item.id === id) || null
+      },
+      applySummary(summary) {
+        this.summary = summary
+        if (!summary) return
+        ;(summary.accounts || []).forEach(item => {
+          const acc = this.accounts.find(a => a.id === item.id)
+          if (!acc) return
+          this.form[acc.totalKey] = item.total
+          if (acc.cashKey) this.form[acc.cashKey] = item.cash
+        })
       },
       addRow(strategy) {
         const row = { code: '', name: '', shares: 0, _id: ++this._uid, isNew: true }
@@ -331,7 +357,7 @@
         return this.num(f.stock_total) + this.num(f.bond_total) + this.num(f.changqian_total) + this.num(f.cash_pool) + this.num(f.overseas_total)
       },
       async loadQuotes(strategy) {
-        const q = await fetch(`/api/positions/${strategy}/quotes`).then(r => r.json())
+        const q = await fetch(`/api/positions/${strategy}/quotes?date=${this.form.snapshot_date}&asof=true`).then(r => r.json())
         const map = {}
         ;(q.items || []).forEach(it => { map[it.code] = { name: it.name, price: it.price } })
         this.prices[strategy] = map
@@ -368,7 +394,8 @@
         const key = strategy === 'stock' ? 'stock_cash' : 'bond_cash'
         const raw = this.form[key]
         if (raw !== null && raw !== undefined && raw !== '') return this.num(raw)
-        return this.num(this.summary?.[key])
+        const accountId = strategy === 'stock' ? 'stock' : 'cb'
+        return this.num(this.accountItem(accountId)?.cash)
       },
       accountTotal(strategy) {
         return this.holdingsValue(strategy) + this.accountCash(strategy)
@@ -387,7 +414,7 @@
         return total > 0 ? (this.num(this.form[acc.totalKey]) / total * 100).toFixed(1) + '%' : '0%'
       },
       accUpdateDate(acc) {
-        const accountTime = this.summary?.account_updated_at?.[acc.id]
+        const accountTime = this.accountItem(acc.id)?.updated_at
         if (accountTime) return this.formatUpdateDate(accountTime)
         if (acc.posType) {
           const d = this.form['_' + acc.id + '_updated'] || ''
@@ -421,15 +448,14 @@
         })
         if (!res.ok) throw new Error('保存账户失败')
         const saved = await res.json()
-        this.summary = saved
-        Object.assign(this.form, saved)
+        this.applySummary(saved)
       },
       async saveAccount(strategy) {
         // 1. 保存持仓
         const src = strategy === 'cb' ? this.cbRows : this.stockRows
         const rows = src.filter(r => r.code).map(r => ({ code: r.code, name: r.name, shares: r.shares }))
-        const today = new Date().toISOString().slice(0, 10)
-        await fetch(`/api/positions/${strategy}?position_date=${today}`, {
+        const positionDate = this.form.snapshot_date || new Date().toISOString().slice(0, 10)
+        await fetch(`/api/positions/${strategy}?position_date=${positionDate}`, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(rows),
         })
@@ -452,52 +478,69 @@
   function tradingPage() {
     return {
       // T 日数据
-      tDate: new Date().toISOString().slice(0, 10), temperature: 0, tDaySaved: false,
+      tDate: new Date().toISOString().slice(0, 10), marketTemperature: null,
       // 资金分配 + 订单
-      plan: null,
+      plan: null, planError: '',
       sizingCb: false, sizingStock: false,
       // 排名
-      running: false, error: '',
+      running: { cb: false, stock: false }, error: '',
       cbItems: [], stockItems: [],
       cbDates: [], stockDates: [],
       cbDate: '', stockDate: '',
       cbTradeDate: '', stockTradeDate: '',
       showCbRank: false, showStockRank: false,
-
       async init() {
-        // 先取账户聚合视图拿温度, 再用正确温度生成计划
         const summary = await fetch('/api/account/summary').then(r => r.json().catch(() => null))
         if (summary) {
-          this.tDate = summary.snapshot_date || this.tDate
-          this.temperature = summary.temperature || 0
+          this.tDate = summary.context?.snapshot_date || this.tDate
         }
-        await this.loadPlan()
+        await this.loadPlan(false, true)
         const [cbD, stD] = await Promise.all([
           fetch('/api/rankings/cb/dates').then(r => r.json()),
           fetch('/api/rankings/stock/dates').then(r => r.json()),
         ])
-        this.cbDates = cbD.sort().reverse(); this.cbDate = this.cbDates[0] || ''
-        this.stockDates = stD.sort().reverse(); this.stockDate = this.stockDates[0] || ''
+        this.cbDates = cbD.sort().reverse(); this.cbDate = this.cbDates.includes(this.tDate) ? this.tDate : ''
+        this.stockDates = stD.sort().reverse(); this.stockDate = this.stockDates.includes(this.tDate) ? this.tDate : ''
         if (this.cbDate) await this.loadCb()
         if (this.stockDate) await this.loadStock()
       },
 
-      async loadPlan() {
-        const t = Number(this.temperature) || 0
-        this.plan = await fetch(`/api/plan?temperature=${t}`).then(r => r.json())
+      async loadPlan(refreshTemperature = false, suppressDateMismatch = false) {
+        this.planError = ''
+        const url = refreshTemperature ? '/api/plan?refresh_temperature=true' : '/api/plan'
+        const res = await fetch(url)
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
+          const detail = body.detail || {}
+          this.plan = null
+          this.marketTemperature = detail.market_temperature || this.marketTemperature
+          if (detail.plan_date) this.tDate = detail.plan_date
+          if (suppressDateMismatch && detail.code === 'PLAN_INPUT_DATE_MISMATCH') {
+            return
+          }
+          const lines = (detail.errors || []).map(e => `${e.message}: 归属日 ${e.date || '无'}，计划日 ${e.expected}`)
+          this.planError = [detail.message || String(detail || `计划生成失败 (${res.status})`), ...lines].join('\n')
+          return
+        }
+        this.plan = await res.json()
+        this.marketTemperature = this.plan?.market_temperature || null
+        if (this.plan?.market_temperature?.updated_at) {
+          this.tDate = this.plan.market_temperature.updated_at.slice(0, 10)
+        }
       },
 
-      async saveTDay() {
-        await fetch('/api/account/context', {
-          method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            snapshot_date: this.tDate,
-            temperature: Number(this.temperature) || 0,
-          }),
-        })
-        this.tDaySaved = true
-        setTimeout(() => this.tDaySaved = false, 2000)
-        await this.loadPlan()
+      async refreshTemperature() {
+        this.planError = ''
+        const res = await fetch('/api/plan/context?refresh_temperature=true')
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
+          const detail = body.detail || {}
+          this.planError = detail.message || String(detail || `温度刷新失败 (${res.status})`)
+          return
+        }
+        const context = await res.json()
+        this.marketTemperature = context.market_temperature || null
+        if (context.plan_date) this.tDate = context.plan_date
       },
 
       // ── 排名 ──
@@ -514,7 +557,7 @@
         this.stockTradeDate = r.trade_date || ''
       },
       async runStrategy(strategy) {
-        this.running = true; this.error = ''
+        this.running[strategy] = true; this.error = ''
         try {
           const res = await fetch(`/api/rankings/${strategy}/run`, { method: 'POST' })
           if (!res.ok) {
@@ -525,17 +568,19 @@
           const data = await res.json()
           const datesRes = await fetch(`/api/rankings/${strategy}/dates`).then(r => r.json())
           if (strategy === 'cb') {
-            this.cbDates = datesRes.sort().reverse(); this.cbDate = this.cbDates[0] || ''
-            this.cbItems = data.items || []; this.cbTradeDate = data.trade_date || ''
+            this.cbDates = datesRes.sort().reverse(); this.cbDate = this.cbDates.includes(this.tDate) ? this.tDate : ''
+            if (this.cbDate) await this.loadCb()
+            else { this.cbItems = []; this.cbTradeDate = '' }
           } else {
-            this.stockDates = datesRes.sort().reverse(); this.stockDate = this.stockDates[0] || ''
-            this.stockItems = data.items || []; this.stockTradeDate = data.trade_date || ''
+            this.stockDates = datesRes.sort().reverse(); this.stockDate = this.stockDates.includes(this.tDate) ? this.tDate : ''
+            if (this.stockDate) await this.loadStock()
+            else { this.stockItems = []; this.stockTradeDate = '' }
           }
           await this.loadPlan()
         } catch (e) {
           this.error = e.message || '运行失败'
         } finally {
-          this.running = false
+          this.running[strategy] = false
         }
       },
       async exportMd(strategy) {
@@ -555,6 +600,18 @@
       },
       executionDate() {
         return this.plan?.stock?.trade_date || this.plan?.cb?.trade_date || ''
+      },
+      temperatureText() {
+        const t = (this.plan?.market_temperature || this.marketTemperature)?.temperature
+        return t == null ? '-' : `${Number(t).toFixed(0)}°`
+      },
+      temperatureLabel() {
+        return (this.plan?.market_temperature || this.marketTemperature)?.label || ''
+      },
+      temperatureUpdatedAt() {
+        const raw = (this.plan?.market_temperature || this.marketTemperature)?.updated_at
+        if (!raw) return ''
+        return raw.replace('T', ' ')
       },
       groupClass(action) {
         if (action === 'BUY' || action === 'ADD') return 'text-green-600'

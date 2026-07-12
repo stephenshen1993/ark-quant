@@ -2,8 +2,8 @@
 """顶层组合分配器 — 根据全市场温度计算各账户目标金额并生成资金调拨计划。
 
 用法:
-    python3 rebalance.py --temperature 45
-    python3 rebalance.py --temperature 45 --stock 200000 --stock-cash 1000 \\
+    python3 rebalance.py
+    python3 rebalance.py --stock 200000 --stock-cash 1000 \\
                          --bond 250000 --bond-cash 1000 \\
                          --changqian 50000 --cash-pool 20000 --overseas 30000
 
@@ -140,8 +140,7 @@ def print_report(T_raw: float, state: dict) -> None:
 
     if domestic_total <= 0:
         print("\n⚠  国内账户总市值为 0，请先填写各账户数值。", file=sys.stderr)
-        print("示例: python3 rebalance.py --temperature 45 "
-              "--stock 200000 --stock-cash 1000 "
+        print("示例: python3 rebalance.py --stock 200000 --stock-cash 1000 "
               "--bond 250000 --bond-cash 1000 "
               "--changqian 50000 --cash-pool 20000", file=sys.stderr)
         sys.exit(1)
@@ -239,9 +238,9 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    p.add_argument("--temperature", "-t", type=float, required=True,
+    p.add_argument("--temperature", "-t", type=float,
                    metavar="T",
-                   help="全市场温度 0-100 (来源: youzhiyouxing.cn/data)")
+                   help="全市场温度 0-100；默认自动读取 youzhiyouxing.cn/data")
     p.add_argument("--stock",       type=float, metavar="V", help="股票账户总市值")
     p.add_argument("--stock-cash",  type=float, metavar="V", help="股票账户内现金")
     p.add_argument("--bond",        type=float, metavar="V", help="转债账户总市值")
@@ -257,6 +256,12 @@ def main() -> None:
     args = parse_args()
 
     T_raw = args.temperature
+    if T_raw is None:
+        try:
+            from datasource.youzhiyouxing import get_or_fetch_market_temperature
+            T_raw = get_or_fetch_market_temperature().temperature
+        except Exception as exc:
+            sys.exit(f"错误: 无法获取有知有行全市场温度: {exc}")
     if not (0 <= T_raw <= 100):
         sys.exit("错误: --temperature 必须在 0-100 之间")
 

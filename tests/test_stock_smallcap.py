@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import unittest
+from datetime import date
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -20,6 +22,14 @@ CONFIG = {
 
 
 class StockSmallCapTests(unittest.TestCase):
+    def test_persist_rankings_propagates_database_failure(self) -> None:
+        with patch("datasource.db.init_db"), patch(
+            "datasource.db.create_complete_strategy_run",
+            side_effect=RuntimeError("forced persistence failure"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "forced persistence failure"):
+                run.persist_rankings(date(2026, 6, 4), pd.DataFrame([{"stock_code": "600000"}]))
+
     def test_board_filter_keeps_main_and_sme_excludes_others(self) -> None:
         df = pd.DataFrame(
             {

@@ -33,8 +33,8 @@ python3 run_app.py
 # 用持仓和行情估算股票/转债账户总市值，并回填账户状态
 python3 value_accounts.py
 
-# 按温度和账户状态计算体系级目标仓位与调拨方向
-python3 rebalance.py --temperature 55
+# 自动读取有知有行全市场温度，按账户状态计算体系级目标仓位与调拨方向
+python3 rebalance.py
 ```
 
 ## 目录结构

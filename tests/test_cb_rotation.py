@@ -175,6 +175,8 @@ class ConvertibleBondRotationTests(unittest.TestCase):
         self.assertEqual(cleaned["bond_code"].tolist(), ["110084"])
 
     def test_fetch_stock_factors_with_cache_backfills_missing_symbols_from_recent_cache(self) -> None:
+        as_of = date.today()
+        fallback_date = as_of - timedelta(days=1)
         with TemporaryDirectory() as temp_dir, patch.object(run, "CACHE_DIR", Path(temp_dir)):
             fallback = pd.DataFrame(
                 [
@@ -183,11 +185,14 @@ class ConvertibleBondRotationTests(unittest.TestCase):
                         "stock_momentum_20d": 0.02,
                         "stock_volatility_20d": 0.18,
                         "market_cap_estimate": 2.0e9,
-                        "stock_factor_trade_date": "2026-07-03",
+                        "stock_factor_trade_date": fallback_date.isoformat(),
                     }
                 ]
             )
-            fallback.to_csv(Path(temp_dir) / "stock_factors_20260703_latest.csv", index=False)
+            fallback.to_csv(
+                Path(temp_dir) / f"stock_factors_{fallback_date:%Y%m%d}_latest.csv",
+                index=False,
+            )
             fetched = pd.DataFrame(
                 [
                     {
@@ -195,7 +200,7 @@ class ConvertibleBondRotationTests(unittest.TestCase):
                         "stock_momentum_20d": 0.01,
                         "stock_volatility_20d": 0.16,
                         "market_cap_estimate": 1.0e9,
-                        "stock_factor_trade_date": "2026-07-07",
+                        "stock_factor_trade_date": as_of.isoformat(),
                     }
                 ]
             )
@@ -204,7 +209,7 @@ class ConvertibleBondRotationTests(unittest.TestCase):
                 out = run.fetch_stock_factors_with_cache(
                     object(),
                     ["000001", "000002"],
-                    date(2026, 7, 7),
+                    as_of,
                     {"data": {"use_cache_on_failure": True, "max_cache_age_days": 7}},
                 )
 
@@ -347,6 +352,14 @@ class ConvertibleBondRotationTests(unittest.TestCase):
     def test_resolve_trade_date_uses_latest_trade_date_column(self) -> None:
         df = pd.DataFrame({"turnover_trade_date": ["2026-06-03", "2026-06-04"]})
         self.assertEqual(run.resolve_trade_date(df), date(2026, 6, 4))
+
+    def test_persist_rankings_propagates_database_failure(self) -> None:
+        with patch("datasource.db.init_db"), patch(
+            "datasource.db.create_complete_strategy_run",
+            side_effect=RuntimeError("forced persistence failure"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "forced persistence failure"):
+                run.persist_rankings(date(2026, 6, 4), pd.DataFrame([{"bond_code": "113062"}]))
 
     def test_market_cap_estimate_noop_when_disabled(self) -> None:
         merged = pd.DataFrame(

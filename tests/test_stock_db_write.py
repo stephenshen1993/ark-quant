@@ -31,6 +31,7 @@ class TestStockDbWrite(unittest.TestCase):
 
     def test_insert_stock_orders(self):
         run_id = db.insert_strategy_run("stock", date(2026, 6, 27))
+        db.insert_stock_rankings(run_id, pd.DataFrame([{"stock_code": "600051"}]))
         orders_df = pd.DataFrame([{
             "action": "SELL", "stock_code": "600051", "stock_name": "宁波联合",
             "price": 5.68, "delta_shares": -1800, "amount": 10224.0,
@@ -59,5 +60,7 @@ class TestStockDbWrite(unittest.TestCase):
     def test_get_latest_run_id_returns_latest(self):
         id1 = db.insert_strategy_run("stock", date(2026, 6, 27))
         id2 = db.insert_strategy_run("stock", date(2026, 6, 28))
+        db.insert_stock_rankings(id1, pd.DataFrame([{"stock_code": "600051"}]))
+        db.insert_stock_rankings(id2, pd.DataFrame([{"stock_code": "600052"}]))
         self.assertEqual(db.get_latest_run_id("stock"), id2)
         self.assertGreater(id2, id1)

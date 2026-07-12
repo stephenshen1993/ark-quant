@@ -5,10 +5,12 @@ datasource/db.py — SQLite 持久化层
 """
 from __future__ import annotations
 
+import math
 import sqlite3
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -24,6 +26,14 @@ ACCOUNT_VALUE_FIELDS = {
     "overseas": ("overseas_total", None),
 }
 
+ACCOUNT_METADATA = {
+    "stock": {"label": "广发账户", "sub": "股票仓位"},
+    "cb": {"label": "华泰账户", "sub": "转债仓位"},
+    "changqian": {"label": "长钱账户", "sub": "国内基金"},
+    "overseas": {"label": "海外长钱", "sub": "海外基金"},
+    "cash": {"label": "资金账户", "sub": "现金仓位"},
+}
+
 
 def get_connection() -> sqlite3.Connection:
     """Legacy getter for backward compatibility (used in test_db.py)."""
@@ -31,6 +41,7 @@ def get_connection() -> sqlite3.Connection:
         return _TEST_CONN
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
@@ -42,6 +53,7 @@ def _conn():
     else:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
         try:
             yield conn
             conn.commit()
@@ -62,7 +74,9 @@ def init_db() -> None:
             strategy    TEXT    NOT NULL,
             data_date   TEXT    NOT NULL,
             trade_date  TEXT,
-            created_at  TEXT    NOT NULL
+            created_at  TEXT    NOT NULL,
+            status      TEXT    NOT NULL DEFAULT 'pending'
+                CHECK(status IN ('pending', 'complete'))
         );
 
         CREATE TABLE IF NOT EXISTS cb_rankings (
@@ -159,6 +173,31 @@ def init_db() -> None:
             shares        INTEGER NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS position_snapshots (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            strategy      TEXT    NOT NULL CHECK(strategy IN ('cb', 'stock')),
+            position_date TEXT    NOT NULL,
+            created_at    TEXT    NOT NULL,
+            legacy        INTEGER NOT NULL DEFAULT 0 CHECK(legacy IN (0, 1))
+        );
+
+        CREATE TABLE IF NOT EXISTS position_snapshot_items (
+            snapshot_id INTEGER NOT NULL REFERENCES position_snapshots(id) ON DELETE CASCADE,
+            code        TEXT    NOT NULL CHECK(length(code) = 6 AND code NOT GLOB '*[^0-9]*'),
+            name        TEXT    NOT NULL DEFAULT '',
+            shares      REAL    NOT NULL CHECK(shares >= 0),
+            UNIQUE(snapshot_id, code)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_position_snapshots_strategy_date
+        ON position_snapshots(strategy, position_date DESC, id DESC);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_position_snapshots_legacy_date
+        ON position_snapshots(strategy, position_date) WHERE legacy = 1;
+
+        CREATE INDEX IF NOT EXISTS idx_position_snapshot_items_snapshot
+        ON position_snapshot_items(snapshot_id, code);
+
         CREATE TABLE IF NOT EXISTS raw_snapshots (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             snapshot_date TEXT    NOT NULL,
@@ -167,13 +206,58 @@ def init_db() -> None:
             data_json     TEXT    NOT NULL,
             created_at    TEXT    NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS market_temperatures (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            temperature       REAL    NOT NULL,
+            label             TEXT,
+            source_updated_at TEXT    NOT NULL,
+            source            TEXT    NOT NULL,
+            fetched_at        TEXT    NOT NULL,
+            UNIQUE(source, source_updated_at)
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_market_temperatures_source_time
+        ON market_temperatures(source, source_updated_at);
+
+        CREATE TABLE IF NOT EXISTS market_temperature_refresh_state (
+            source          TEXT PRIMARY KEY,
+            last_attempt_at TEXT NOT NULL,
+            last_error      TEXT NOT NULL
+        );
         """)
 
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(account_snapshots)").fetchall()}
         for col in ("changqian_updated_at", "cash_pool_updated_at", "overseas_updated_at"):
             if col not in cols:
                 conn.execute(f"ALTER TABLE account_snapshots ADD COLUMN {col} TEXT")
+        _migrate_strategy_run_status(conn)
         _migrate_legacy_account_snapshots(conn)
+        _migrate_legacy_positions(conn)
+
+
+def _migrate_strategy_run_status(conn: sqlite3.Connection) -> None:
+    columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(strategy_runs)").fetchall()
+    }
+    if "status" in columns:
+        return
+
+    conn.execute(
+        "ALTER TABLE strategy_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'"
+    )
+    conn.execute("""
+        UPDATE strategy_runs
+        SET status = CASE
+            WHEN strategy = 'cb' AND EXISTS (
+                SELECT 1 FROM cb_rankings r WHERE r.run_id = strategy_runs.id
+            ) THEN 'complete'
+            WHEN strategy = 'stock' AND EXISTS (
+                SELECT 1 FROM stock_rankings r WHERE r.run_id = strategy_runs.id
+            ) THEN 'complete'
+            ELSE 'pending'
+        END
+    """)
 
 
 def _migrate_legacy_account_snapshots(conn: sqlite3.Connection) -> None:
@@ -209,6 +293,64 @@ def _migrate_legacy_account_snapshots(conn: sqlite3.Connection) -> None:
                 )
 
 
+def _migrate_legacy_positions(conn: sqlite3.Connection) -> None:
+    """Import each legacy strategy/date once while retaining the old tables."""
+    configs = {
+        "cb": ("cb_positions", "bond_code", "bond_name"),
+        "stock": ("stock_positions", "stock_code", "stock_name"),
+    }
+    for strategy, (table, code_col, name_col) in configs.items():
+        dates = conn.execute(
+            f"SELECT DISTINCT position_date FROM {table} ORDER BY position_date"
+        ).fetchall()
+        for row in dates:
+            position_date = row["position_date"]
+            _validate_iso_date(position_date, "position_date")
+            existing = conn.execute(
+                """SELECT id FROM position_snapshots
+                   WHERE strategy=? AND position_date=? AND legacy=1""",
+                (strategy, position_date),
+            ).fetchone()
+            if existing is not None:
+                continue
+
+            legacy_rows = conn.execute(
+                f"""SELECT id, {code_col} AS code, {name_col} AS name, shares
+                    FROM {table} WHERE position_date=? ORDER BY id""",
+                (position_date,),
+            ).fetchall()
+            latest_by_code = {}
+            for item in legacy_rows:
+                code = _normalize_security_code(item["code"])
+                latest_by_code[code] = {
+                    "id": item["id"],
+                    "code": code,
+                    "name": item["name"] or "",
+                    "shares": _validate_nonnegative_finite(item["shares"], "shares"),
+                }
+
+            cur = conn.execute(
+                """INSERT OR IGNORE INTO position_snapshots
+                   (strategy,position_date,created_at,legacy) VALUES (?,?,?,1)""",
+                (strategy, position_date, datetime.now().isoformat()),
+            )
+            if cur.rowcount != 1:
+                continue
+            conn.executemany(
+                """INSERT INTO position_snapshot_items
+                   (snapshot_id,code,name,shares) VALUES (?,?,?,?)""",
+                [
+                    (
+                        cur.lastrowid,
+                        item["code"],
+                        item["name"],
+                        item["shares"],
+                    )
+                    for item in sorted(latest_by_code.values(), key=lambda value: value["id"])
+                ],
+            )
+
+
 def _next_weekday(d: date) -> date:
     """返回 d 之后的下一个工作日（跳过周六、周日）。"""
     d = d + timedelta(days=1)
@@ -217,35 +359,94 @@ def _next_weekday(d: date) -> date:
     return d
 
 
+def _validate_iso_date(value: str, field: str = "snapshot_date") -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be an ISO date")
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"{field} must be an ISO date") from exc
+    if parsed.isoformat() != value:
+        raise ValueError(f"{field} must be an ISO date")
+    return value
+
+
+def _validate_nonnegative_finite(value: float, field: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field} must be a nonnegative finite number") from exc
+    if not math.isfinite(number) or number < 0:
+        raise ValueError(f"{field} must be a nonnegative finite number")
+    return number
+
+
+def _validate_strategy(strategy: str) -> str:
+    if strategy not in {"cb", "stock"}:
+        raise ValueError(f"Unknown strategy: {strategy}")
+    return strategy
+
+
+def _validate_account_id(account_id: str) -> str:
+    if account_id not in ACCOUNT_VALUE_FIELDS:
+        raise ValueError(f"Unknown account: {account_id}")
+    return account_id
+
+
+def _normalize_security_code(value: object) -> str:
+    code = str(value)
+    if not code.isascii() or not code.isdigit() or len(code) > 6:
+        raise ValueError("security code must contain at most six ASCII digits")
+    return code.zfill(6)
+
+
+def _normalize_position_rows(rows: list[dict]) -> list[dict]:
+    normalized = []
+    seen_codes = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("positions must be objects")
+        if "code" not in row or "shares" not in row:
+            raise ValueError("each position requires code and shares")
+        code = _normalize_security_code(row["code"])
+        if code in seen_codes:
+            raise ValueError(f"duplicate security code: {code}")
+        seen_codes.add(code)
+        normalized.append({
+            "code": code,
+            "name": str(row.get("name") or ""),
+            "shares": _validate_nonnegative_finite(row["shares"], "shares"),
+        })
+    return normalized
+
+
 # ── Write ─────────────────────────────────────────────────────────────────────
 
 def insert_strategy_run(strategy: str, data_date: date) -> int:
+    _validate_strategy(strategy)
     trade_date = _next_weekday(data_date)
     with _conn() as conn:
         cur = conn.execute(
-            "INSERT INTO strategy_runs (strategy, data_date, trade_date, created_at) VALUES (?,?,?,?)",
+            """INSERT INTO strategy_runs
+               (strategy, data_date, trade_date, created_at, status)
+               VALUES (?,?,?,?, 'pending')""",
             (strategy, data_date.isoformat(), trade_date.isoformat(), datetime.now().isoformat()),
         )
         return cur.lastrowid
 
 
-def insert_cb_rankings(run_id: int, df: pd.DataFrame) -> None:
-    rows = [
+def _cb_ranking_rows(run_id: int, df: pd.DataFrame) -> list[tuple]:
+    return [
         (run_id, i, str(getattr(r, "bond_code", "")).zfill(6),
          getattr(r, "bond_name", ""), getattr(r, "cb_price", None),
          getattr(r, "premium_rate", None), getattr(r, "double_low", None),
          getattr(r, "score", None))
         for i, r in enumerate(df.itertuples(index=False), start=1)
     ]
-    with _conn() as conn:
-        conn.executemany(
-            "INSERT INTO cb_rankings (run_id,rank,bond_code,bond_name,cb_price,premium_rate,double_low,score) VALUES (?,?,?,?,?,?,?,?)",
-            rows,
-        )
 
 
-def insert_stock_rankings(run_id: int, df: pd.DataFrame) -> None:
-    rows = [
+def _stock_ranking_rows(run_id: int, df: pd.DataFrame) -> list[tuple]:
+    return [
         (run_id, int(getattr(r, "rank", i)),
          str(getattr(r, "stock_code", "")).zfill(6),
          getattr(r, "stock_name_q", getattr(r, "stock_name", "")),
@@ -253,11 +454,102 @@ def insert_stock_rankings(run_id: int, df: pd.DataFrame) -> None:
          getattr(r, "pe_ttm", None), getattr(r, "roe_pct", None))
         for i, r in enumerate(df.itertuples(index=False), start=1)
     ]
-    with _conn() as conn:
+
+
+def _insert_ranking_rows(
+    conn: sqlite3.Connection,
+    strategy: str,
+    run_id: int,
+    df: pd.DataFrame,
+) -> int:
+    run = conn.execute(
+        "SELECT strategy FROM strategy_runs WHERE id=?", (run_id,)
+    ).fetchone()
+    if run is None or run["strategy"] != strategy:
+        raise ValueError(f"Strategy run {run_id} does not belong to {strategy}")
+
+    if strategy == "cb":
+        rows = _cb_ranking_rows(run_id, df)
+        conn.executemany(
+            "INSERT INTO cb_rankings (run_id,rank,bond_code,bond_name,cb_price,premium_rate,double_low,score) VALUES (?,?,?,?,?,?,?,?)",
+            rows,
+        )
+    else:
+        rows = _stock_ranking_rows(run_id, df)
         conn.executemany(
             "INSERT INTO stock_rankings (run_id,rank,stock_code,stock_name,market_cap,pe_ttm,roe_ex) VALUES (?,?,?,?,?,?,?)",
             rows,
         )
+    return len(rows)
+
+
+def _insert_rankings_and_complete(
+    conn: sqlite3.Connection,
+    strategy: str,
+    run_id: int,
+    df: pd.DataFrame,
+) -> None:
+    inserted = _insert_ranking_rows(conn, strategy, run_id, df)
+    if inserted:
+        conn.execute(
+            "UPDATE strategy_runs SET status='complete' WHERE id=? AND strategy=?",
+            (run_id, strategy),
+        )
+
+
+def _insert_rankings_compat(strategy: str, run_id: int, df: pd.DataFrame) -> None:
+    with _conn() as conn:
+        conn.execute("SAVEPOINT insert_rankings_compat")
+        try:
+            _insert_rankings_and_complete(conn, strategy, run_id, df)
+        except Exception:
+            conn.execute("ROLLBACK TO SAVEPOINT insert_rankings_compat")
+            conn.execute("RELEASE SAVEPOINT insert_rankings_compat")
+            raise
+        conn.execute("RELEASE SAVEPOINT insert_rankings_compat")
+
+
+def insert_cb_rankings(run_id: int, df: pd.DataFrame) -> None:
+    _insert_rankings_compat("cb", run_id, df)
+
+
+def insert_stock_rankings(run_id: int, df: pd.DataFrame) -> None:
+    _insert_rankings_compat("stock", run_id, df)
+
+
+def create_complete_strategy_run(
+    strategy: str,
+    data_date: date,
+    trade_date: date | None,
+    rankings: pd.DataFrame,
+) -> int:
+    _validate_strategy(strategy)
+    if rankings.empty:
+        raise ValueError("A complete strategy run requires at least one ranking")
+    resolved_trade_date = trade_date or _next_weekday(data_date)
+
+    with _conn() as conn:
+        conn.execute("SAVEPOINT create_complete_strategy_run")
+        try:
+            cur = conn.execute(
+                """INSERT INTO strategy_runs
+                   (strategy, data_date, trade_date, created_at, status)
+                   VALUES (?,?,?,?, 'pending')""",
+                (
+                    strategy,
+                    data_date.isoformat(),
+                    resolved_trade_date.isoformat(),
+                    datetime.now().isoformat(),
+                ),
+            )
+            run_id = cur.lastrowid
+            _insert_rankings_and_complete(conn, strategy, run_id, rankings)
+        except Exception:
+            conn.execute("ROLLBACK TO SAVEPOINT create_complete_strategy_run")
+            conn.execute("RELEASE SAVEPOINT create_complete_strategy_run")
+            raise
+        conn.execute("RELEASE SAVEPOINT create_complete_strategy_run")
+        return run_id
 
 
 def insert_cb_orders(run_id: int, df: pd.DataFrame) -> None:
@@ -297,6 +589,18 @@ def insert_account_snapshot(
     cash_pool_updated_at: str | None = None,
     overseas_updated_at: str | None = None,
 ) -> int:
+    _validate_iso_date(snapshot_date)
+    values = (
+        (stock_total, "stock_total"),
+        (stock_cash, "stock_cash"),
+        (bond_total, "bond_total"),
+        (bond_cash, "bond_cash"),
+        (changqian_total, "changqian_total"),
+        (cash_pool, "cash_pool"),
+        (overseas_total, "overseas_total"),
+    )
+    for value, field in values:
+        _validate_nonnegative_finite(value, field)
     insert_account_context(snapshot_date, temperature)
     ids = [
         insert_account_value_snapshot("stock", snapshot_date, stock_total, stock_cash),
@@ -314,17 +618,33 @@ def insert_account_value_snapshot(
     total: float,
     cash: float | None = None,
 ) -> int:
+    _validate_account_id(account_id)
+    _validate_iso_date(snapshot_date)
+    total = _validate_nonnegative_finite(total, "total")
+    if cash is not None:
+        cash = _validate_nonnegative_finite(cash, "cash")
     with _conn() as conn:
-        cur = conn.execute(
-            """INSERT INTO account_value_snapshots
-               (account_id,snapshot_date,total,cash,created_at)
-               VALUES (?,?,?,?,?)""",
-            (account_id, snapshot_date, total, cash, datetime.now().isoformat()),
-        )
-        return cur.lastrowid
+        return _insert_account_value_snapshot(conn, account_id, snapshot_date, total, cash)
+
+
+def _insert_account_value_snapshot(
+    conn: sqlite3.Connection,
+    account_id: str,
+    snapshot_date: str,
+    total: float,
+    cash: float | None,
+) -> int:
+    cur = conn.execute(
+        """INSERT INTO account_value_snapshots
+           (account_id,snapshot_date,total,cash,created_at)
+           VALUES (?,?,?,?,?)""",
+        (account_id, snapshot_date, total, cash, datetime.now().isoformat()),
+    )
+    return cur.lastrowid
 
 
 def insert_account_context(snapshot_date: str, temperature: float) -> int:
+    _validate_iso_date(snapshot_date)
     with _conn() as conn:
         cur = conn.execute(
             "INSERT INTO account_contexts (snapshot_date,temperature,created_at) VALUES (?,?,?)",
@@ -333,28 +653,198 @@ def insert_account_context(snapshot_date: str, temperature: float) -> int:
         return cur.lastrowid
 
 
-def insert_positions(strategy: str, position_date: str, rows: list[dict]) -> None:
-    if strategy == "cb":
-        table, code_col, name_col = "cb_positions", "bond_code", "bond_name"
-    else:
-        table, code_col, name_col = "stock_positions", "stock_code", "stock_name"
+def insert_market_temperature(
+    temperature: float,
+    label: str | None,
+    source_updated_at: str,
+    source: str,
+    fetched_at: str | None = None,
+) -> dict:
+    try:
+        temperature = float(temperature)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("temperature must be numeric") from exc
+    if not math.isfinite(temperature) or not 0 <= temperature <= 100:
+        raise ValueError("temperature must be between 0 and 100")
+    try:
+        datetime.fromisoformat(source_updated_at)
+        if fetched_at is not None:
+            datetime.fromisoformat(fetched_at)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("temperature timestamps must be valid ISO values") from exc
+    fetched_at = fetched_at or (
+        datetime.now(ZoneInfo("Asia/Shanghai"))
+        .replace(tzinfo=None)
+        .isoformat(timespec="seconds")
+    )
     with _conn() as conn:
-        conn.execute(f"DELETE FROM {table} WHERE position_date=?", (position_date,))
-        conn.executemany(
-            f"INSERT INTO {table} (position_date,{code_col},{name_col},shares) VALUES (?,?,?,?)",
-            [(position_date, r["code"], r.get("name", ""), r["shares"]) for r in rows],
+        conn.execute(
+            """INSERT INTO market_temperatures
+               (temperature,label,source_updated_at,source,fetched_at)
+               VALUES (?,?,?,?,?)
+               ON CONFLICT(source, source_updated_at) DO UPDATE SET
+                   fetched_at=excluded.fetched_at
+               WHERE market_temperatures.temperature=excluded.temperature
+                 AND market_temperatures.label IS excluded.label""",
+            (temperature, label, source_updated_at, source, fetched_at),
         )
+        row = conn.execute(
+            "SELECT * FROM market_temperatures WHERE source=? AND source_updated_at=?",
+            (source, source_updated_at),
+        ).fetchone()
+        return dict(row)
+
+
+def record_market_temperature_refresh_failure(
+    source: str,
+    last_attempt_at: str,
+    last_error: str,
+) -> None:
+    with _conn() as conn:
+        conn.execute(
+            """INSERT INTO market_temperature_refresh_state
+               (source,last_attempt_at,last_error) VALUES (?,?,?)
+               ON CONFLICT(source) DO UPDATE SET
+                   last_attempt_at=excluded.last_attempt_at,
+                   last_error=excluded.last_error""",
+            (source, last_attempt_at, last_error),
+        )
+
+
+def clear_market_temperature_refresh_state(source: str) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "DELETE FROM market_temperature_refresh_state WHERE source=?",
+            (source,),
+        )
+
+
+def _insert_position_snapshot(
+    conn: sqlite3.Connection,
+    strategy: str,
+    position_date: str,
+    rows: list[dict],
+    *,
+    legacy: bool = False,
+) -> int:
+    cur = conn.execute(
+        """INSERT INTO position_snapshots
+           (strategy,position_date,created_at,legacy) VALUES (?,?,?,?)""",
+        (strategy, position_date, datetime.now().isoformat(), int(legacy)),
+    )
+    snapshot_id = cur.lastrowid
+    conn.executemany(
+        """INSERT INTO position_snapshot_items
+           (snapshot_id,code,name,shares) VALUES (?,?,?,?)""",
+        [(snapshot_id, row["code"], row["name"], row["shares"]) for row in rows],
+    )
+    return snapshot_id
+
+
+def append_position_snapshot(strategy: str, position_date: str, rows: list[dict]) -> dict:
+    _validate_strategy(strategy)
+    _validate_iso_date(position_date, "position_date")
+    normalized = _normalize_position_rows(rows)
+    with _conn() as conn:
+        conn.execute("SAVEPOINT append_position_snapshot")
+        try:
+            snapshot_id = _insert_position_snapshot(conn, strategy, position_date, normalized)
+        except Exception:
+            conn.execute("ROLLBACK TO SAVEPOINT append_position_snapshot")
+            conn.execute("RELEASE SAVEPOINT append_position_snapshot")
+            raise
+        conn.execute("RELEASE SAVEPOINT append_position_snapshot")
+        return _get_position_snapshot(conn, "s.id=?", (snapshot_id,))
+
+
+def append_account_state_snapshot(
+    account_id: str,
+    snapshot_date: str,
+    total: float,
+    cash: float,
+    positions: list[dict],
+) -> dict:
+    _validate_account_id(account_id)
+    _validate_strategy(account_id)
+    _validate_iso_date(snapshot_date)
+    total = _validate_nonnegative_finite(total, "total")
+    cash = _validate_nonnegative_finite(cash, "cash")
+    normalized = _normalize_position_rows(positions)
+
+    with _conn() as conn:
+        conn.execute("SAVEPOINT append_account_state_snapshot")
+        try:
+            account_snapshot_id = _insert_account_value_snapshot(
+                conn, account_id, snapshot_date, total, cash
+            )
+            position_snapshot_id = _insert_position_snapshot(
+                conn, account_id, snapshot_date, normalized
+            )
+        except Exception:
+            conn.execute("ROLLBACK TO SAVEPOINT append_account_state_snapshot")
+            conn.execute("RELEASE SAVEPOINT append_account_state_snapshot")
+            raise
+        conn.execute("RELEASE SAVEPOINT append_account_state_snapshot")
+        return {
+            "account_snapshot_id": account_snapshot_id,
+            "position_snapshot": _get_position_snapshot(
+                conn, "s.id=?", (position_snapshot_id,)
+            ),
+        }
+
+
+def insert_positions(strategy: str, position_date: str, rows: list[dict]) -> None:
+    """Compatibility writer; new storage is immutable and append-only."""
+    append_position_snapshot(strategy, position_date, rows)
 
 
 # ── Read ──────────────────────────────────────────────────────────────────────
 
+def _ranking_table(strategy: str) -> str:
+    _validate_strategy(strategy)
+    return "cb_rankings" if strategy == "cb" else "stock_rankings"
+
+
 def get_latest_run_id(strategy: str) -> int | None:
+    table = _ranking_table(strategy)
     with _conn() as conn:
         row = conn.execute(
-            "SELECT id FROM strategy_runs WHERE strategy=? ORDER BY id DESC LIMIT 1",
+            f"""SELECT sr.id FROM strategy_runs sr
+                WHERE sr.strategy=? AND sr.status='complete'
+                  AND EXISTS (SELECT 1 FROM {table} r WHERE r.run_id=sr.id)
+                ORDER BY sr.id DESC LIMIT 1""",
             (strategy,)
         ).fetchone()
         return row["id"] if row else None
+
+
+def get_latest_strategy_run(strategy: str) -> dict | None:
+    table = _ranking_table(strategy)
+    with _conn() as conn:
+        row = conn.execute(
+            f"""SELECT sr.id, sr.strategy, sr.data_date, sr.trade_date,
+                       sr.created_at, sr.status
+                FROM strategy_runs sr
+                WHERE sr.strategy=? AND sr.status='complete'
+                  AND EXISTS (SELECT 1 FROM {table} r WHERE r.run_id=sr.id)
+                ORDER BY sr.id DESC LIMIT 1""",
+            (strategy,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def get_strategy_run(run_id: int, strategy: str) -> dict | None:
+    table = _ranking_table(strategy)
+    with _conn() as conn:
+        row = conn.execute(
+            f"""SELECT sr.id, sr.strategy, sr.data_date, sr.trade_date,
+                       sr.created_at, sr.status
+                FROM strategy_runs sr
+                WHERE sr.id=? AND sr.strategy=? AND sr.status='complete'
+                  AND EXISTS (SELECT 1 FROM {table} r WHERE r.run_id=sr.id)""",
+            (run_id, strategy),
+        ).fetchone()
+        return dict(row) if row else None
 
 
 def get_current_account_summary() -> dict | None:
@@ -400,10 +890,12 @@ def get_current_account_summary() -> dict | None:
             "created_at": base.get("created_at"),
         }
         updated_at: dict[str, str] = {}
+        snapshot_dates: dict[str, str] = {}
         for value in values:
             item = dict(value)
             account_id = item["account_id"]
             updated_at[account_id] = item["created_at"]
+            snapshot_dates[account_id] = item["snapshot_date"]
             if account_id == "stock":
                 snap["stock_total"] = item["total"]
                 snap["stock_cash"] = item["cash"] or 0
@@ -417,6 +909,8 @@ def get_current_account_summary() -> dict | None:
             elif account_id == "overseas":
                 snap["overseas_total"] = item["total"]
         snap["account_updated_at"] = updated_at
+        snap["account_snapshot_dates"] = snapshot_dates
+        snap["accounts"] = _build_account_items(snap)
         snap["total_assets"] = (
             snap["stock_total"] + snap["bond_total"] + snap["changqian_total"]
             + snap["cash_pool"] + snap["overseas_total"]
@@ -424,9 +918,51 @@ def get_current_account_summary() -> dict | None:
         return snap
 
 
+def _build_account_items(snap: dict) -> list[dict]:
+    items = []
+    for account_id in ("stock", "cb", "changqian", "overseas", "cash"):
+        total_key, cash_key = ACCOUNT_VALUE_FIELDS[account_id]
+        meta = ACCOUNT_METADATA[account_id]
+        items.append({
+            "id": account_id,
+            "label": meta["label"],
+            "sub": meta["sub"],
+            "total": snap.get(total_key, 0) or 0,
+            "cash": (snap.get(cash_key, 0) or 0) if cash_key else None,
+            "snapshot_date": snap.get("account_snapshot_dates", {}).get(account_id),
+            "updated_at": snap.get("account_updated_at", {}).get(account_id),
+        })
+    return items
+
+
 def get_latest_account_snapshot() -> dict | None:
     """Compatibility alias for callers that still expect the old name."""
     return get_current_account_summary()
+
+
+def get_latest_market_temperature(source: str | None = None) -> dict | None:
+    with _conn() as conn:
+        if source is None:
+            row = conn.execute(
+                "SELECT * FROM market_temperatures "
+                "ORDER BY source_updated_at DESC, id DESC LIMIT 1"
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM market_temperatures WHERE source=? "
+                "ORDER BY source_updated_at DESC, id DESC LIMIT 1",
+                (source,),
+            ).fetchone()
+        return dict(row) if row else None
+
+
+def get_market_temperature_refresh_state(source: str) -> dict | None:
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM market_temperature_refresh_state WHERE source=?",
+            (source,),
+        ).fetchone()
+        return dict(row) if row else None
 
 
 def get_account_history() -> list[dict]:
@@ -462,88 +998,204 @@ def get_account_history() -> list[dict]:
         return list(grouped.values())
 
 
-def get_latest_positions(strategy: str) -> list[dict]:
-    if strategy == "cb":
-        table, code_col, name_col = "cb_positions", "bond_code", "bond_name"
-    else:
-        table, code_col, name_col = "stock_positions", "stock_code", "stock_name"
+def _get_position_snapshot(
+    conn: sqlite3.Connection,
+    where: str,
+    params: tuple,
+    *,
+    order_by: str = "s.id DESC",
+) -> dict | None:
+    row = conn.execute(
+        f"""SELECT s.id, s.strategy, s.position_date, s.created_at, s.legacy
+            FROM position_snapshots s WHERE {where}
+            ORDER BY {order_by} LIMIT 1""",
+        params,
+    ).fetchone()
+    if row is None:
+        return None
+    snapshot = dict(row)
+    items = conn.execute(
+        """SELECT code, name, shares FROM position_snapshot_items
+           WHERE snapshot_id=? ORDER BY code""",
+        (snapshot["id"],),
+    ).fetchall()
+    snapshot["items"] = [dict(item) for item in items]
+    return snapshot
+
+
+def get_position_snapshot_by_date(strategy: str, date_str: str) -> dict | None:
+    _validate_strategy(strategy)
+    _validate_iso_date(date_str, "position_date")
     with _conn() as conn:
-        row = conn.execute(f"SELECT MAX(position_date) as d FROM {table}").fetchone()
-        if not row or not row["d"]:
-            return []
-        rows = conn.execute(
-            f"SELECT {code_col} as code, {name_col} as name, shares, position_date "
-            f"FROM {table} WHERE position_date=? ORDER BY {code_col}",
-            (row["d"],)
-        ).fetchall()
-        return [dict(r) for r in rows]
+        return _get_position_snapshot(
+            conn,
+            "s.strategy=? AND s.position_date=?",
+            (strategy, date_str),
+        )
+
+
+def get_latest_position_snapshot(strategy: str) -> dict | None:
+    _validate_strategy(strategy)
+    with _conn() as conn:
+        return _get_position_snapshot(
+            conn,
+            "s.strategy=?",
+            (strategy,),
+            order_by="s.position_date DESC, s.id DESC",
+        )
+
+
+def get_position_snapshot_asof(strategy: str, date_str: str) -> dict | None:
+    _validate_strategy(strategy)
+    _validate_iso_date(date_str, "position_date")
+    with _conn() as conn:
+        return _get_position_snapshot(
+            conn,
+            "s.strategy=? AND s.position_date<=?",
+            (strategy, date_str),
+            order_by="s.position_date DESC, s.id DESC",
+        )
+
+
+def get_position_snapshot_updated_between(
+    strategy: str,
+    start_date: str,
+    end_date: str,
+) -> dict | None:
+    _validate_strategy(strategy)
+    _validate_iso_date(start_date, "start_date")
+    _validate_iso_date(end_date, "end_date")
+    with _conn() as conn:
+        return _get_position_snapshot(
+            conn,
+            "s.strategy=? AND date(s.created_at)>=date(?) AND date(s.created_at)<=date(?)",
+            (strategy, start_date, end_date),
+            order_by="s.created_at DESC, s.id DESC",
+        )
+
+
+def _snapshot_items_for_compatibility(snapshot: dict | None) -> list[dict]:
+    if snapshot is None:
+        return []
+    return [
+        {**item, "position_date": snapshot["position_date"]}
+        for item in snapshot["items"]
+    ]
+
+
+def get_latest_positions(strategy: str) -> list[dict]:
+    return _snapshot_items_for_compatibility(get_latest_position_snapshot(strategy))
 
 
 def get_position_dates(strategy: str) -> list[str]:
-    table = "cb_positions" if strategy == "cb" else "stock_positions"
+    _validate_strategy(strategy)
     with _conn() as conn:
         rows = conn.execute(
-            f"SELECT DISTINCT position_date FROM {table} ORDER BY position_date DESC"
+            """SELECT DISTINCT position_date FROM position_snapshots
+               WHERE strategy=? ORDER BY position_date DESC""",
+            (strategy,),
         ).fetchall()
         return [r["position_date"] for r in rows]
 
 
 def get_positions_by_date(strategy: str, date_str: str) -> list[dict]:
-    if strategy == "cb":
-        table, code_col, name_col = "cb_positions", "bond_code", "bond_name"
-    else:
-        table, code_col, name_col = "stock_positions", "stock_code", "stock_name"
-    with _conn() as conn:
-        rows = conn.execute(
-            f"SELECT {code_col} as code, {name_col} as name, shares "
-            f"FROM {table} WHERE position_date=? ORDER BY {code_col}",
-            (date_str,)
-        ).fetchall()
-        return [dict(r) for r in rows]
+    return _snapshot_items_for_compatibility(
+        get_position_snapshot_by_date(strategy, date_str)
+    )
+
+
+def get_positions_asof(strategy: str, date_str: str) -> list[dict]:
+    return _snapshot_items_for_compatibility(
+        get_position_snapshot_asof(strategy, date_str)
+    )
+
+
+def get_positions_updated_between(strategy: str, start_date: str, end_date: str) -> list[dict]:
+    return _snapshot_items_for_compatibility(
+        get_position_snapshot_updated_between(strategy, start_date, end_date)
+    )
 
 
 def get_ranking_dates(strategy: str) -> list[str]:
+    table = _ranking_table(strategy)
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT DISTINCT data_date FROM strategy_runs WHERE strategy=? ORDER BY data_date DESC",
+            f"""SELECT DISTINCT sr.data_date FROM strategy_runs sr
+                WHERE sr.strategy=? AND sr.status='complete'
+                  AND EXISTS (SELECT 1 FROM {table} r WHERE r.run_id=sr.id)
+                ORDER BY sr.data_date DESC""",
             (strategy,)
         ).fetchall()
         return [r["data_date"] for r in rows]
 
 
 def get_strategy_run_meta(strategy: str, data_date: str) -> dict | None:
+    table = _ranking_table(strategy)
     with _conn() as conn:
         row = conn.execute(
-            "SELECT id, strategy, data_date, trade_date, created_at "
-            "FROM strategy_runs WHERE strategy=? AND data_date=? ORDER BY id DESC LIMIT 1",
+            f"""SELECT sr.id, sr.strategy, sr.data_date, sr.trade_date,
+                       sr.created_at, sr.status
+                FROM strategy_runs sr
+                WHERE sr.strategy=? AND sr.data_date=? AND sr.status='complete'
+                  AND EXISTS (SELECT 1 FROM {table} r WHERE r.run_id=sr.id)
+                ORDER BY sr.id DESC LIMIT 1""",
             (strategy, data_date),
         ).fetchone()
         return dict(row) if row else None
 
 
+def _get_rankings_for_run(
+    conn: sqlite3.Connection,
+    strategy: str,
+    run_id: int,
+) -> list[dict]:
+    table = _ranking_table(strategy)
+    run = conn.execute(
+        f"""SELECT sr.id, sr.trade_date FROM strategy_runs sr
+            WHERE sr.id=? AND sr.strategy=? AND sr.status='complete'
+              AND EXISTS (SELECT 1 FROM {table} r WHERE r.run_id=sr.id)""",
+        (run_id, strategy),
+    ).fetchone()
+    if not run:
+        return []
+    rows = conn.execute(
+        f"SELECT * FROM {table} WHERE run_id=? ORDER BY rank", (run_id,)
+    ).fetchall()
+    result = [dict(row) for row in rows]
+    for row in result:
+        row["trade_date"] = run["trade_date"]
+    return result
+
+
+def get_rankings_by_run_id(strategy: str, run_id: int) -> list[dict]:
+    with _conn() as conn:
+        return _get_rankings_for_run(conn, strategy, run_id)
+
+
 def get_rankings(strategy: str, data_date: str) -> list[dict]:
-    table = "cb_rankings" if strategy == "cb" else "stock_rankings"
+    table = _ranking_table(strategy)
     with _conn() as conn:
         run = conn.execute(
-            "SELECT id, trade_date FROM strategy_runs WHERE strategy=? AND data_date=? ORDER BY id DESC LIMIT 1",
+            f"""SELECT sr.id FROM strategy_runs sr
+                WHERE sr.strategy=? AND sr.data_date=? AND sr.status='complete'
+                  AND EXISTS (SELECT 1 FROM {table} r WHERE r.run_id=sr.id)
+                ORDER BY sr.id DESC LIMIT 1""",
             (strategy, data_date),
         ).fetchone()
         if not run:
             return []
-        rows = conn.execute(
-            f"SELECT * FROM {table} WHERE run_id=? ORDER BY rank", (run["id"],)
-        ).fetchall()
-        result = [dict(r) for r in rows]
-        for r in result:
-            r["trade_date"] = run["trade_date"]
-        return result
+        return _get_rankings_for_run(conn, strategy, run["id"])
 
 
 def get_orders(strategy: str, data_date: str) -> list[dict]:
     table = "cb_orders" if strategy == "cb" else "stock_orders"
+    ranking_table = _ranking_table(strategy)
     with _conn() as conn:
         run = conn.execute(
-            "SELECT id FROM strategy_runs WHERE strategy=? AND data_date=? ORDER BY id DESC LIMIT 1",
+            f"""SELECT sr.id FROM strategy_runs sr
+                WHERE sr.strategy=? AND sr.data_date=? AND sr.status='complete'
+                  AND EXISTS (SELECT 1 FROM {ranking_table} r WHERE r.run_id=sr.id)
+                ORDER BY sr.id DESC LIMIT 1""",
             (strategy, data_date),
         ).fetchone()
         if not run:
