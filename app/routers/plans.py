@@ -1,7 +1,6 @@
 from __future__ import annotations
 from datetime import date, datetime
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 from datasource import db
 from datasource.youzhiyouxing import TemperatureFetchError, get_or_fetch_market_temperature
 
@@ -58,6 +57,7 @@ def get_plan(refresh_temperature: bool = False):
                 "errors": date_errors,
             },
         )
+    warnings = _plan_input_warnings(plan_date, account)
 
     cb_orders = db.get_orders("cb", plan_date)
     cb_data_date = plan_date
@@ -70,23 +70,12 @@ def get_plan(refresh_temperature: bool = False):
     stock_rankings = db.get_rankings("stock", plan_date) if not stock_orders else []
 
     transfer_steps = []
+    targets = {}
+    deltas = {}
     if account:
         try:
-            import sys
-            from pathlib import Path
-            sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-            from rebalance import calc_targets, build_transfer_plan
-            domestic = (
-                account["stock_total"] + account["bond_total"]
-                + account["changqian_total"] + account["cash_pool"]
-            )
-            targets = calc_targets(domestic, account["temperature"])
-            deltas = {
-                "stock":     targets["stock"]     - account["stock_total"],
-                "bond":      targets["bond"]      - account["bond_total"],
-                "changqian": targets["changqian"] - account["changqian_total"],
-                "cash_pool": targets["cash_pool"] - account["cash_pool"],
-            }
+            from rebalance import build_transfer_plan
+            targets, deltas = _portfolio_targets_and_deltas(account)
             transfer_steps = build_transfer_plan(deltas)
         except Exception:
             transfer_steps = []
@@ -94,7 +83,7 @@ def get_plan(refresh_temperature: bool = False):
     def _order_summary(orders, cash_key: str) -> dict | None:
         if not orders or not account:
             return None
-        delta = deltas.get(cash_key, 0) if transfer_steps else 0
+        delta = deltas.get(cash_key, 0)
         base = account.get(f"{cash_key}_cash", 0)
         def shares(order: dict) -> int:
             return order.get("delta_shares", order.get("shares", 0)) or 0
@@ -112,8 +101,11 @@ def get_plan(refresh_temperature: bool = False):
         "plan_date": plan_date,
         "market_temperature": market_temperature.to_dict(),
         "account": account,
+        "warnings": warnings,
+        "targets": targets,
         "transfer_steps": transfer_steps,
-        "transfer_deltas": deltas if transfer_steps else {},
+        "transfer_deltas": deltas,
+        "execution_sequence": _execution_sequence(cb_orders, stock_orders, transfer_steps),
         "cb": {
             "data_date": cb_data_date,
             "trade_date": cb_trade_date,
@@ -151,7 +143,6 @@ def _validate_plan_inputs(plan_date: str, account: dict | None) -> list[dict]:
             "cb": "转债账户",
             "changqian": "长钱账户",
             "cash": "现金账户",
-            "overseas": "海外长钱",
         }
         for account_id, label in required_accounts.items():
             actual = account_updates.get(account_id)
@@ -179,6 +170,28 @@ def _validate_plan_inputs(plan_date: str, account: dict | None) -> list[dict]:
                 "message": f"缺少 {plan_date} 的{label}",
             })
     return errors
+
+
+def _plan_input_warnings(plan_date: str, account: dict | None) -> list[dict]:
+    warnings = []
+    if not account:
+        return warnings
+    account_input_end = _account_input_window_end(plan_date)
+    account_updates = account.get("account_updated_at") or {}
+    legacy_account_dates = account.get("account_snapshot_dates") or {}
+    overseas_updated_at = account_updates.get("overseas")
+    overseas_snapshot_date = legacy_account_dates.get("overseas")
+    if (
+        not _is_account_update_acceptable(overseas_updated_at, plan_date, account_input_end)
+        and overseas_snapshot_date != plan_date
+    ):
+        warnings.append({
+            "input": "account.overseas",
+            "date": overseas_updated_at,
+            "expected": f"{plan_date} 至 {account_input_end}",
+            "message": "海外长钱更新时间不在计划输入窗口内；它不参与国内再平衡，本次仅提示。",
+        })
+    return warnings
 
 
 def _account_input_window_end(plan_date: str) -> str:
@@ -210,19 +223,15 @@ def _is_account_update_acceptable(updated_at: str | None, plan_date: str, window
     return start <= actual_date <= end
 
 
-class SizeOrdersRequest(BaseModel):
-    cash: float
-
-
 @router.post("/{strategy}/size-orders")
-def size_orders(strategy: str, req: SizeOrdersRequest):
-    """根据计划日期榜单 + 持仓 + 现金，生成具体买卖张数/股数。"""
+def size_orders(strategy: str):
+    """根据计划日期榜单 + 持仓 + 服务端账户事实，生成具体买卖张数/股数。"""
     if strategy == "cb":
-        _ensure_plan_inputs_consistent()
-        return _size_cb_orders(req.cash)
+        plan_date, account, deltas = _ensure_plan_inputs_consistent()
+        return _size_cb_orders(_strategy_cash_after_transfer("cb", account, deltas))
     if strategy == "stock":
-        _ensure_plan_inputs_consistent()
-        return _size_stock_orders(req.cash)
+        plan_date, account, deltas = _ensure_plan_inputs_consistent()
+        return _size_stock_orders(_strategy_cash_after_transfer("stock", account, deltas))
     raise HTTPException(400, {"code": "INVALID_STRATEGY", "message": f"未知策略: {strategy}"})
 
 
@@ -237,9 +246,10 @@ def _size_cb_orders(cash: float) -> dict:
         raise HTTPException(400, {"code": "NO_RANKINGS", "message": f"没有 {plan_date} 的转债榜单，请先运行策略。"})
 
     input_end = _account_input_window_end(plan_date)
-    positions_rows = _positions_for_plan("cb", plan_date, input_end)
-    if not positions_rows:
+    position_snapshot = _position_snapshot_for_plan("cb", plan_date, input_end)
+    if position_snapshot is None:
         raise HTTPException(400, {"code": "NO_POSITIONS", "message": f"没有 {plan_date} 至 {input_end} 输入窗口内的转债持仓，请先在账户页保存。"})
+    positions_rows = position_snapshot["items"]
     target = pd.DataFrame(rankings)[["bond_code", "bond_name"]]
     target["bond_code"] = target["bond_code"].astype(str).str.zfill(6)
 
@@ -256,8 +266,21 @@ def _size_cb_orders(cash: float) -> dict:
     prices = fetch_cb_prices_tencent(codes)
     if not prices:
         raise HTTPException(500, {"code": "DATA_SOURCE_UNAVAILABLE", "message": "无法获取转债实时价格。"})
+    missing_prices = [c for c in codes if c not in prices]
+    if missing_prices:
+        raise HTTPException(500, {
+            "code": "DATA_SOURCE_UNAVAILABLE",
+            "message": f"缺少转债报价: {missing_prices[:5]}...",
+        })
 
-    sheet, summary = size_rebalance(target, positions, cash, prices)
+    try:
+        sheet, summary = size_rebalance(target, positions, cash, prices)
+    except SystemExit as exc:
+        raise HTTPException(400, {
+            "code": "ORDER_SIZING_FAILED",
+            "message": str(exc),
+        }) from exc
+    _ensure_sizing_cash_nonnegative("cb", summary)
 
     db.init_db()
     meta = db.get_strategy_run_meta("cb", plan_date)
@@ -292,9 +315,10 @@ def _size_stock_orders(cash: float) -> dict:
         raise HTTPException(400, {"code": "NO_RANKINGS", "message": f"没有 {plan_date} 的股票榜单，请先运行策略。"})
 
     input_end = _account_input_window_end(plan_date)
-    positions_rows = _positions_for_plan("stock", plan_date, input_end)
-    if not positions_rows:
+    position_snapshot = _position_snapshot_for_plan("stock", plan_date, input_end)
+    if position_snapshot is None:
         raise HTTPException(400, {"code": "NO_POSITIONS", "message": f"没有 {plan_date} 至 {input_end} 输入窗口内的股票持仓，请先在账户页保存。"})
+    positions_rows = position_snapshot["items"]
     rank_codes = {r["stock_code"] for r in rankings}
     if positions_rows:
         pos_codes = {p["code"] for p in positions_rows}
@@ -338,7 +362,14 @@ def _size_stock_orders(cash: float) -> dict:
             "message": f"缺少报价: {missing_prices[:5]}...",
         })
 
-    sheet, summary = size_rebalance(reb, positions, cash, prices, min_trade_value=1000)
+    try:
+        sheet, summary = size_rebalance(reb, positions, cash, prices, min_trade_value=1000)
+    except SystemExit as exc:
+        raise HTTPException(400, {
+            "code": "ORDER_SIZING_FAILED",
+            "message": str(exc),
+        }) from exc
+    _ensure_sizing_cash_nonnegative("stock", summary)
 
     db.init_db()
     meta = db.get_strategy_run_meta("stock", plan_date)
@@ -376,14 +407,95 @@ def _current_plan_date() -> str:
     return market_temperature.updated_at[:10]
 
 
+def _portfolio_targets_and_deltas(account: dict) -> tuple[dict, dict]:
+    from rebalance import calc_targets
+
+    domestic = (
+        account["stock_total"] + account["bond_total"]
+        + account["changqian_total"] + account["cash_pool"]
+    )
+    targets = calc_targets(domestic, account["temperature"])
+    deltas = {
+        "stock": targets["stock"] - account["stock_total"],
+        "bond": targets["bond"] - account["bond_total"],
+        "changqian": targets["changqian"] - account["changqian_total"],
+        "cash_pool": targets["cash_pool"] - account["cash_pool"],
+    }
+    return targets, deltas
+
+
+def _strategy_cash_after_transfer(strategy: str, account: dict, deltas: dict) -> float:
+    if strategy == "cb":
+        return round((account.get("bond_cash") or 0) + (deltas.get("bond") or 0), 2)
+    if strategy == "stock":
+        return round((account.get("stock_cash") or 0) + (deltas.get("stock") or 0), 2)
+    raise ValueError(f"Unknown strategy: {strategy}")
+
+
+def _shares(order: dict) -> int:
+    return order.get("delta_shares", order.get("shares", 0)) or 0
+
+
+def _ensure_sizing_cash_nonnegative(strategy: str, summary: dict) -> None:
+    cash_left = round(summary.get("cash_left", 0) or 0, 2)
+    if cash_left < -0.01:
+        label = "转债账户" if strategy == "cb" else "股票账户"
+        raise HTTPException(409, {
+            "code": "INSUFFICIENT_RELEASABLE_CASH",
+            "message": f"{label}可释放资金不足，无法满足本次调拨后的订单现金约束。",
+            "cash_left": cash_left,
+            "cash_in": round(summary.get("cash_in", 0) or 0, 2),
+            "holdings_value": round(summary.get("holdings_value", 0) or 0, 2),
+        })
+
+
+def _execution_sequence(cb_orders: list[dict], stock_orders: list[dict], transfer_steps: list[str]) -> list[dict]:
+    sell_actions = {"SELL", "TRIM"}
+    buy_actions = {"BUY", "ADD"}
+
+    def _phase_orders(strategy: str, orders: list[dict], actions: set[str]) -> list[dict]:
+        return [
+            {**order, "strategy": strategy}
+            for order in orders
+            if order.get("action") in actions and _shares(order) != 0
+        ]
+
+    return [
+        {
+            "phase": "sell",
+            "label": "先卖出或减仓释放资金",
+            "orders": _phase_orders("cb", cb_orders, sell_actions)
+            + _phase_orders("stock", stock_orders, sell_actions),
+        },
+        {
+            "phase": "transfer",
+            "label": "再通过现金池调拨",
+            "steps": transfer_steps,
+        },
+        {
+            "phase": "buy",
+            "label": "最后买入或加仓",
+            "orders": _phase_orders("cb", cb_orders, buy_actions)
+            + _phase_orders("stock", stock_orders, buy_actions),
+        },
+    ]
+
+
+def _position_snapshot_for_plan(strategy: str, plan_date: str, input_end: str) -> dict | None:
+    snapshot = db.get_position_snapshot_updated_between(strategy, plan_date, input_end)
+    if snapshot is not None:
+        return snapshot
+    return db.get_position_snapshot_by_date(strategy, plan_date)
+
+
 def _positions_for_plan(strategy: str, plan_date: str, input_end: str) -> list[dict]:
-    rows = db.get_positions_updated_between(strategy, plan_date, input_end)
-    if rows:
-        return rows
-    return db.get_positions_by_date(strategy, plan_date)
+    snapshot = _position_snapshot_for_plan(strategy, plan_date, input_end)
+    if snapshot is None:
+        return []
+    return snapshot["items"]
 
 
-def _ensure_plan_inputs_consistent() -> str:
+def _ensure_plan_inputs_consistent() -> tuple[str, dict, dict]:
     plan_date = _current_plan_date()
     account = db.get_current_account_summary()
     errors = _validate_plan_inputs(plan_date, account)
@@ -397,4 +509,8 @@ def _ensure_plan_inputs_consistent() -> str:
                 "errors": errors,
             },
         )
-    return plan_date
+    account = dict(account)
+    market_temperature = get_or_fetch_market_temperature()
+    account["temperature"] = market_temperature.temperature
+    _, deltas = _portfolio_targets_and_deltas(account)
+    return plan_date, account, deltas

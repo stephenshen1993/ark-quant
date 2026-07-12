@@ -518,7 +518,7 @@
           if (suppressDateMismatch && detail.code === 'PLAN_INPUT_DATE_MISMATCH') {
             return
           }
-          const lines = (detail.errors || []).map(e => `${e.message}: 归属日 ${e.date || '无'}，计划日 ${e.expected}`)
+          const lines = (detail.errors || []).map(e => `${e.message}: 更新时间 ${e.date || '无'}，输入窗口 ${e.expected}`)
           this.planError = [detail.message || String(detail || `计划生成失败 (${res.status})`), ...lines].join('\n')
           return
         }
@@ -630,17 +630,10 @@
       async sizeOrders(strategy) {
         const key = strategy === 'cb' ? 'sizingCb' : 'sizingStock'
         if (!this.plan?.account) { alert('请先在账户详情页录入账户信息'); return }
-        const cashField = strategy === 'cb' ? 'bond_cash' : 'stock_cash'
-        const deltaKey = strategy === 'cb' ? 'bond' : 'stock'
-        // 基础现金 + 资金分配增量（调拨后实际可用现金）
-        const baseCash = this.plan.account[cashField] || 0
-        const delta = this.plan?.transfer_deltas?.[deltaKey] || 0
-        const cash = Math.round(baseCash + delta)
         this[key] = true
         try {
           const r = await fetch(`/api/plan/${strategy}/size-orders`, {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({cash}),
+            method: 'POST',
           })
           if (!r.ok) { const e = await r.json(); alert(e.detail?.message || '生成失败'); return }
           await this.loadPlan()

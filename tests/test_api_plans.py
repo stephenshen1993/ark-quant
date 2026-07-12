@@ -35,11 +35,19 @@ class TestPlansApi(unittest.TestCase):
         db.insert_account_value_snapshot("cash", "2026-06-29", 59013)
         db.insert_account_value_snapshot("overseas", "2026-06-29", 93030)
         self.cb_run_id = db.insert_strategy_run("cb", date(2026, 6, 29))
+        db.insert_cb_rankings(self.cb_run_id, pd.DataFrame([{
+            "bond_code": "113062", "bond_name": "常银转债",
+            "cb_price": 126.80, "premium_rate": 10.0, "double_low": 136.8, "score": 0.9,
+        }]))
         db.insert_cb_orders(self.cb_run_id, pd.DataFrame([{
             "action": "BUY", "bond_code": "123150", "bond_name": "九强转债",
             "price": 128.67, "delta_shares": 90, "amount": 11580.3,
         }]))
         run_id2 = db.insert_strategy_run("stock", date(2026, 6, 29))
+        db.insert_stock_rankings(run_id2, pd.DataFrame([{
+            "rank": 1, "stock_code": "600051", "stock_name": "宁波联合",
+            "total_mv_yuan": 1000000000, "pe_ttm": 10.0, "roe_pct": 12.0,
+        }]))
         db.insert_stock_orders(run_id2, pd.DataFrame([{
             "action": "SELL", "stock_code": "600051", "stock_name": "宁波联合",
             "price": 5.68, "delta_shares": -1800, "amount": 10224.0,
@@ -59,6 +67,7 @@ class TestPlansApi(unittest.TestCase):
         data = r.json()
         self.assertEqual(r.status_code, 200)
         self.assertIn("transfer_steps", data)
+        self.assertIn("execution_sequence", data)
         self.assertIn("cb", data)
         self.assertIn("stock", data)
         self.assertGreater(len(data["cb"]["orders"]), 0)
@@ -69,6 +78,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(data["cb"]["trade_date"], "2026-06-30")
         self.assertEqual(data["stock"]["data_date"], "2026-06-29")
         self.assertEqual(data["stock"]["trade_date"], "2026-06-30")
+        self.assertEqual([phase["phase"] for phase in data["execution_sequence"]], ["sell", "transfer", "buy"])
 
     def test_plan_returns_none_account_when_missing(self):
         db._TEST_CONN.execute("DELETE FROM account_contexts")
@@ -111,9 +121,9 @@ class TestPlansApi(unittest.TestCase):
         """没有榜单时 size-orders 返回 400"""
         db._TEST_CONN.execute("DELETE FROM cb_rankings")
         db._TEST_CONN.commit()
-        r = self.client.post("/api/plan/cb/size-orders", json={"cash": 10000})
-        self.assertEqual(r.status_code, 400)
-        self.assertIn("NO_RANKINGS", r.json()["detail"]["code"])
+        r = self.client.post("/api/plan/cb/size-orders")
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("PLAN_INPUT_DATE_MISMATCH", r.json()["detail"]["code"])
 
     def test_size_cb_orders_generates_and_persists_orders(self):
         db._TEST_CONN.execute("DELETE FROM cb_orders")
@@ -131,13 +141,141 @@ class TestPlansApi(unittest.TestCase):
         ]))
 
         with patch(
+            "app.routers.plans._strategy_cash_after_transfer",
+            return_value=30000,
+        ), patch(
             "datasource.market.fetch_cb_prices_tencent",
             return_value={"113062": 126.80, "113052": 115.09},
         ):
-            r = self.client.post("/api/plan/cb/size-orders", json={"cash": 30000})
+            r = self.client.post("/api/plan/cb/size-orders")
 
         self.assertEqual(r.status_code, 200)
         data = r.json()
         self.assertGreater(len(data["orders"]), 0)
         persisted = db.get_orders("cb", "2026-06-29")
         self.assertGreater(len(persisted), 0)
+
+    def test_size_orders_rejects_insufficient_releasable_cash_before_persisting(self):
+        db._TEST_CONN.execute("DELETE FROM cb_orders")
+        db._TEST_CONN.commit()
+
+        with patch(
+            "app.routers.plans._strategy_cash_after_transfer",
+            return_value=-5000,
+        ), patch(
+            "datasource.market.fetch_cb_prices_tencent",
+            return_value={"113062": 126.80},
+        ):
+            r = self.client.post("/api/plan/cb/size-orders")
+
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.json()["detail"]["code"], "INSUFFICIENT_RELEASABLE_CASH")
+        self.assertEqual(db.get_orders("cb", "2026-06-29"), [])
+
+    def test_size_cb_orders_reports_partial_quote_gaps(self):
+        db._TEST_CONN.execute("DELETE FROM cb_orders")
+        db._TEST_CONN.execute("DELETE FROM cb_rankings")
+        db._TEST_CONN.commit()
+        db.insert_cb_rankings(self.cb_run_id, pd.DataFrame([
+            {
+                "bond_code": "113062", "bond_name": "常银转债",
+                "cb_price": 126.80, "premium_rate": 10.0, "double_low": 136.8, "score": 0.9,
+            },
+            {
+                "bond_code": "113052", "bond_name": "兴业转债",
+                "cb_price": 115.09, "premium_rate": 12.0, "double_low": 127.09, "score": 0.8,
+            },
+        ]))
+
+        with patch(
+            "app.routers.plans._strategy_cash_after_transfer",
+            return_value=10000,
+        ), patch(
+            "datasource.market.fetch_cb_prices_tencent",
+            return_value={"113062": 126.80},
+        ):
+            r = self.client.post("/api/plan/cb/size-orders")
+
+        self.assertEqual(r.status_code, 500)
+        self.assertEqual(r.json()["detail"]["code"], "DATA_SOURCE_UNAVAILABLE")
+        self.assertIn("113052", r.json()["detail"]["message"])
+
+    def test_size_orders_accepts_confirmed_empty_position_snapshot(self):
+        db._TEST_CONN.execute("DELETE FROM cb_orders")
+        db._TEST_CONN.execute("DELETE FROM position_snapshots WHERE strategy='cb'")
+        db._TEST_CONN.commit()
+        db.insert_positions("cb", "2026-06-29", [])
+
+        with patch(
+            "app.routers.plans._strategy_cash_after_transfer",
+            return_value=10000,
+        ), patch(
+            "datasource.market.fetch_cb_prices_tencent",
+            return_value={"113062": 126.80},
+        ):
+            r = self.client.post("/api/plan/cb/size-orders")
+
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(any(order["action"] == "BUY" for order in r.json()["orders"]))
+
+    def test_order_summary_reports_small_transfer_delta_without_transfer_step(self):
+        with patch(
+            "app.routers.plans._portfolio_targets_and_deltas",
+            return_value=({}, {"stock": 0, "bond": 1, "changqian": 0, "cash_pool": -1}),
+        ):
+            r = self.client.get("/api/plan")
+
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["transfer_steps"], [])
+        self.assertEqual(r.json()["cb"]["summary"]["transfer_delta"], 1)
+
+    def test_overseas_stale_warns_without_blocking_domestic_plan(self):
+        db.insert_account_value_snapshot("overseas", "2026-06-28", 93030)
+
+        r = self.client.get("/api/plan")
+
+        self.assertEqual(r.status_code, 200)
+        warnings = r.json()["warnings"]
+        self.assertEqual(warnings[0]["input"], "account.overseas")
+
+    def test_monday_preopen_account_updates_are_valid_for_friday_plan(self):
+        db._TEST_CONN.execute("DELETE FROM market_temperatures")
+        db._TEST_CONN.execute(
+            """INSERT INTO market_temperatures
+               (temperature,label,source_updated_at,source,fetched_at)
+               VALUES (45.0,'正常','2026-07-10T15:00',?,'2026-07-13T08:30:00')""",
+            (DATA_URL,),
+        )
+        db._TEST_CONN.execute("DELETE FROM account_value_snapshots")
+        db._TEST_CONN.commit()
+
+        db.insert_account_value_snapshot("stock", "2026-07-13", 209555, 274)
+        db.insert_account_value_snapshot("cb", "2026-07-13", 227183, 110)
+        db.insert_account_value_snapshot("changqian", "2026-07-13", 110606)
+        db.insert_account_value_snapshot("cash", "2026-07-13", 59013)
+        run_id = db.create_complete_strategy_run("cb", date(2026, 7, 10), date(2026, 7, 13), pd.DataFrame([{
+            "bond_code": "113062", "bond_name": "常银转债",
+            "cb_price": 126.80, "premium_rate": 10.0, "double_low": 136.8, "score": 0.9,
+        }]))
+        stock_run_id = db.create_complete_strategy_run("stock", date(2026, 7, 10), date(2026, 7, 13), pd.DataFrame([{
+            "rank": 1, "stock_code": "600051", "stock_name": "宁波联合",
+            "total_mv_yuan": 1000000000, "pe_ttm": 10.0, "roe_pct": 12.0,
+        }]))
+        db.insert_cb_orders(run_id, pd.DataFrame([{
+            "action": "HOLD", "bond_code": "113062", "bond_name": "常银转债",
+            "price": 126.80, "delta_shares": 0, "amount": 0,
+        }]))
+        db.insert_stock_orders(stock_run_id, pd.DataFrame([{
+            "action": "HOLD", "stock_code": "600051", "stock_name": "宁波联合",
+            "price": 5.68, "delta_shares": 0, "amount": 0,
+        }]))
+
+        with patch(
+            "datasource.youzhiyouxing._now_shanghai",
+            return_value=datetime(2026, 7, 13, 8, 45, tzinfo=ZoneInfo("Asia/Shanghai")),
+        ):
+            r = self.client.get("/api/plan")
+
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["plan_date"], "2026-07-10")
+        self.assertEqual(r.json()["cb"]["trade_date"], "2026-07-13")
