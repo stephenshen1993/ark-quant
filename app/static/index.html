@@ -114,10 +114,15 @@
       </div>
     </div>
     <div x-show="planError" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-sm text-red-700 whitespace-pre-line" x-text="planError"></div>
+    <div x-show="plan?.trade_errors?.length" class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm text-amber-700">
+      <template x-for="err in plan?.trade_errors || []">
+        <div x-text="err.message"></div>
+      </template>
+    </div>
     <!-- 资产再平衡 -->
-    <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40" x-show="plan?.transfer_steps?.length">
+    <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40" x-show="transferSteps().length">
       <div class="text-sm font-semibold mb-3">① 资金调拨</div>
-      <template x-for="(step, i) in plan?.transfer_steps || []">
+      <template x-for="(step, i) in transferSteps()">
         <div class="flex gap-3 text-sm text-gray-700 py-2 border-b border-gray-50 last:border-0">
           <span class="text-xs w-5 h-5 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center shrink-0" x-text="i+1"></span>
           <span x-text="step"></span>
@@ -480,7 +485,7 @@
       // T 日数据
       tDate: new Date().toISOString().slice(0, 10), marketTemperature: null,
       // 资金分配 + 订单
-      plan: null, planError: '',
+      plan: null, transferPlan: null, planError: '',
       sizingCb: false, sizingStock: false,
       // 排名
       running: { cb: false, stock: false }, error: '',
@@ -494,6 +499,7 @@
         if (summary) {
           this.tDate = summary.context?.snapshot_date || this.tDate
         }
+        await this.loadTransferPlan()
         await this.loadPlan(false, true)
         const [cbD, stD] = await Promise.all([
           fetch('/api/rankings/cb/dates').then(r => r.json()),
@@ -503,6 +509,17 @@
         this.stockDates = stD.sort().reverse(); this.stockDate = this.stockDates.includes(this.tDate) ? this.tDate : ''
         if (this.cbDate) await this.loadCb()
         if (this.stockDate) await this.loadStock()
+      },
+
+      async loadTransferPlan(refreshTemperature = false) {
+        const url = refreshTemperature ? '/api/plan/transfer?refresh_temperature=true' : '/api/plan/transfer'
+        const res = await fetch(url)
+        if (!res.ok) {
+          return
+        }
+        this.transferPlan = await res.json()
+        this.marketTemperature = this.transferPlan?.market_temperature || this.marketTemperature
+        if (this.transferPlan?.plan_date) this.tDate = this.transferPlan.plan_date
       },
 
       async loadPlan(refreshTemperature = false, suppressDateMismatch = false) {
@@ -541,6 +558,7 @@
         const context = await res.json()
         this.marketTemperature = context.market_temperature || null
         if (context.plan_date) this.tDate = context.plan_date
+        await this.loadTransferPlan(refreshTemperature)
       },
 
       // ── 排名 ──
@@ -623,9 +641,14 @@
         const cf = strategy === 'cb' ? 'bond_cash' : 'stock_cash'
         const dk = strategy === 'cb' ? 'bond' : 'stock'
         const base = this.plan?.account?.[cf] || 0
-        const delta = this.plan?.transfer_deltas?.[dk] || 0
+        const delta = (this.plan?.transfer_deltas || this.transferPlan?.transfer_deltas)?.[dk] || 0
         // 正delta(入金)当日可用, 负delta(转出)必须预留
         return Math.round(base + delta)
+      },
+      transferSteps() {
+        return this.plan?.transfer_steps?.length
+          ? this.plan.transfer_steps
+          : (this.transferPlan?.transfer_steps || [])
       },
       async sizeOrders(strategy) {
         const key = strategy === 'cb' ? 'sizingCb' : 'sizingStock'

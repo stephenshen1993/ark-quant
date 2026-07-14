@@ -1,5 +1,6 @@
 from __future__ import annotations
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException
 from datasource import db
 from datasource.youzhiyouxing import TemperatureFetchError, get_or_fetch_market_temperature
@@ -25,6 +26,62 @@ def get_plan_context(refresh_temperature: bool = False):
     }
 
 
+@router.get("/transfer")
+def get_transfer_plan(refresh_temperature: bool = False):
+    try:
+        market_temperature = get_or_fetch_market_temperature(refresh=refresh_temperature)
+    except TemperatureFetchError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "MARKET_TEMPERATURE_UNAVAILABLE",
+                "message": str(exc),
+            },
+        ) from exc
+
+    plan_date = market_temperature.updated_at[:10]
+    account = db.get_current_account_summary()
+    if account:
+        account = dict(account)
+        account["temperature"] = market_temperature.temperature
+
+    account_errors = _validate_account_inputs(
+        plan_date,
+        account,
+        _account_transfer_window_end(plan_date),
+    )
+    if account_errors:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "TRANSFER_INPUT_DATE_MISMATCH",
+                "message": "资金调拨输入日期不一致，请先更新账户快照。",
+                "plan_date": plan_date,
+                "market_temperature": market_temperature.to_dict(),
+                "errors": account_errors,
+            },
+        )
+
+    targets = {}
+    deltas = {}
+    transfer_steps = []
+    if account:
+        from rebalance import build_transfer_plan
+        targets, deltas = _portfolio_targets_and_deltas(account)
+        transfer_steps = build_transfer_plan(deltas)
+
+    return {
+        "generated_at": datetime.now().isoformat(),
+        "plan_date": plan_date,
+        "market_temperature": market_temperature.to_dict(),
+        "account": account,
+        "targets": targets,
+        "transfer_steps": transfer_steps,
+        "transfer_deltas": deltas,
+        "warnings": _plan_input_warnings(plan_date, account),
+    }
+
+
 @router.get("")
 def get_plan(refresh_temperature: bool = False):
     try:
@@ -45,19 +102,24 @@ def get_plan(refresh_temperature: bool = False):
         account = dict(account)
         account["temperature"] = market_temperature.temperature
 
-    date_errors = _validate_plan_inputs(plan_date, account)
-    if date_errors:
+    account_errors = _validate_account_inputs(
+        plan_date,
+        account,
+        _account_transfer_window_end(plan_date),
+    )
+    if account_errors:
         raise HTTPException(
             status_code=409,
             detail={
                 "code": "PLAN_INPUT_DATE_MISMATCH",
-                "message": "交易计划输入日期不一致，请按下方逐项更新到同一个计划日。",
+                "message": "账户输入日期不一致，请按下方逐项更新到计划输入窗口内。",
                 "plan_date": plan_date,
                 "market_temperature": market_temperature.to_dict(),
-                "errors": date_errors,
+                "errors": account_errors,
             },
         )
     warnings = _plan_input_warnings(plan_date, account)
+    trade_errors = _validate_strategy_inputs(plan_date)
 
     cb_orders = db.get_orders("cb", plan_date)
     cb_data_date = plan_date
@@ -102,6 +164,7 @@ def get_plan(refresh_temperature: bool = False):
         "market_temperature": market_temperature.to_dict(),
         "account": account,
         "warnings": warnings,
+        "trade_errors": trade_errors,
         "targets": targets,
         "transfer_steps": transfer_steps,
         "transfer_deltas": deltas,
@@ -131,8 +194,14 @@ def _trade_date_for(strategy: str, data_date: str | None) -> str | None:
 
 
 def _validate_plan_inputs(plan_date: str, account: dict | None) -> list[dict]:
+    return (
+        _validate_account_inputs(plan_date, account, _account_input_window_end(plan_date))
+        + _validate_strategy_inputs(plan_date)
+    )
+
+
+def _validate_account_inputs(plan_date: str, account: dict | None, account_input_end: str) -> list[dict]:
     errors = []
-    account_input_end = _account_input_window_end(plan_date)
     if not account:
         errors.append({"input": "account", "date": None, "expected": plan_date, "message": "缺少账户快照"})
     else:
@@ -158,6 +227,11 @@ def _validate_plan_inputs(plan_date: str, account: dict | None) -> list[dict]:
                     "message": f"{label}更新时间不在计划输入窗口内",
                 })
 
+    return errors
+
+
+def _validate_strategy_inputs(plan_date: str) -> list[dict]:
+    errors = []
     for strategy, label in (("cb", "转债榜单"), ("stock", "股票榜单")):
         dates = db.get_ranking_dates(strategy)
         has_rankings = plan_date in dates
@@ -209,6 +283,13 @@ def _account_input_window_end(plan_date: str) -> str:
     if trade_dates:
         return max(trade_dates)
     return plan_date
+
+
+def _account_transfer_window_end(plan_date: str) -> str:
+    """Transfer planning can use current factual account values before rankings exist."""
+    input_end = _account_input_window_end(plan_date)
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    return max(input_end, today)
 
 
 def _is_account_update_acceptable(updated_at: str | None, plan_date: str, window_end: str) -> bool:

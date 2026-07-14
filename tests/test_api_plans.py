@@ -89,6 +89,35 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(r.json()["detail"]["code"], "PLAN_INPUT_DATE_MISMATCH")
         self.assertIn("account", {item["input"] for item in r.json()["detail"]["errors"]})
 
+    def test_transfer_plan_does_not_require_strategy_rankings(self):
+        db._TEST_CONN.execute("DELETE FROM cb_rankings")
+        db._TEST_CONN.execute("DELETE FROM stock_rankings")
+        db._TEST_CONN.commit()
+
+        r = self.client.get("/api/plan/transfer")
+
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data["plan_date"], "2026-06-29")
+        self.assertIn("transfer_steps", data)
+        self.assertIn("transfer_deltas", data)
+        self.assertNotIn("cb", data)
+        self.assertNotIn("stock", data)
+
+    def test_get_plan_returns_transfer_with_trade_errors_when_rankings_missing(self):
+        db._TEST_CONN.execute("DELETE FROM cb_rankings")
+        db._TEST_CONN.execute("DELETE FROM stock_rankings")
+        db._TEST_CONN.commit()
+
+        r = self.client.get("/api/plan")
+
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertIn("transfer_steps", data)
+        self.assertEqual({e["input"] for e in data["trade_errors"]}, {"cb", "stock"})
+        self.assertEqual(data["cb"]["rankings"], [])
+        self.assertEqual(data["stock"]["rankings"], [])
+
     def test_plan_returns_rankings_when_no_orders(self):
         """缺 orders 时返回 rankings 作为降级数据"""
         # 写入榜单数据但不写 orders
