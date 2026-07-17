@@ -146,7 +146,7 @@ def get_plan(refresh_temperature: bool = False):
         if not orders or not account:
             return None
         delta = deltas.get(cash_key, 0)
-        base = account.get(f"{cash_key}_cash", 0)
+        base = account.get(f"{cash_key}_available_cash", account.get(f"{cash_key}_cash", 0))
         def shares(order: dict) -> int:
             return order.get("delta_shares", order.get("shares", 0)) or 0
         sells = sum(o.get("amount", 0) for o in orders if shares(o) < 0)
@@ -370,7 +370,7 @@ def _size_cb_orders(cash: float) -> dict:
         db.insert_cb_orders(run_id, sheet)
 
     account = db.get_current_account_summary()
-    acct_cash = account["bond_cash"] if account else 0
+    acct_cash = account["bond_available_cash"] if account else 0
     sells = sum(r["amount"] for r in sheet.to_dict("records") if r.get("delta_shares", 0) < 0)
     buys  = sum(r["amount"] for r in sheet.to_dict("records") if r.get("delta_shares", 0) > 0)
     book_balance = round(acct_cash + sells - buys, 2)
@@ -459,7 +459,7 @@ def _size_stock_orders(cash: float) -> dict:
         db.insert_stock_orders(run_id, sheet)
 
     account = db.get_current_account_summary()
-    acct_cash = account["stock_cash"] if account else 0
+    acct_cash = account["stock_available_cash"] if account else 0
     sells = sum(r["amount"] for r in sheet.to_dict("records") if r.get("delta_shares", 0) < 0)
     buys  = sum(r["amount"] for r in sheet.to_dict("records") if r.get("delta_shares", 0) > 0)
     book_balance = round(acct_cash + sells - buys, 2)
@@ -507,9 +507,9 @@ def _portfolio_targets_and_deltas(account: dict) -> tuple[dict, dict]:
 
 def _strategy_cash_after_transfer(strategy: str, account: dict, deltas: dict) -> float:
     if strategy == "cb":
-        return round((account.get("bond_cash") or 0) + (deltas.get("bond") or 0), 2)
+        return round((account.get("bond_available_cash") or 0) + (deltas.get("bond") or 0), 2)
     if strategy == "stock":
-        return round((account.get("stock_cash") or 0) + (deltas.get("stock") or 0), 2)
+        return round((account.get("stock_available_cash") or 0) + (deltas.get("stock") or 0), 2)
     raise ValueError(f"Unknown strategy: {strategy}")
 
 

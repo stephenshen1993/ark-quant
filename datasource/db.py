@@ -147,6 +147,7 @@ def init_db() -> None:
             snapshot_date TEXT    NOT NULL,
             total         REAL    NOT NULL,
             cash          REAL,
+            frozen_cash   REAL,
             created_at    TEXT    NOT NULL
         );
 
@@ -231,6 +232,12 @@ def init_db() -> None:
         for col in ("changqian_updated_at", "cash_pool_updated_at", "overseas_updated_at"):
             if col not in cols:
                 conn.execute(f"ALTER TABLE account_snapshots ADD COLUMN {col} TEXT")
+        value_cols = {
+            r["name"] for r in conn.execute("PRAGMA table_info(account_value_snapshots)").fetchall()
+        }
+        if "frozen_cash" not in value_cols:
+            conn.execute("ALTER TABLE account_value_snapshots ADD COLUMN frozen_cash REAL")
+            conn.execute("UPDATE account_value_snapshots SET frozen_cash=0 WHERE frozen_cash IS NULL")
         _migrate_strategy_run_status(conn)
         _migrate_legacy_account_snapshots(conn)
         _migrate_legacy_positions(conn)
@@ -617,14 +624,25 @@ def insert_account_value_snapshot(
     snapshot_date: str,
     total: float,
     cash: float | None = None,
+    frozen_cash: float | None = None,
 ) -> int:
     _validate_account_id(account_id)
     _validate_iso_date(snapshot_date)
     total = _validate_nonnegative_finite(total, "total")
     if cash is not None:
         cash = _validate_nonnegative_finite(cash, "cash")
+    if frozen_cash is not None:
+        frozen_cash = _validate_nonnegative_finite(frozen_cash, "frozen_cash")
+    if frozen_cash is None:
+        frozen_cash = 0.0
+    if cash is None and frozen_cash:
+        raise ValueError("frozen_cash requires cash")
+    if cash is not None and frozen_cash > cash:
+        raise ValueError("frozen_cash must be less than or equal to cash")
     with _conn() as conn:
-        return _insert_account_value_snapshot(conn, account_id, snapshot_date, total, cash)
+        return _insert_account_value_snapshot(
+            conn, account_id, snapshot_date, total, cash, frozen_cash
+        )
 
 
 def _insert_account_value_snapshot(
@@ -633,12 +651,13 @@ def _insert_account_value_snapshot(
     snapshot_date: str,
     total: float,
     cash: float | None,
+    frozen_cash: float,
 ) -> int:
     cur = conn.execute(
         """INSERT INTO account_value_snapshots
-           (account_id,snapshot_date,total,cash,created_at)
-           VALUES (?,?,?,?,?)""",
-        (account_id, snapshot_date, total, cash, datetime.now().isoformat()),
+           (account_id,snapshot_date,total,cash,frozen_cash,created_at)
+           VALUES (?,?,?,?,?,?)""",
+        (account_id, snapshot_date, total, cash, frozen_cash, datetime.now().isoformat()),
     )
     return cur.lastrowid
 
@@ -763,22 +782,30 @@ def append_account_state_snapshot(
     total: float,
     cash: float,
     positions: list[dict],
+    frozen_cash: float | None = None,
 ) -> dict:
     _validate_account_id(account_id)
     _validate_strategy(account_id)
     _validate_iso_date(snapshot_date)
     total = _validate_nonnegative_finite(total, "total")
     cash = _validate_nonnegative_finite(cash, "cash")
+    if frozen_cash is None:
+        frozen_cash = 0.0
+    frozen_cash = _validate_nonnegative_finite(frozen_cash, "frozen_cash")
+    if frozen_cash > cash:
+        raise ValueError("frozen_cash must be less than or equal to cash")
     normalized = _normalize_position_rows(positions)
 
     with _conn() as conn:
         conn.execute("SAVEPOINT append_account_state_snapshot")
         try:
-            account_snapshot_id = _insert_account_value_snapshot(
-                conn, account_id, snapshot_date, total, cash
-            )
+            # The position snapshot is the account's source of truth.  Persist it
+            # first, then save the cash and total that were reconciled against it.
             position_snapshot_id = _insert_position_snapshot(
                 conn, account_id, snapshot_date, normalized
+            )
+            account_snapshot_id = _insert_account_value_snapshot(
+                conn, account_id, snapshot_date, total, cash, frozen_cash
             )
         except Exception:
             conn.execute("ROLLBACK TO SAVEPOINT append_account_state_snapshot")
@@ -882,8 +909,12 @@ def get_current_account_summary() -> dict | None:
             "temperature": base.get("temperature"),
             "stock_total": base.get("stock_total", 0) or 0,
             "stock_cash": base.get("stock_cash", 0) or 0,
+            "stock_frozen_cash": 0,
+            "stock_available_cash": base.get("stock_cash", 0) or 0,
             "bond_total": base.get("bond_total", 0) or 0,
             "bond_cash": base.get("bond_cash", 0) or 0,
+            "bond_frozen_cash": 0,
+            "bond_available_cash": base.get("bond_cash", 0) or 0,
             "changqian_total": base.get("changqian_total", 0) or 0,
             "cash_pool": base.get("cash_pool", 0) or 0,
             "overseas_total": base.get("overseas_total", 0) or 0,
@@ -899,9 +930,13 @@ def get_current_account_summary() -> dict | None:
             if account_id == "stock":
                 snap["stock_total"] = item["total"]
                 snap["stock_cash"] = item["cash"] or 0
+                snap["stock_frozen_cash"] = item["frozen_cash"] or 0
+                snap["stock_available_cash"] = snap["stock_cash"] - snap["stock_frozen_cash"]
             elif account_id == "cb":
                 snap["bond_total"] = item["total"]
                 snap["bond_cash"] = item["cash"] or 0
+                snap["bond_frozen_cash"] = item["frozen_cash"] or 0
+                snap["bond_available_cash"] = snap["bond_cash"] - snap["bond_frozen_cash"]
             elif account_id == "changqian":
                 snap["changqian_total"] = item["total"]
             elif account_id == "cash":
@@ -923,12 +958,20 @@ def _build_account_items(snap: dict) -> list[dict]:
     for account_id in ("stock", "cb", "changqian", "overseas", "cash"):
         total_key, cash_key = ACCOUNT_VALUE_FIELDS[account_id]
         meta = ACCOUNT_METADATA[account_id]
+        frozen_key = cash_key.replace("_cash", "_frozen_cash") if cash_key else None
+        available_key = cash_key.replace("_cash", "_available_cash") if cash_key else None
         items.append({
             "id": account_id,
             "label": meta["label"],
             "sub": meta["sub"],
             "total": snap.get(total_key, 0) or 0,
             "cash": (snap.get(cash_key, 0) or 0) if cash_key else None,
+            "frozen_cash": (
+                snap.get(frozen_key, 0) if frozen_key else None
+            ),
+            "available_cash": (
+                snap.get(available_key, snap.get(cash_key, 0)) if available_key else None
+            ),
             "snapshot_date": snap.get("account_snapshot_dates", {}).get(account_id),
             "updated_at": snap.get("account_updated_at", {}).get(account_id),
         })

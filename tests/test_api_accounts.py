@@ -89,6 +89,41 @@ class TestAccountsApi(unittest.TestCase):
         self.assertIsNotNone(accounts["changqian"]["updated_at"])
         self.assertNotIn("changqian_total", r2.json())
 
+    def test_frozen_cash_is_subtracted_from_available_cash(self):
+        r = self.client.post("/api/account/cb/snapshot", json={
+            "snapshot_date": "2026-07-17", "total": 12000,
+            "cash": 1000, "frozen_cash": 1000,
+        })
+        self.assertEqual(r.status_code, 200)
+        cb = {item["id"]: item for item in r.json()["accounts"]}["cb"]
+        self.assertEqual(cb["cash"], 1000)
+        self.assertEqual(cb["frozen_cash"], 1000)
+        self.assertEqual(cb["available_cash"], 0)
+
+    def test_available_and_frozen_cash_derive_cash_balance(self):
+        r = self.client.post("/api/account/cb/snapshot", json={
+            "snapshot_date": "2026-07-17", "total": 12000,
+            "available_cash": 900, "frozen_cash": 100,
+        })
+        self.assertEqual(r.status_code, 200)
+        cb = {item["id"]: item for item in r.json()["accounts"]}["cb"]
+        self.assertEqual(cb["cash"], 1000)
+        self.assertEqual(cb["available_cash"], 900)
+
+    def test_cash_balance_must_match_available_plus_frozen(self):
+        r = self.client.post("/api/account/cb/snapshot", json={
+            "snapshot_date": "2026-07-17", "total": 12000,
+            "cash": 1000, "available_cash": 900, "frozen_cash": 200,
+        })
+        self.assertEqual(r.status_code, 400)
+
+    def test_frozen_cash_cannot_exceed_cash_balance(self):
+        r = self.client.post("/api/account/cb/snapshot", json={
+            "snapshot_date": "2026-07-17", "total": 12000,
+            "cash": 1000, "frozen_cash": 1001,
+        })
+        self.assertEqual(r.status_code, 400)
+
     def test_post_and_get_positions(self):
         payload = [{"code": "113062", "name": "常银转债", "shares": 90}]
         r = self.client.post("/api/positions/cb?position_date=2026-06-29", json=payload)
@@ -111,6 +146,19 @@ class TestAccountsApi(unittest.TestCase):
         self.assertEqual(body["position_snapshot"]["strategy"], "stock")
         self.assertEqual(body["position_snapshot"]["position_date"], "2026-06-29")
         self.assertEqual(body["position_snapshot"]["items"][0]["code"], "000001")
+
+    def test_atomic_account_state_save_persists_frozen_cash(self):
+        r = self.client.post("/api/account/stock/state", json={
+            "snapshot_date": "2026-07-17",
+            "total": 12000,
+            "cash": 1000,
+            "frozen_cash": 400,
+            "positions": [],
+        })
+        self.assertEqual(r.status_code, 200)
+        stock = {item["id"]: item for item in r.json()["accounts"]}["stock"]
+        self.assertEqual(stock["available_cash"], 600)
+        self.assertEqual(stock["frozen_cash"], 400)
 
     def test_position_metadata_distinguishes_missing_from_empty(self):
         missing = self.client.get("/api/positions/cb/snapshot?date=2026-06-29")

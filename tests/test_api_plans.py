@@ -201,6 +201,14 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(r.json()["detail"]["code"], "INSUFFICIENT_RELEASABLE_CASH")
         self.assertEqual(db.get_orders("cb", "2026-06-29"), [])
 
+    def test_sizing_cash_uses_available_cash_not_cash_balance(self):
+        db.insert_account_value_snapshot("cb", "2026-06-29", 227183, 1110, 1000)
+        account = db.get_current_account_summary()
+        from app.routers.plans import _strategy_cash_after_transfer
+        self.assertEqual(account["bond_cash"], 1110)
+        self.assertEqual(account["bond_available_cash"], 110)
+        self.assertEqual(_strategy_cash_after_transfer("cb", account, {"bond": 0}), 110)
+
     def test_size_cb_orders_reports_partial_quote_gaps(self):
         db._TEST_CONN.execute("DELETE FROM cb_orders")
         db._TEST_CONN.execute("DELETE FROM cb_rankings")

@@ -67,8 +67,11 @@
             <tr x-show="expanded === 'stock' && acc.id === 'stock'" class="border-b border-gray-50">
               <td colspan="6" class="bg-gray-50/30 px-5 py-4">
               <div class="flex items-center gap-3 mb-3">
-                <span class="text-xs text-gray-400">现金 ¥</span>
-                <input type="text" inputmode="decimal" x-model="form.stock_cash" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
+                <span class="text-xs text-gray-400">可用 ¥</span>
+                <input type="text" inputmode="decimal" x-model="form.stock_available_cash" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
+                <span class="text-xs text-gray-400">冻结 ¥</span>
+                <input type="text" inputmode="decimal" x-model="form.stock_frozen_cash" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
+                <span class="text-xs text-gray-400">现金总额 <span x-text="fmtMoney(accountCash('stock'))"></span></span>
               </div>
               <table class="w-full table-fixed text-sm"><thead><tr class="text-xs text-gray-400 border-b border-gray-200"><th class="text-left font-normal py-1.5">代码</th><th class="text-left font-normal py-1.5">名称</th><th class="text-right font-normal py-1.5">股数</th><th class="text-right font-normal py-1.5">现价</th><th class="text-right font-normal py-1.5">市值</th><th class="text-right font-normal py-1.5">占比</th><th style="width:24px"></th></tr></thead>
               <tbody><template x-for="row in stockRows" :key="row._id"><tr class="border-b border-gray-100"><td class="py-1.5"><template x-if="row.isNew"><input type="text" x-model="row.code" @change="autofill('stock', row)" placeholder="代码" style="border:none;border-bottom:1px solid #d1d5db;background:transparent;outline:none;padding:1px 0;font-size:12px;width:5em;"></template><span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span></td><td class="py-1.5 text-gray-700 font-medium text-xs" x-text="row.name || '—'"></td><td class="py-1.5 text-right"><input type="number" min="0" step="100" x-model.number="row.shares" @input.debounce.600ms="scheduleSortRows('stock')" style="border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0 1px 0;text-align:right;font-size:12px;width:5em;padding-right:0;"></td><td class="py-1.5 text-right text-xs text-gray-500" x-text="rowPrice('stock', row.code)?.toFixed(2) ?? '-'"></td><td class="py-1.5 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('stock', row) != null ? fmtMoney(rowValue('stock', row)) : '-'"></td><td class="py-1.5 text-right text-xs text-gray-400" x-text="rowWeight('stock', row) != null ? (rowWeight('stock', row)*100).toFixed(1)+'%' : '-'"></td><td class="py-1.5 text-center"><button @click="removeRow('stock', row)" class="text-gray-300 hover:text-red-400 text-xs">✕</button></td></tr></template></tbody></table>
@@ -79,8 +82,11 @@
             <tr x-show="expanded === 'cb' && acc.id === 'cb'" class="border-b border-gray-50">
               <td colspan="6" class="bg-gray-50/30 px-5 py-4">
               <div class="flex items-center gap-3 mb-3">
-                <span class="text-xs text-gray-400">现金 ¥</span>
-                <input type="text" inputmode="decimal" x-model="form.bond_cash" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
+                <span class="text-xs text-gray-400">可用 ¥</span>
+                <input type="text" inputmode="decimal" x-model="form.bond_available_cash" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
+                <span class="text-xs text-gray-400">冻结 ¥</span>
+                <input type="text" inputmode="decimal" x-model="form.bond_frozen_cash" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
+                <span class="text-xs text-gray-400">现金总额 <span x-text="fmtMoney(accountCash('cb'))"></span></span>
               </div>
               <table class="w-full table-fixed text-sm"><thead><tr class="text-xs text-gray-400 border-b border-gray-200"><th class="text-left font-normal py-1.5">代码</th><th class="text-left font-normal py-1.5">名称</th><th class="text-right font-normal py-1.5">张数</th><th class="text-right font-normal py-1.5">现价</th><th class="text-right font-normal py-1.5">市值</th><th class="text-right font-normal py-1.5">占比</th><th style="width:24px"></th></tr></thead>
               <tbody><template x-for="row in cbRows" :key="row._id"><tr class="border-b border-gray-100"><td class="py-1.5"><template x-if="row.isNew"><input type="text" x-model="row.code" @change="autofill('cb', row)" placeholder="代码" style="border:none;border-bottom:1px solid #d1d5db;background:transparent;outline:none;padding:1px 0;font-size:12px;width:5em;"></template><span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span></td><td class="py-1.5 text-gray-700 font-medium text-xs" x-text="row.name || '—'"></td><td class="py-1.5 text-right"><input type="number" min="0" step="10" x-model.number="row.shares" @input.debounce.600ms="scheduleSortRows('cb')" style="border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0 1px 0;text-align:right;font-size:12px;width:5em;padding-right:0;"></td><td class="py-1.5 text-right text-xs text-gray-500" x-text="rowPrice('cb', row.code)?.toFixed(2) ?? '-'"></td><td class="py-1.5 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('cb', row) != null ? fmtMoney(rowValue('cb', row)) : '-'"></td><td class="py-1.5 text-right text-xs text-gray-400" x-text="rowWeight('cb', row) != null ? (rowWeight('cb', row)*100).toFixed(1)+'%' : '-'"></td><td class="py-1.5 text-center"><button @click="removeRow('cb', row)" class="text-gray-300 hover:text-red-400 text-xs">✕</button></td></tr></template></tbody></table>
@@ -303,8 +309,8 @@
       ],
       form: {
         snapshot_date: new Date().toISOString().slice(0, 10),
-        temperature: null, stock_total: null, stock_cash: null,
-        bond_total: null, bond_cash: null, changqian_total: null,
+        temperature: null, stock_total: null, stock_available_cash: null, stock_frozen_cash: 0,
+        bond_total: null, bond_available_cash: null, bond_frozen_cash: 0, changqian_total: null,
         cash_pool: null, overseas_total: null,
         _stock_updated: '', _cb_updated: '',
       },
@@ -343,7 +349,10 @@
           const acc = this.accounts.find(a => a.id === item.id)
           if (!acc) return
           this.form[acc.totalKey] = item.total
-          if (acc.cashKey) this.form[acc.cashKey] = item.cash
+          if (acc.cashKey) {
+            this.form[acc.cashKey.replace('_cash', '_available_cash')] = item.available_cash
+            this.form[acc.cashKey.replace('_cash', '_frozen_cash')] = item.frozen_cash || 0
+          }
         })
       },
       addRow(strategy) {
@@ -396,11 +405,19 @@
         return (total && v != null) ? v / total : null
       },
       accountCash(strategy) {
-        const key = strategy === 'stock' ? 'stock_cash' : 'bond_cash'
+        const availableKey = strategy === 'stock' ? 'stock_available_cash' : 'bond_available_cash'
+        const frozenKey = strategy === 'stock' ? 'stock_frozen_cash' : 'bond_frozen_cash'
+        const raw = this.form[availableKey]
+        if (raw !== null && raw !== undefined && raw !== '') return this.num(raw) + this.num(this.form[frozenKey])
+        const accountId = strategy === 'stock' ? 'stock' : 'cb'
+        return this.num(this.accountItem(accountId)?.cash)
+      },
+      accountAvailableCash(strategy) {
+        const key = strategy === 'stock' ? 'stock_available_cash' : 'bond_available_cash'
         const raw = this.form[key]
         if (raw !== null && raw !== undefined && raw !== '') return this.num(raw)
         const accountId = strategy === 'stock' ? 'stock' : 'cb'
-        return this.num(this.accountItem(accountId)?.cash)
+        return this.num(this.accountItem(accountId)?.available_cash)
       },
       accountTotal(strategy) {
         return this.holdingsValue(strategy) + this.accountCash(strategy)
@@ -437,13 +454,17 @@
       },
       accountSnapshotPayload(id) {
         const acc = this.accounts.find(a => a.id === id)
-        const cash = id === 'stock' ? this.accountCash('stock')
-          : id === 'cb' ? this.accountCash('cb')
+        const available_cash = id === 'stock' ? this.accountAvailableCash('stock')
+          : id === 'cb' ? this.accountAvailableCash('cb')
+          : null
+        const frozen_cash = id === 'stock' ? this.num(this.form.stock_frozen_cash)
+          : id === 'cb' ? this.num(this.form.bond_frozen_cash)
           : null
         return {
           snapshot_date: this.form.snapshot_date || new Date().toISOString().slice(0, 10),
           total: acc ? this.num(this.form[acc.totalKey]) : 0,
-          cash,
+          available_cash,
+          frozen_cash,
         }
       },
       async saveAccountSnapshot(id) {
@@ -456,26 +477,35 @@
         this.applySummary(saved)
       },
       async saveAccount(strategy) {
-        // 1. 保存持仓
-        const src = strategy === 'cb' ? this.cbRows : this.stockRows
-        const rows = src.filter(r => r.code).map(r => ({ code: r.code, name: r.name, shares: r.shares }))
-        const positionDate = this.form.snapshot_date || new Date().toISOString().slice(0, 10)
-        await fetch(`/api/positions/${strategy}?position_date=${positionDate}`, {
-          method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(rows),
-        })
-        src.forEach(r => { r.isNew = false })
+        try {
+          const src = strategy === 'cb' ? this.cbRows : this.stockRows
+          const rows = src.filter(r => r.code).map(r => ({ code: r.code, name: r.name, shares: r.shares }))
+          const positionDate = this.form.snapshot_date || new Date().toISOString().slice(0, 10)
 
-        // 2. 保存账户快照（现金 + 总资产回写）
-        if (this.loaded[strategy]) {
-          const totalKey = strategy === 'cb' ? 'bond_total' : 'stock_total'
-          this.form[totalKey] = this.accountTotal(strategy)
+          // 持仓与账户金额必须同一事务写入，避免部分保存。
+          if (this.loaded[strategy]) {
+            const totalKey = strategy === 'cb' ? 'bond_total' : 'stock_total'
+            this.form[totalKey] = this.accountTotal(strategy)
+          }
+          const account = this.accountSnapshotPayload(strategy)
+          const res = await fetch(`/api/account/${strategy}/state`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ...account, snapshot_date: positionDate, positions: rows }),
+          })
+          if (!res.ok) {
+            const error = await res.json().catch(() => null)
+            throw new Error(error?.detail || '保存账户状态失败')
+          }
+          this.applySummary(await res.json())
+          src.forEach(r => { r.isNew = false })
+
+          // 标记已保存
+          if (strategy === 'cb') { this.cbSaved = true; setTimeout(() => this.cbSaved = false, 2000) }
+          else { this.stockSaved = true; setTimeout(() => this.stockSaved = false, 2000) }
+        } catch (err) {
+          console.error(err)
+          alert(err.message || '保存账户状态失败')
         }
-        await this.saveAccountSnapshot(strategy)
-
-        // 3. 标记已保存
-        if (strategy === 'cb') { this.cbSaved = true; setTimeout(() => this.cbSaved = false, 2000) }
-        else { this.stockSaved = true; setTimeout(() => this.stockSaved = false, 2000) }
       },
     }
   }
@@ -640,7 +670,7 @@
       adjustedCash(strategy) {
         const cf = strategy === 'cb' ? 'bond_cash' : 'stock_cash'
         const dk = strategy === 'cb' ? 'bond' : 'stock'
-        const base = this.plan?.account?.[cf] || 0
+        const base = this.plan?.account?.[cf.replace('_cash', '_available_cash')] ?? this.plan?.account?.[cf] ?? 0
         const delta = (this.plan?.transfer_deltas || this.transferPlan?.transfer_deltas)?.[dk] || 0
         // 正delta(入金)当日可用, 负delta(转出)必须预留
         return Math.round(base + delta)

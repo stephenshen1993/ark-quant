@@ -33,6 +33,15 @@ class TestDb(unittest.TestCase):
         self.assertAlmostEqual(summary["temperature"], 45.0)
         self.assertAlmostEqual(summary["total_assets"], 699387)
 
+    def test_available_cash_defaults_to_cash_and_subtracts_frozen_cash(self):
+        db.insert_account_value_snapshot("cb", "2026-07-17", 12000, 1000)
+        db.insert_account_value_snapshot("stock", "2026-07-17", 12000, 1000, 250)
+        summary = db.get_current_account_summary()
+        accounts = {item["id"]: item for item in summary["accounts"]}
+        self.assertEqual(accounts["cb"]["available_cash"], 1000)
+        self.assertEqual(accounts["stock"]["available_cash"], 750)
+        self.assertEqual(accounts["stock"]["frozen_cash"], 250)
+
     def test_insert_cb_rankings(self):
         run_id = db.insert_strategy_run("cb", date(2026, 6, 27))
         df = pd.DataFrame([
@@ -158,6 +167,7 @@ class TestDb(unittest.TestCase):
             lambda: db.insert_account_value_snapshot("stock", "not-a-date", 1),
             lambda: db.insert_account_value_snapshot("stock", "2026-06-29", math.inf),
             lambda: db.insert_account_value_snapshot("stock", "2026-06-29", 1, -1),
+            lambda: db.insert_account_value_snapshot("stock", "2026-06-29", 1, 1, 2),
         ]
         for call in invalid_calls:
             with self.subTest(call=call), self.assertRaises(ValueError):
@@ -168,6 +178,24 @@ class TestDb(unittest.TestCase):
             conn.execute("""
                 CREATE TRIGGER fail_position_snapshot
                 BEFORE INSERT ON position_snapshots
+                BEGIN SELECT RAISE(ABORT, 'forced failure'); END
+            """)
+        with self.assertRaises(Exception):
+            db.append_account_state_snapshot(
+                "stock", "2026-06-29", 1000, 100,
+                [{"code": "1", "name": "测试", "shares": 10}],
+            )
+        with db._conn() as conn:
+            account_count = conn.execute("SELECT COUNT(*) AS c FROM account_value_snapshots").fetchone()["c"]
+            position_count = conn.execute("SELECT COUNT(*) AS c FROM position_snapshots").fetchone()["c"]
+        self.assertEqual(account_count, 0)
+        self.assertEqual(position_count, 0)
+
+    def test_account_state_save_rolls_back_position_when_account_write_fails(self):
+        with db._conn() as conn:
+            conn.execute("""
+                CREATE TRIGGER fail_account_snapshot
+                BEFORE INSERT ON account_value_snapshots
                 BEGIN SELECT RAISE(ABORT, 'forced failure'); END
             """)
         with self.assertRaises(Exception):
