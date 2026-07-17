@@ -3,6 +3,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from datasource import db
+from investment_model import public_investment_model
 
 router = APIRouter(prefix="/api/account", tags=["account"])
 
@@ -89,6 +90,12 @@ def get_summary():
 @router.get("/history")
 def get_history():
     return db.get_account_history()
+
+
+@router.get("/model")
+def get_investment_model():
+    """Expose the account/strategy/asset-class model separately from balances."""
+    return public_investment_model()
 
 
 @router.post("/context")

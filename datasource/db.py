@@ -13,6 +13,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+from investment_model import ACCOUNT_DEFINITIONS, account_definition
 
 DB_PATH = Path(__file__).resolve().parents[1] / "data" / "ark_quant.db"
 
@@ -26,13 +27,8 @@ ACCOUNT_VALUE_FIELDS = {
     "overseas": ("overseas_total", None),
 }
 
-ACCOUNT_METADATA = {
-    "stock": {"label": "广发账户", "sub": "股票仓位"},
-    "cb": {"label": "华泰账户", "sub": "转债仓位"},
-    "changqian": {"label": "长钱账户", "sub": "国内基金"},
-    "overseas": {"label": "海外长钱", "sub": "海外基金"},
-    "cash": {"label": "资金账户", "sub": "现金仓位"},
-}
+# 这里仅保存历史 SQLite 字段的兼容映射。账户语义统一由 investment_model.py 定义。
+ACCOUNT_METADATA = ACCOUNT_DEFINITIONS
 
 
 def get_connection() -> sqlite3.Connection:
@@ -957,7 +953,7 @@ def _build_account_items(snap: dict) -> list[dict]:
     items = []
     for account_id in ("stock", "cb", "changqian", "overseas", "cash"):
         total_key, cash_key = ACCOUNT_VALUE_FIELDS[account_id]
-        meta = ACCOUNT_METADATA[account_id]
+        meta = account_definition(account_id)
         frozen_key = cash_key.replace("_cash", "_frozen_cash") if cash_key else None
         available_key = cash_key.replace("_cash", "_available_cash") if cash_key else None
         items.append({
@@ -974,6 +970,13 @@ def _build_account_items(snap: dict) -> list[dict]:
             ),
             "snapshot_date": snap.get("account_snapshot_dates", {}).get(account_id),
             "updated_at": snap.get("account_updated_at", {}).get(account_id),
+            "asset_classes": meta["asset_classes"],
+            "country_exposure": meta["country_exposure"],
+            "strategy_ids": meta["strategy_ids"],
+            "strategy_names": meta["strategy_names"],
+            "participates_in_domestic_rebalance": meta[
+                "participates_in_domestic_rebalance"
+            ],
         })
     return items
 

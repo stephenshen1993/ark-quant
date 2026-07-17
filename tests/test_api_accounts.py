@@ -21,6 +21,18 @@ class TestAccountsApi(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIsNone(r.json())
 
+    def test_investment_model_separates_accounts_and_strategies(self):
+        r = self.client.get("/api/account/model")
+        self.assertEqual(r.status_code, 200)
+        model = r.json()
+        self.assertEqual(model["concepts"], ["资产类别", "策略", "账户"])
+        accounts = {item["id"]: item for item in model["accounts"]}
+        self.assertEqual(accounts["stock"]["label"], "广发账户")
+        self.assertEqual(accounts["stock"]["strategy_ids"], ["smallcap_stock"])
+        self.assertFalse(accounts["overseas"]["participates_in_domestic_rebalance"])
+        strategies = {item["id"]: item for item in model["strategies"]}
+        self.assertEqual(strategies["fund_transfer"]["scope"], "跨账户")
+
     def test_post_context_updates_only_context(self):
         r = self.client.post("/api/account/context", json={
             "snapshot_date": "2026-06-29",
