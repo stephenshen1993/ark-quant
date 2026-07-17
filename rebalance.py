@@ -25,6 +25,7 @@ import json
 import sys
 from datetime import date
 from pathlib import Path
+from investment_model import DOMESTIC_REBALANCE_TARGETS, transfer_target_definitions
 
 STATE_FILE = Path(__file__).parent / "portfolios" / "accounts_state.json"
 
@@ -88,41 +89,32 @@ def _delta(d: float) -> str:
 def build_transfer_plan(deltas: dict) -> list[str]:
     """Generate practical ordered transfer steps.
 
-    現金账户 acts as the hub: overweight accounts transfer out to it first,
-    then it transfers in to underweight accounts.  长钱 is handled separately
-    via fund 申购/赎回.
+    资金调拨策略以现金账户为中转；调拨目标、承载账户和申赎方式由
+    investment_model 中的领域定义提供，而不是由本函数假定账户等于策略。
     """
     steps = []
+    cash_hub = DOMESTIC_REBALANCE_TARGETS["cash_pool"]
+    cash_label = cash_hub["label"]
 
-    # Step 1 – overweight securities accounts → cash_pool
-    for key, label in [("bond", "转债账户"), ("stock", "股票账户")]:
-        d = deltas[key]
+    # Step 1 – overweight strategy/portfolio targets → cash hub
+    for target in transfer_target_definitions():
+        d = deltas.get(target["id"], 0)
         if d < -_THRESHOLD:
             steps.append(
-                f"{label} →[银证转出]→ 现金账户:  {_money(abs(d), 10)} 元"
+                f"{target['label']} →[{target['transfer_out_action']}]→ "
+                f"{cash_label}:  {_money(abs(d), 10)} 元"
+                f"{target.get('transfer_out_note', '')}"
             )
 
-    # Step 2 – overweight changqian → cash_pool (赎回 takes days)
-    if deltas["changqian"] < -_THRESHOLD:
-        steps.append(
-            f"长钱账户 →[基金赎回]→ 现金账户:  {_money(abs(deltas['changqian']), 10)} 元"
-            "  (T+2~T+7)"
-        )
-
-    # Step 3 – cash_pool → underweight securities accounts
-    for key, label in [("bond", "转债账户"), ("stock", "股票账户")]:
-        d = deltas[key]
+    # Step 2 – cash hub → underweight strategy/portfolio targets
+    for target in transfer_target_definitions():
+        d = deltas.get(target["id"], 0)
         if d > _THRESHOLD:
             steps.append(
-                f"现金账户 →[银证转入]→ {label}:  {_money(d, 10)} 元"
+                f"{cash_label} →[{target['transfer_in_action']}]→ "
+                f"{target['label']}:  {_money(d, 10)} 元"
+                f"{target.get('transfer_in_note', '')}"
             )
-
-    # Step 4 – cash_pool → underweight changqian (申购)
-    if deltas["changqian"] > _THRESHOLD:
-        steps.append(
-            f"现金账户 →[基金申购]→ 长钱账户:  {_money(deltas['changqian'], 10)} 元"
-            "  (T+1/T+2 到账)"
-        )
 
     return steps
 

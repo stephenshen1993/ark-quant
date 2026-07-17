@@ -490,17 +490,14 @@ def _current_plan_date() -> str:
 
 def _portfolio_targets_and_deltas(account: dict) -> tuple[dict, dict]:
     from rebalance import calc_targets
+    from investment_model import domestic_target_current_amounts
 
-    domestic = (
-        account["stock_total"] + account["bond_total"]
-        + account["changqian_total"] + account["cash_pool"]
-    )
+    current_amounts = domestic_target_current_amounts(account)
+    domestic = sum(current_amounts.values())
     targets = calc_targets(domestic, account["temperature"])
     deltas = {
-        "stock": targets["stock"] - account["stock_total"],
-        "bond": targets["bond"] - account["bond_total"],
-        "changqian": targets["changqian"] - account["changqian_total"],
-        "cash_pool": targets["cash_pool"] - account["cash_pool"],
+        target_id: targets[target_id] - current_amounts[target_id]
+        for target_id in targets
     }
     return targets, deltas
 
