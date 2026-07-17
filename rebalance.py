@@ -60,7 +60,7 @@ def save_state(state: dict) -> None:
 # ── Formula ───────────────────────────────────────────────────────────────────
 
 def calc_targets(domestic_total: float, T_raw: float) -> dict:
-    """五. 核心公式 from docs/system/investment_system.md."""
+    """核心公式见 docs/体系/个人投资体系规则书.md。"""
     T_norm = T_raw / 100.0
     cash_target = domestic_total * 0.20 * T_norm
     B = domestic_total - cash_target

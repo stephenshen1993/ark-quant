@@ -89,7 +89,7 @@
 - Modify: `datasource/db.py`
 - Modify: `tests/test_trade_calendar.py`
 - Modify: `README.md`
-- Modify: `docs/operations/daily_dashboard_workflow.md`
+- Modify: `docs/操作/日常看板流程.md`
 
 - [ ] Add tests for weekday holidays, pre-open, post-close, weekends, and unconfirmed calendar data.
 - [ ] Cache the AkShare A-share trade calendar and require confirmed dates for executable plans.
@@ -97,4 +97,3 @@
 - [ ] Run compile and diff checks.
 - [ ] Verify account and trading pages in a real browser, including request counts, refresh state, 409/503 messages, and no duplicate initialization.
 - [ ] Perform a final independent code review against the design acceptance criteria.
-

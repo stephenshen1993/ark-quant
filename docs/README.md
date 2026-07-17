@@ -6,56 +6,58 @@
 
 | 场景 | 入口 |
 | --- | --- |
-| 使用本地 Web 看板录入账户和查看计划 | `app/web_dashboard.md` |
-| 理解账户、资产、现金和金额显示口径 | `system/accounting_model.md` |
-| 盘后/盘前按看板完成日常操作 | `operations/daily_dashboard_workflow.md` |
-| 生成盘后/盘前体系级交易计划 | `operations/system_rebalance_runbook.md` |
-| 查看工程收口与底座评估建议 | `operations/engineering_closure_2026-07-13.md` |
-| 查看平台无关的投资体系规则 | `system/investment_policy.md` |
-| 理解整体投资体系 | `system/investment_system.md` |
-| 查看最近体系复盘 | `reviews/portfolio_snapshot_2026-06-15.md` |
-| 查看策略研究和数据源调研 | `research/` |
+| 使用本地 Web 看板录入账户和查看计划 | `看板/Web看板.md` |
+| 理解账户、资产、现金和金额显示口径 | `体系/账户与金额口径.md` |
+| 盘后/盘前按看板完成日常操作 | `操作/日常看板流程.md` |
+| 生成盘后/盘前体系级交易计划 | `操作/体系再平衡手册.md` |
+| 查看工程收口与底座评估建议 | `操作/工程收口_2026-07-13.md` |
+| 理解当前投资体系和规则 | `体系/个人投资体系规则书.md` |
+| 理解交易、调拨和下单战术 | `体系/交易与调拨战术规则.md` |
+| 查看体系形成期说明与历史记录 | `体系/投资体系形成期说明.md` |
+| 查看最近体系复盘 | `复盘/组合快照_2026-06-15.md` |
+| 查看策略研究和数据源调研 | `研究/` |
 
 ## 目录说明
 
 ```text
 docs/
 ├── README.md                         # 本文档地图
-├── app/                              # 本地 Web 看板说明
-│   └── web_dashboard.md
-├── operations/                       # 日常运行手册和执行流程
-│   ├── daily_dashboard_workflow.md
-│   ├── engineering_closure_2026-07-13.md
-│   └── system_rebalance_runbook.md
-├── system/                           # 长期投资体系、资产桶、仓位公式
-│   ├── accounting_model.md
-│   ├── investment_policy.md
-│   └── investment_system.md
-├── strategies/                       # 策略设计、差距分析、实现说明
-│   ├── cb_rotation_gap.md
-│   └── cb_rotation_mvp_design.md
-├── research/                         # 外部资料、数据源、因子研究
-│   ├── cb_multifactor_public_research.md
-│   └── data_sources_survey.md
-├── reviews/                          # 阶段复盘、体系审视、组合快照
-│   ├── investment_system_review.md
-│   └── portfolio_snapshot_2026-06-15.md
+├── 看板/                              # 本地 Web 看板说明
+│   └── Web看板.md
+├── 操作/                              # 日常运行手册和执行流程
+│   ├── 日常看板流程.md
+│   ├── 工程收口_2026-07-13.md
+│   └── 体系再平衡手册.md
+├── 体系/                              # 长期投资体系、三类概念、仓位公式
+│   ├── 账户与金额口径.md
+│   ├── 个人投资体系规则书.md
+│   ├── 交易与调拨战术规则.md
+│   └── 投资体系形成期说明.md
+├── 策略/                              # 策略设计、差距分析、实现说明
+│   ├── 转债轮动差距.md
+│   └── 转债轮动MVP设计.md
+├── 研究/                              # 外部资料、数据源、因子研究
+│   ├── 转债多因子公开研究.md
+│   └── 数据源调研.md
+├── 复盘/                              # 阶段复盘、体系审视、组合快照
+│   ├── 投资体系复盘.md
+│   └── 组合快照_2026-06-15.md
 └── superpowers/                      # 历史计划/规格文档
 ```
 
 ## 文档分工
 
-- `system/` 写稳定规则：体系定位、资产架构、目标仓位公式、执行红线。
-- `app/` 写本地应用说明：页面用途、数据来源、交互约定和 API 口径。
-- `operations/` 写操作流程：每天/每周怎么跑、需要什么输入、输出怎么看。
-- `strategies/` 写策略内部：参数、过滤、轮动、差距和待办。
-- `research/` 写可变研究：公开资料、数据源比较、未来实验方向。
-- `reviews/` 写阶段记录：组合快照、体系审视、年度或阶段复盘。
+- `体系/` 写稳定规则：体系定位、资产架构、目标仓位公式、交易调拨战术、执行红线。
+- `看板/` 写本地应用说明：页面用途、数据来源、交互约定和 API 口径。
+- `操作/` 写操作流程：每天/每周怎么跑、需要什么输入、输出怎么看。
+- `策略/` 写策略内部：参数、过滤、轮动、差距和待办。
+- `研究/` 写可变研究：公开资料、数据源比较、未来实验方向。
+- `复盘/` 写阶段记录：组合快照、体系审视、年度或阶段复盘。
 
 ## 更新原则
 
-- 规则变更先改 `system/`，再同步 `operations/`。
-- 页面文案、金额展示或账户字段变更，先同步 `system/accounting_model.md`，再改 `app/web_dashboard.md`。
-- 新策略先在 `strategies/` 留设计说明，再进入代码。
+- 规则变更先改 `体系/`，再同步 `操作/`。
+- 页面文案、金额展示或账户字段变更，先同步 `体系/账户与金额口径.md`，再改 `看板/Web看板.md`。
+- 新策略先在 `策略/` 留设计说明，再进入代码。
 - 日常生成的 CSV/Markdown 报告不要放进 `docs/`，继续留在 `outputs/`。
 - 账户状态和持仓真值在 `portfolios/`，不要复制进文档作为长期真相。
