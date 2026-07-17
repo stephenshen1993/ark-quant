@@ -71,7 +71,7 @@ python3 -m unittest discover tests/ -v
 
 ## Project Shape
 
-Long-term personal investment workspace. Current active module: `strategies/cb_rotation/`. Modules in `backtests/`, `factor_lab/`, `execution/`, `dashboards/` are early-stage placeholders — do not assume they are ready to use.
+Long-term personal investment workspace. Current active modules are the Web dashboard, account/rebalance layer, and the `cb_rotation` / `stock_smallcap` strategies. Create new top-level research, backtest, or execution areas only when they contain a concrete runnable implementation.
 
 Propose directory or structural changes before making them. Do not delete files without explicit confirmation. Do not perform broad refactors unless the user asks.
 

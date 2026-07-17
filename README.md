@@ -42,9 +42,12 @@ python3 rebalance.py
 
 ```text
 ark-quant/
+├── app/                    # 本地 Web 看板与 API 路由
+├── datasource/             # SQLite、行情、温度和交易日数据访问
 ├── strategies/
 │   ├── cb_rotation/        # 可转债多因子轮动策略
 │   └── stock_smallcap/     # A股小市值轮动策略
+├── tests/                  # 自动化测试
 ├── portfolios/             # 当前持仓（cb + stock）
 ├── config/                 # 策略配置 JSON
 ├── data/
@@ -53,19 +56,13 @@ ark-quant/
 │   └── cache/              # 工作缓存（短期故障回退）
 ├── outputs/                # 策略输出（榜单、调仓建议、报告）
 ├── logs/                   # 运行日志
-├── datasource/             # 统一行情与数据存取封装
 ├── docs/                   # 体系说明、运行手册、策略设计、研究与复盘
-│   ├── operations/         # 日常运行手册
-│   ├── system/             # 投资体系与仓位公式
-│   ├── strategies/         # 策略设计与差距分析
-│   ├── research/           # 数据源、因子和外部资料调研
-│   └── reviews/            # 阶段复盘与组合快照
-├── backtests/              # 回测模块（待建）
-├── factor_lab/             # 因子研究（待建）
-├── execution/              # 执行与调仓自动化（待建）
-├── dashboards/             # 可视化看板（待建）
-├── notebooks/              # 研究笔记
-├── tests/                  # 自动化测试
+│   ├── 体系/               # 投资体系、账户口径与调拨规则
+│   ├── 操作/               # 日常看板和再平衡手册
+│   ├── 策略/               # 策略设计与差距分析
+│   ├── 研究/               # 数据源、因子和外部资料调研
+│   └── 复盘/               # 阶段复盘与组合快照
+├── scripts/                # 小型维护工具
 ├── rebalance.py            # 体系级目标仓位与调拨计划
 └── value_accounts.py       # 股票/转债账户估值并回填状态
 ```
@@ -235,7 +232,7 @@ stock_code,stock_name,shares
 - 停牌过滤依赖成交量=0判断，可补更明确的停牌状态字段。
 
 **通用：**
-- 未实现历史回测（`backtests/` 待建）。
+- 未实现历史回测；需要落地时再创建 `backtests/` 并附带可执行入口和测试。
 - 未实现自动调度（cron/定时）。
 - 基金持仓跟踪尚未建设（用户持有基金）。
 - AKShare 接口字段会变化，后续需增加字段回归测试。
@@ -244,6 +241,6 @@ stock_code,stock_name,shares
 
 1. ~~保存每次原始数据快照到 `data/raw/`。~~（已完成）
 2. 基金持仓跟踪：接入天天基金净值/持仓数据。
-3. 转债/股票周频回测 MVP（`backtests/`）。
+3. 转债/股票周频回测 MVP（实现时创建 `backtests/`）。
 4. 中证转债 120 日均线择时风控。
 5. Tushare `daily_basic` 接入（注册后）：升级总市值口径，扩展财务因子。
