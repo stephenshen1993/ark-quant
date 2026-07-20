@@ -1,0 +1,3 @@
+variant,start,end,trading_days,rebalances,cagr,daily_max_drawdown,mean_cash_weight,p95_cash_weight,locked_rebalance_events,locked_position_instances,days_with_locked_position,missed_target_buys,risk_exits,standard_cash_exits,max_holdings,ending_nav_normalized,gate_decision
+F02-252,2019-01-22,2026-07-17,1814,247,0.258166,-0.151687,0.008394,0.049051,4,4,37,3,80,0,21,5.575612,跨调仓锁资与现金占用后仍通过_偏均衡候选不变
+B0+F02-252+balance,2019-01-22,2026-07-17,1814,247,0.314240,-0.188549,0.012352,0.090779,10,10,74,2,113,0,21,7.726585,仍通过但锁资天数与风险退出显著更多_偏进攻定位强化

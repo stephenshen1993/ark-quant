@@ -1,0 +1,45 @@
+{
+  "generated_at_cst": "2026-07-20",
+  "executor": "Claude Code / DeepSeek-v4-pro (R1 mechanical data extraction)",
+  "repo_unchanged": true,
+  "tasks": {
+    "A_H00300": "取得 — 中证指数官方 API, 2073 行 (含 2018-01-01 占位, 已剔除), 2018-01-02~2026-07-17, 2026-07-20 未发布",
+    "B_JSL_OFFICIAL": "取得 — 集思录游客账号近一年, 241 行, 2025-07-21~2026-07-17, 完整历史需会员",
+    "C_COMPARISON": "完成 — 241 共同日期, 日收益相关 0.999992, 累计差 -0.81pp"
+  },
+  "blockers": {
+    "JSL_full_history": "需要集思录会员; 当前 Playwright MCP Chrome 为游客状态",
+    "H00300_20260720": "当日数据尚未被中证 API 发布",
+    "JSL_login": "Playwright MCP Chrome 独立实例不含用户主浏览器的集思录登录 Cookie"
+  },
+  "files": {
+    "jsl_cb_equal_weight_1y.csv": {
+      "bytes": 4831,
+      "sha256": "da093393147521f4ec833b3f0975a3f9767ca08085f6e94fe6a3efdef847465b"
+    },
+    "jsl_replica_comparison.csv": {
+      "bytes": 34580,
+      "sha256": "85c190c1af8ff5b93f9e2a0a3d38bc69f570f3f33edc8999d2be7ea7b87a8797"
+    },
+    "jsl_replica_stats.json": {
+      "bytes": 996,
+      "sha256": "db18ac90040be7dae7d15d487dda328eb65182ce8abb199625ab3808afd3bd7e"
+    },
+    "h00300_raw.json": {
+      "bytes": 803597,
+      "sha256": "1af39a82cce556e40b511c4de9849719f572485d634d22580e05a00e82802bec"
+    },
+    "h00300_trading_daily.csv": {
+      "bytes": 65598,
+      "sha256": "1eaaa50ada72fbf50d50afe78681cffe55761a9bc0f84ee4ff05f32a6ec55bc9"
+    },
+    "h00300_validation.json": {
+      "bytes": 924,
+      "sha256": "03314b3732bde7e9e4e2ed82105a6f93af77b3202dfcf55a4dc081bd504eab1e"
+    },
+    "final_report.md": {
+      "bytes": 3271,
+      "sha256": "23a64cf4f323fad448db9b1ae0b3e54a989ee40ad3dc7cf1348b0e43465cf398"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+record_type,group,weeks,mean_weekly_excess,down_week_return,down_week_market,up_week_return,up_week_market,notice_within_30d,dl_filtered_excess,dl_increment,positive_increment_share,mean_removed,weeks_with_removal,increment_2018_2020,increment_2021_2022,increment_2023_2024,increment_2025_2026,judgment
+progress,progress_lt_1_3,436,-0.000061,-0.010927,-0.012759,0.012592,0.014238,0.004150,,,,,,,,,低进度；下一月公告率很低
+progress,progress_1_3_to_2_3,436,-0.000652,-0.020687,-0.013102,0.019795,0.014692,0.149930,,,,,,,,,进度上升伴随更高股性和下行损失
+progress,progress_2_3_to_1,436,0.000581,-0.022133,-0.013115,0.023062,0.014606,0.211100,,,,,,,,,未达条件组下一月公告率最高但并非单调概率
+progress,condition_met,436,0.001262,-0.024601,-0.013048,0.026783,0.014597,0.058540,,,,,,,,,机械达成主要代表高股性高波动而非低风险alpha
+dl_filter,exclude_condition_met,424,,,,,,,0.001390,0.000027,0.0802,0.2146,73,-0.000020,-0.000029,-0.000023,0.000251,全样本增量近零且仅近期正向
+dl_filter,exclude_progress_ge_2_3,424,,,,,,,0.001428,0.000065,0.2193,0.9410,183,-0.000201,-0.000062,-0.000320,0.001201,2018至2024三段均伤害收益；不采用近期拟合阈值

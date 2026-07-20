@@ -1,0 +1,26 @@
+{
+  "source_url": "https://www.csindex.com.cn/csindex-home/perf/index-perf?indexCode=H00300&startDate=20180101&endDate=20260720",
+  "api_code": "200",
+  "api_success": true,
+  "index_codes": [
+    "H00300"
+  ],
+  "index_names_cn_all": [
+    "沪深300全收益指数"
+  ],
+  "raw_rows": 2073,
+  "raw_start": "2018-01-01",
+  "raw_end": "2026-07-17",
+  "raw_duplicate_dates": 0,
+  "raw_weekend_dates": [],
+  "raw_null_closes": [],
+  "removed_boundary_placeholders": [
+    "2018-01-01"
+  ],
+  "clean_rows": 2072,
+  "clean_start": "2018-01-02",
+  "clean_end": "2026-07-17",
+  "raw_sha256": "1af39a82cce556e40b511c4de9849719f572485d634d22580e05a00e82802bec",
+  "clean_csv_sha256": "1eaaa50ada72fbf50d50afe78681cffe55761a9bc0f84ee4ff05f32a6ec55bc9",
+  "provenance_note": "2018-01-01 is an API boundary placeholder identical to 2018-01-02 across close/change/volume/value/constituents/PEG; removed only from trading-day series."
+}

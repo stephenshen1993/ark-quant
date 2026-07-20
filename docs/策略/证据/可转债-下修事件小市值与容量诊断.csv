@@ -1,0 +1,8 @@
+diagnostic,variant,sample,events,median_total_market_cap_yi,median_cb_underlying_cap_percentile,bottom20pct_cb_underlying_share,cb_stock_h5_return_correlation,stock_down_mean_cb_return,stock_down_mean_stock_return,zero_position_share,mean_concurrent_positions,max_concurrent_positions,median_adv20_liquidity_percentile,bottom20pct_liquidity_share,recent_formal_smallcap_top20_overlap_share,judgment
+规模暴露,全部正式下修事件,2024-04至2026-07,236,43.7777,0.3842,0.2607,0.7227,-0.020807,-0.049020,,,,,,发行人显著大于近期正式小市值Top20但收益仍高度权益驱动
+规模暴露,浅下修三分位,2024-04至2026-07,78,39.9216,0.3611,0.2949,0.6060,-0.024056,-0.040359,,,,,,浅下修无收益增量
+规模暴露,中下修三分位,2024-04至2026-07,77,44.9251,0.3798,0.1948,0.7808,-0.016677,-0.048117,,,,,,中位收益仍弱且与正股高度相关
+规模暴露,深下修三分位,2024-04至2026-07,78,44.0882,0.4394,0.3026,0.7545,-0.020122,-0.054616,,,,,,不是微盘发行人策略但仍是高权益相关事件
+正式池重合,最近可比小市值Top20快照,2026-05至2026-07,16,,,,,,,,,,,,0.0000,16次有不超过7日旧快照的事件中无直接持仓重合；样本太短不外推全历史
+事件容量,全部正式下修持有5日,2024-04至2026-07,235,,,,,,,0.1823,2.1209,11,0.5132,0.1362,,无法构成持续20只分散策略；只能作核心组合上的事件叠加
+事件容量,深下修三分位持有5日,2024-04至2026-07,78,,,,,,,0.5505,0.7040,4,0.6161,0.1410,,深下修袖套超过一半交易日无持仓且最多4只

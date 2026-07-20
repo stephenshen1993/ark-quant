@@ -1,0 +1,101 @@
+{
+  "package_version": "CB-REPRO-20260720-v1",
+  "generated_files": {
+    "B0_BASE-pretax_total-daily.csv": {
+      "sha256": "b1417428b75ee9d49248e817d9a52488664f4550bf0ad786a91dfb3b657c5688",
+      "bytes": 205832
+    },
+    "B0_BASE-pretax_total-events.csv": {
+      "sha256": "7488ea7326c536bb9cbf40831a8d094c05e7a0c160e93966202b537eff6bf824",
+      "bytes": 12150
+    },
+    "B0_BASE-pretax_total-trades.csv": {
+      "sha256": "fe905273b5dd63fc375af4604c89eefec98c1843bd9d06f3c188d12d12badc06",
+      "bytes": 775496
+    },
+    "B0_BASE-price_ex_coupon-daily.csv": {
+      "sha256": "b54e93a13c75897d702ca3b6ef7cb5c34bbbabe3a2f39cde66d9cf187448b183",
+      "bytes": 205232
+    },
+    "B0_BASE-price_ex_coupon-events.csv": {
+      "sha256": "78d8824866a2df8bd3298091743684d18e5da917974ebc75662fd0a04f58e821",
+      "bytes": 12159
+    },
+    "B0_BASE-price_ex_coupon-trades.csv": {
+      "sha256": "e1380ad71532e0f25f7468183c4c6c38cb2b48074c08f0bd1514849b1268c9bf",
+      "bytes": 776635
+    },
+    "B0_BASE-rankings.csv": {
+      "sha256": "7caf29a380c9ea857df8d7f3df59530401541d1cf6d8c5084f5caecf1a7a5782",
+      "bytes": 636606
+    },
+    "C_BAL-pretax_total-daily.csv": {
+      "sha256": "4c97ad7e742c911772944cc7769ce7e330d792dd422579434cafc6aabcb35898",
+      "bytes": 181190
+    },
+    "C_BAL-pretax_total-events.csv": {
+      "sha256": "1afa04dffcc0204a765371e8746aaceed7ac3249d04c52b8d0173cc2e056ef45",
+      "bytes": 10688
+    },
+    "C_BAL-pretax_total-trades.csv": {
+      "sha256": "04d212095a883e08aa40a6081cadfa71402277c4a034e29852ca02db409e666e",
+      "bytes": 730464
+    },
+    "C_BAL-price_ex_coupon-daily.csv": {
+      "sha256": "0567afd970690bbff23acedc0b944d9f467caaa48b5b3c0bf645861449e94104",
+      "bytes": 181791
+    },
+    "C_BAL-price_ex_coupon-events.csv": {
+      "sha256": "fb32fbc849fafd72482c7d0932b3097cb7774901cd886cf8ea57209a75ef0691",
+      "bytes": 10694
+    },
+    "C_BAL-price_ex_coupon-trades.csv": {
+      "sha256": "08300770eaa4feaf0eb4ea3dff0f7cd612c7710d919718b70d5c16257304a4ce",
+      "bytes": 733323
+    },
+    "C_BAL-rankings.csv": {
+      "sha256": "1eba56bcf401ca88bc3437deedac1fb0936386d7d43397c0244d66498d76eff1",
+      "bytes": 426664
+    },
+    "C_OFF-pretax_total-daily.csv": {
+      "sha256": "d332bdd8e9f693abe0626282c960cd8c2ecc6f2639d29cb2a62080ebac01b866",
+      "bytes": 178737
+    },
+    "C_OFF-pretax_total-events.csv": {
+      "sha256": "edc0965904216f80cc1b669f7464a35faecf5ea5e7fe75b4dd2df5ecbc979371",
+      "bytes": 10678
+    },
+    "C_OFF-pretax_total-trades.csv": {
+      "sha256": "b1db889df3865f83b9c1379462660b34d6eaddce4c2f9b12bba69d5bb42c81d7",
+      "bytes": 718898
+    },
+    "C_OFF-price_ex_coupon-daily.csv": {
+      "sha256": "de2ce1571e53a21b3e24ad57efa63eedd162b25b93bae9f69210ae713daeefbe",
+      "bytes": 180307
+    },
+    "C_OFF-price_ex_coupon-events.csv": {
+      "sha256": "00f1e2c1fdc35d89411b37230ef86e1ad46aa868198c9ed008eed342f261f254",
+      "bytes": 10682
+    },
+    "C_OFF-price_ex_coupon-trades.csv": {
+      "sha256": "12fd2f4f9724d434bd6efb85e6623b09bcccfb8b74b3eea9903877cdc6d037d4",
+      "bytes": 717256
+    },
+    "C_OFF-rankings.csv": {
+      "sha256": "715c985b142d7d4bc2fdc31550749956a343f82f1b4cb37c32954277ba6ddec4",
+      "bytes": 426664
+    },
+    "JSL-CB-EW-REPLICA.csv": {
+      "sha256": "dfdb05cf2e1956383416d729dfe2f6e93835aa70b6bf569befb1ee37bf623385",
+      "bytes": 106422
+    },
+    "U-EW-pretax_total-events.csv": {
+      "sha256": "6ae873e39a77023b4ed9f4d08ab0d440364f93d9c68a2ee847abc3053a949f21",
+      "bytes": 13224
+    },
+    "U-EW-price_ex_coupon-events.csv": {
+      "sha256": "c7384c4ae9ec0a0e638fc65197d46c84758d3a1188d8d4b10e47998cc0b83e3b",
+      "bytes": 13227
+    }
+  }
+}

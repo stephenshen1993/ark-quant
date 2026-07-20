@@ -1,0 +1,20 @@
+{
+  "contract": "JSL-CB-EW official one-year vs public-rule replica consistency audit",
+  "not_a_performance_winner_test": true,
+  "official_rows": 241,
+  "replica_rows": 2070,
+  "common_dates": 241,
+  "common_start": "2025-07-21",
+  "common_end": "2026-07-17",
+  "daily_return_observations": 240,
+  "official_cumulative_return": 0.13924086085350273,
+  "replica_cumulative_return": 0.13111620904951193,
+  "replica_minus_official_cumulative_return": -0.008124651803990801,
+  "daily_return_correlation": 0.9999915010733179,
+  "daily_return_mean_absolute_difference": 3.1362996575176605e-05,
+  "daily_return_mean_signed_difference_replica_minus_official": -2.986742948561568e-05,
+  "daily_return_max_absolute_difference": 0.00020473007062982163,
+  "normalized_level_max_absolute_difference": 0.008247591273948807,
+  "official_sha256": "da093393147521f4ec833b3f0975a3f9767ca08085f6e94fe6a3efdef847465b",
+  "replica_source_sha256": "dfdb05cf2e1956383416d729dfe2f6e93835aa70b6bf569befb1ee37bf623385"
+}

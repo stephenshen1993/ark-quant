@@ -1,0 +1,138 @@
+{
+  "package_version": "CB-REPRO-20260720-v1",
+  "created_from_temporary_research": true,
+  "contract": {
+    "variants": [
+      "B0_BASE",
+      "C_BAL",
+      "C_OFF"
+    ],
+    "signal": "calendar 10/20/30, next legal trading day; execute following open",
+    "target": 20,
+    "fee_each_side": 0.001,
+    "missing_open": "target slot remains cash; locked old position keeps occupying capital",
+    "returns": [
+      "price_ex_coupon",
+      "pretax_coupon_model"
+    ]
+  },
+  "coverage": {
+    "bonds": 947,
+    "rows": 715800,
+    "start": "2018-01-02",
+    "end": "2026-07-17",
+    "g_bonds": 887,
+    "g_rows": 654534,
+    "stock": {
+      "stock_codes": 822,
+      "stock_rows": 1513579,
+      "start": "2018-01-02",
+      "end": "2026-07-17"
+    },
+    "put_correction": {
+      "positive_put_cycles": 87,
+      "event_rows": 87,
+      "codes": 64,
+      "put_bil_total": 15.096209999999997,
+      "start": "2018-07-18",
+      "end": "2026-07-20"
+    },
+    "frozen_rows": 715800,
+    "frozen_bonds": 947,
+    "risk_events": 615,
+    "coupon_events": 2498
+  },
+  "benchmark_status_at_freeze": {
+    "U-EW": "available_from_frozen_panel",
+    "JSL-CB-EW": "missing_full_history; ordinary account official one-year only",
+    "JSL-CB-EW-REPLICA": "derivable_from_frozen_panel_using_public_rules",
+    "HS300-TR": "available_official_H00300",
+    "SMALLCAP-PROXY": "available; not formal stock strategy",
+    "JSL-CB-EW-1Y": "available_official_one_year_crosscheck"
+  },
+  "environment": {
+    "python": "3.9.6",
+    "pandas": "2.3.3",
+    "numpy": "2.0.2"
+  },
+  "source_files": {
+    "/private/tmp/ark_cb_candidate_execution_diag.py": {
+      "sha256": "5fc31c1676b2b8890fd9402c294932888cfe272d4d49e085d651db7a09b3558e",
+      "bytes": 18122
+    },
+    "/private/tmp/ark_cb_master_expanded.pkl": {
+      "sha256": "dad01210837d5d533e02f92b1de639d06ff954bf0f25e284c4658abe4649ee8a",
+      "bytes": 4845494
+    },
+    "/private/tmp/ark_cb_terms_expanded.pkl": {
+      "sha256": "ff4fe577e0195e84173558e8a9f187be82065907e78d4642be5d80c0df4502fc",
+      "bytes": 45346
+    },
+    "/private/tmp/ark_cb_szse_name_changes.pkl": {
+      "sha256": "61dc392eb1286d752ae3014b08f5bfdea44b934a874711a7085b9da0abc0fac2",
+      "bytes": 436751
+    },
+    "/Users/Admin/Workspace/personal/repos/ark-quant/docs/策略/证据/可转债-标准退出现金可用日.csv": {
+      "sha256": "2776406606d936a1f15b415511ddd9bb3ad9f98842bd1fc521a4e53cf4ac8772",
+      "bytes": 82776
+    },
+    "/private/tmp/index_399303.json": {
+      "sha256": "51b4e96533d126205579181ecbc436dc14befed3151b180f255e1bce726782f6",
+      "bytes": 285527
+    }
+  },
+  "generated_files": {
+    "frozen_panel.pkl.gz": {
+      "sha256": "ac97d7aea51bae9d322aa4371a91a315b4efbe5b473c09a288b3a13a9884d6e6",
+      "bytes": 19397585
+    },
+    "risk_events.csv": {
+      "sha256": "6cb722de144643057f85e470077f3de0ba2e50443ee328b7c522c34f08198d2a",
+      "bytes": 18995
+    },
+    "standard_exits.csv": {
+      "sha256": "2776406606d936a1f15b415511ddd9bb3ad9f98842bd1fc521a4e53cf4ac8772",
+      "bytes": 82776
+    },
+    "coupon_events.csv": {
+      "sha256": "e870ab9d34dd78330f9505e71b8835e4b562b6a6797b651a3cbf42a3484a4898",
+      "bytes": 182422
+    },
+    "benchmarks/smallcap_proxy_399303.csv": {
+      "sha256": "ea4a1ec496dc1949d6ffd59965fac81f3e56c287191f2be6e1579f4a25a66bde",
+      "bytes": 71482
+    },
+    "benchmarks/README.md": {
+      "sha256": "3dfe646e6b55769bc891acb54512a6c2c5cc6a63384a5cccfada8ca6656457c3",
+      "bytes": 393
+    },
+    "benchmarks/jsl_cb_equal_weight_1y.csv": {
+      "sha256": "da093393147521f4ec833b3f0975a3f9767ca08085f6e94fe6a3efdef847465b",
+      "bytes": 4831
+    },
+    "benchmarks/hs300_total_return.csv": {
+      "sha256": "6ab26b3a6654fa82618e15ab2faa937808d03c1467c2bf5074df3864247eabb3",
+      "bytes": 41259
+    },
+    "benchmarks/hs300_total_return_raw.json": {
+      "sha256": "1af39a82cce556e40b511c4de9849719f572485d634d22580e05a00e82802bec",
+      "bytes": 803597
+    }
+  },
+  "benchmark_provenance": {
+    "JSL-CB-EW-1Y": {
+      "url": "https://www.jisilu.cn/data/cbnew/cb_index/",
+      "accessed_cst": "2026-07-20",
+      "rows": 241,
+      "range": "2025-07-21/2026-07-17",
+      "contract": "logged-in ordinary-account visible table; cross-check only"
+    },
+    "HS300-TR": {
+      "url": "https://www.csindex.com.cn/csindex-home/perf/index-perf?indexCode=H00300&startDate=20180101&endDate=20260720",
+      "accessed_cst": "2026-07-20",
+      "rows": 2072,
+      "range": "2018-01-02/2026-07-17",
+      "contract": "official H00300; 2018-01-01 API boundary placeholder removed"
+    }
+  }
+}

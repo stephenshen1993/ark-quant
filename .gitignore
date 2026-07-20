@@ -29,3 +29,7 @@ data/output/
 docs/portfolio_snapshot_*.md
 docs/investment_system.md
 docs/investment_system_review.md
+
+# 本地取证截图可能包含浏览器上下文或真实账户金额，只保留在本机
+docs/策略/证据/小市值股票策略/*.png
+docs/策略/证据/小市值股票策略/*.jpg

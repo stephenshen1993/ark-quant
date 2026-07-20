@@ -1,0 +1,11 @@
+bond_code,bond_name,risk_known_date,generic_filter_trigger,first_weekly_signal_excluded,last_exchange_trade_date,calendar_days_before_last_trade,source_type,source_url
+128044,岭南转债,2024-08-07,发行人明确披露现有资金不足且大概率无法到期兑付,2024-08-09,2024-08-09,2,巨潮原始公告,https://static.cninfo.com.cn/finalpage/2024-08-07/1220807320.PDF
+113575,东时转债,2024-05-06,正股开始实施ST其他风险警示,2024-05-10,2026-04-02,696,上交所原始公告,https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2024-04-30/603377_20240430_IJUO.pdf
+128114,正邦转债,2023-05-05,正股开始实施*ST退市风险警示,2023-05-05,2023-08-04,91,深交所证券简称变更表,https://www.szse.cn/www/market/stock/changename/index.html
+113578,全筑转债,2023-05-05,正股开始实施*ST退市风险及其他风险警示,2023-05-05,2023-11-28,207,上交所原始公告交叉确认,https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2023-11-14/603030_20231114_V8BQ.pdf
+123015,蓝盾转退,2022-04-29,正股开始实施*ST退市风险警示,2022-04-29,2023-07-28,455,深交所证券简称变更表,https://www.szse.cn/www/market/stock/changename/index.html
+128085,鸿达转债,2023-10-12,正股开始实施ST其他风险警示,2023-10-13,2024-01-18,98,深交所证券简称变更表,https://www.szse.cn/www/market/stock/changename/index.html
+128100,搜特转债,2023-04-26,正股开始实施*ST退市风险警示,2023-04-28,2023-05-22,26,深交所证券简称变更表,https://www.szse.cn/www/market/stock/changename/index.html
+110072,广汇转债,2024-06-21,首次公告股票及可转债可能因股价低于面值被终止上市,2024-06-21,2024-07-17,26,上交所原始公告,https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2024-07-03/600297_20240703_RMH1.pdf
+123099,普利转退,2025-01-07,正股开始实施*ST退市风险警示,2025-01-10,2025-05-21,134,深交所证券简称变更表,https://www.szse.cn/www/market/stock/changename/index.html
+127033,中装转2,2024-02-27,正股开始实施ST其他风险警示,2024-03-01,2025-09-03,554,深交所证券简称变更表,https://www.szse.cn/www/market/stock/changename/index.html
