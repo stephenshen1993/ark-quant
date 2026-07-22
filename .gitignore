@@ -8,6 +8,7 @@ secrets/
 .playwright-mcp/
 
 logs/*.log
+logs/*.pid
 outputs/*.csv
 outputs/*.xlsx
 outputs/*.md

@@ -155,6 +155,51 @@ class ConvertibleBondRotationTests(unittest.TestCase):
         self.assertEqual(enriched.loc[0, "cb_price"], 119.5)
         self.assertEqual(enriched.loc[0, "turnover_yuan"], 35_850_000)
 
+    def test_same_day_turnover_cache_with_stale_trade_date_is_refetched(self) -> None:
+        today = date.today()
+        stale_date = today - timedelta(days=1)
+
+        class FakeAk:
+            calls = 0
+
+            @classmethod
+            def bond_zh_hs_cov_daily(cls, symbol: str) -> pd.DataFrame:
+                cls.calls += 1
+                return pd.DataFrame([{"date": today.isoformat(), "close": 120.0, "volume": 1000}])
+
+        stale_cache = pd.DataFrame([{
+            "bond_code": "123456",
+            "cb_close_daily": 119.0,
+            "turnover_yuan_daily": 119000.0,
+            "turnover_trade_date": stale_date.isoformat(),
+        }])
+
+        with TemporaryDirectory() as temp_dir, patch.object(run, "CACHE_DIR", Path(temp_dir)):
+            stale_cache.to_csv(
+                Path(temp_dir) / f"bond_daily_turnover_{today:%Y%m%d}_latest.csv",
+                index=False,
+            )
+
+            turnover = run.fetch_cb_daily_turnover(FakeAk(), ["123456"], {"data": {}})
+
+        self.assertEqual(FakeAk.calls, 1)
+        self.assertEqual(turnover.loc[0, "turnover_trade_date"], today.isoformat())
+        self.assertEqual(turnover.loc[0, "cb_close_daily"], 120.0)
+
+    def test_bond_turnover_cache_is_named_by_data_date(self) -> None:
+        today = date.today()
+
+        class FakeAk:
+            @staticmethod
+            def bond_zh_hs_cov_daily(symbol: str) -> pd.DataFrame:
+                return pd.DataFrame([{"date": today.isoformat(), "close": 120.0, "volume": 1000}])
+
+        with TemporaryDirectory() as temp_dir, patch.object(run, "CACHE_DIR", Path(temp_dir)):
+            run.fetch_cb_daily_turnover(FakeAk(), ["123456"], {"data": {}})
+
+            self.assertTrue((Path(temp_dir) / f"bond_daily_turnover_{today:%Y%m%d}.csv").exists())
+            self.assertFalse((Path(temp_dir) / f"bond_daily_turnover_{today:%Y%m%d}_latest.csv").exists())
+
     def test_daily_bond_market_data_rejects_old_cache_without_close(self) -> None:
         cached = pd.DataFrame(
             [{"bond_code": "123456", "turnover_yuan_daily": 35_850_000, "turnover_trade_date": "2026-05-28"}]
@@ -246,6 +291,14 @@ class ConvertibleBondRotationTests(unittest.TestCase):
             stale.write_text("value\n1\n", encoding="utf-8")
             with patch.object(run, "CACHE_DIR", Path(temp_dir)):
                 self.assertIsNone(run.latest_cache("sample", max_age_days=7))
+
+    def test_latest_dated_cache_ignores_latest_suffix(self) -> None:
+        today = date.today()
+        with TemporaryDirectory() as temp_dir, patch.object(run, "CACHE_DIR", Path(temp_dir)):
+            latest = Path(temp_dir) / f"bond_daily_turnover_{today:%Y%m%d}_latest.csv"
+            latest.write_text("value\n1\n", encoding="utf-8")
+
+            self.assertIsNone(run.latest_dated_cache("bond_daily_turnover", max_age_days=7))
 
 
     def test_market_cap_estimate_fills_missing_and_dates_it(self) -> None:

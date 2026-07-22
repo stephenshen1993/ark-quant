@@ -159,6 +159,37 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(data["cb"]["rankings"], [])
         self.assertEqual(data["stock"]["rankings"], [])
 
+    def test_full_plan_falls_back_to_latest_common_strategy_date(self):
+        db._TEST_CONN.execute(
+            """INSERT INTO market_temperatures
+               (temperature,label,source_updated_at,source,fetched_at)
+               VALUES (45.0,'正常','2026-06-30T15:00',?,'2026-06-30T20:00:00')""",
+            (DATA_URL,),
+        )
+        db._TEST_CONN.commit()
+        stock_run_id = db.create_complete_strategy_run("stock", date(2026, 6, 30), date(2026, 7, 1), pd.DataFrame([{
+            "rank": 1, "stock_code": "600051", "stock_name": "宁波联合",
+            "total_mv_yuan": 1000000000, "pe_ttm": 10.0, "roe_pct": 12.0,
+        }]))
+        db.insert_stock_orders(stock_run_id, pd.DataFrame([{
+            "action": "HOLD", "stock_code": "600051", "stock_name": "宁波联合",
+            "price": 5.68, "delta_shares": 0, "amount": 0,
+        }]))
+
+        with patch(
+            "datasource.youzhiyouxing._now_shanghai",
+            return_value=datetime(2026, 6, 30, 20, 30, tzinfo=ZoneInfo("Asia/Shanghai")),
+        ):
+            r = self.client.get("/api/plan")
+
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data["market_temperature"]["updated_at"][:10], "2026-06-30")
+        self.assertEqual(data["plan_date"], "2026-06-29")
+        self.assertEqual(data["cb"]["data_date"], "2026-06-29")
+        self.assertEqual(data["stock"]["data_date"], "2026-06-29")
+        self.assertEqual(data["trade_errors"], [])
+
     def test_plan_returns_rankings_when_no_orders(self):
         """缺 orders 时返回 rankings 作为降级数据"""
         # 写入榜单数据但不写 orders

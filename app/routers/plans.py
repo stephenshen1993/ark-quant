@@ -40,7 +40,7 @@ def get_transfer_plan(refresh_temperature: bool = False):
             },
         ) from exc
 
-    plan_date = market_temperature.updated_at[:10]
+    plan_date = _resolve_plan_date(market_temperature.updated_at[:10])
     account = db.get_current_account_summary()
     if account:
         account = dict(account)
@@ -99,7 +99,7 @@ def get_plan(refresh_temperature: bool = False):
             },
         ) from exc
 
-    plan_date = market_temperature.updated_at[:10]
+    plan_date = _resolve_plan_date(market_temperature.updated_at[:10])
 
     account = db.get_current_account_summary()
     if account:
@@ -537,7 +537,21 @@ def _current_plan_date() -> str:
                 "message": str(exc),
             },
         ) from exc
-    return market_temperature.updated_at[:10]
+    return _resolve_plan_date(market_temperature.updated_at[:10])
+
+
+def _resolve_plan_date(market_date: str) -> str:
+    """Use the latest common complete strategy date when free data sources lag.
+
+    The market temperature may update earlier than every free strategy data source.
+    A complete trading plan needs stock and convertible-bond inputs on the same
+    data date, so fall back to the latest common complete date instead of mixing
+    dates or pretending a stale source is current.
+    """
+    cb_dates = set(db.get_ranking_dates("cb"))
+    stock_dates = set(db.get_ranking_dates("stock"))
+    common_dates = sorted(date_str for date_str in cb_dates & stock_dates if date_str <= market_date)
+    return common_dates[-1] if common_dates else market_date
 
 
 def _strategy_cash_after_transfer(strategy: str, account: dict, deltas: dict) -> float:

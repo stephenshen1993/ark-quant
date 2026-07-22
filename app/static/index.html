@@ -211,16 +211,51 @@
     <!-- 资金调拨结果始终可见 -->
     <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40">
       <div class="flex items-center justify-between mb-3">
-        <div class="text-sm font-semibold">资金调拨</div>
+        <div class="text-sm font-semibold">账户间资金调拨</div>
         <span class="text-xs rounded-full px-2.5 py-1" :class="statusClass(plan?.fund_transfer ? 'ready' : 'waiting')" x-text="transferStatusText()"></span>
       </div>
-      <template x-for="(step, i) in transferSteps()">
-        <div class="flex gap-3 text-sm text-gray-700 py-2 border-b border-gray-50 last:border-0">
-          <span class="text-xs w-5 h-5 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center shrink-0" x-text="i+1"></span>
-          <span x-text="step"></span>
+      <div x-show="plan?.fund_transfer" class="text-sm">
+        <div class="mb-3">
+          <div class="text-xs font-medium text-gray-500 mb-2">本次请执行</div>
+          <template x-for="(action, i) in fundingActions()" :key="`${action.source}-${action.target}-${i}`">
+            <div class="rounded-lg border border-gray-100 bg-white px-3.5 py-3 mb-2 last:mb-0">
+              <div class="grid grid-cols-[auto_1fr] gap-3 items-start text-sm text-gray-700">
+                <span class="text-xs w-5 h-5 rounded-full bg-white border border-gray-100 text-gray-500 flex items-center justify-center shrink-0" x-text="i + 1"></span>
+                <div>
+                  <div class="font-medium text-gray-900 tabular-nums" x-text="fundingActionSentence(action)"></div>
+                  <div x-show="fundingActionReason(action)" class="mt-1 text-xs text-gray-500" x-text="fundingActionReason(action)"></div>
+                </div>
+              </div>
+            </div>
+          </template>
+          <div x-show="!fundingActions().length" class="text-sm text-gray-500 py-2">本次无需账户间调拨</div>
         </div>
-      </template>
-      <div x-show="plan && !transferSteps().length" class="text-sm text-gray-500 py-2">无需资金调拨</div>
+        <div x-show="fundingRows().length">
+          <details class="text-xs text-gray-500">
+            <summary class="cursor-pointer select-none">展开查看计算依据</summary>
+            <div class="mt-2 overflow-x-auto">
+              <table class="w-full min-w-[680px] tabular-nums">
+                <thead class="text-gray-400 border-b border-gray-100">
+                  <tr><th class="text-left font-normal pb-2">账户</th><th class="text-right font-normal pb-2">当前占比</th><th class="text-right font-normal pb-2">目标占比</th><th class="text-right font-normal pb-2">当前金额</th><th class="text-right font-normal pb-2">目标金额</th><th class="text-right font-normal pb-2">本次调拨</th><th class="text-right font-normal pb-2">调后状态</th></tr>
+                </thead>
+                <tbody>
+                  <template x-for="row in fundingRows()" :key="`detail-${row.key}`">
+                    <tr class="border-b border-gray-50 last:border-0">
+                      <td class="py-2 font-medium text-gray-700" x-text="row.label"></td>
+                      <td class="py-2 text-right" x-text="row.currentPct"></td>
+                      <td class="py-2 text-right" x-text="row.targetPct"></td>
+                      <td class="py-2 text-right" x-text="fmtMoney(row.current)"></td>
+                      <td class="py-2 text-right" x-text="fmtMoney(row.target)"></td>
+                      <td class="py-2 text-right" :class="row.planned > 0 ? 'text-green-600' : row.planned < 0 ? 'text-red-500' : ''" x-text="row.plannedText"></td>
+                      <td class="py-2 text-right" :class="row.remaining ? 'text-amber-600' : ''" x-text="row.remainingText"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+      </div>
       <div x-show="!plan" class="text-sm text-gray-400 py-2">等待生成计划。</div>
     </div>
 
@@ -895,9 +930,81 @@
       transferStatusText() {
         if (!this.plan?.fund_transfer) return '等待生成'
         const internal = this.plan.fund_transfer.a_internal
-        if (internal?.status === 'not_requested') return '主动组合内部资金调拨尚未检查'
-        if (internal?.status === 'paused') return internal.pause_reason || '主动组合内部资金调拨等待必要事实'
-        return this.transferSteps().length ? `已生成 ${this.transferSteps().length} 步` : '已完整检查，本次无需资金调拨'
+        if (internal?.status === 'not_requested') return '账户间资金调拨尚未检查'
+        if (internal?.status === 'paused') return internal.pause_reason || '账户间资金调拨等待必要事实'
+        return this.fundingActions().length ? `需调拨 ${this.fundingActions().length} 笔` : '已完整检查，本次无需资金调拨'
+      },
+      fundingActions() {
+        const transfer = this.plan?.fund_transfer
+        if (!transfer) return []
+        const labels = {
+          stock: '广发账户', bond: '华泰账户', cash_pool: '资金账户',
+          A: '主动组合', B: '海外长钱', C: '国内长钱',
+        }
+        const actions = [
+          ...(transfer.top_level?.executed_actions || []),
+          ...(transfer.top_level?.outflows || []),
+          ...(transfer.a_internal?.actions || []),
+        ]
+        return actions.map(action => ({
+          ...action,
+          sourceLabel: labels[action.source] || action.source,
+          targetLabel: labels[action.target] || action.target,
+        }))
+      },
+      fundingActionSentence(action) {
+        return `${action.sourceLabel} 转出 ${this.fmtMoney(action.amount)} 到 ${action.targetLabel}`
+      },
+      fundingActionReason(action) {
+        const rows = this.fundingRows()
+        const source = rows.find(row => row.key === action.source)
+        const target = rows.find(row => row.key === action.target)
+        const subject = source?.key !== 'cash_pool' ? source : target
+        if (!subject) return ''
+        if (subject.remaining) {
+          if (subject.planned > 0) return `${subject.label}低于目标，转入后仍差 ${this.fmtMoney(subject.remaining)}`
+          return `${subject.label}高于目标，转出后仍高出 ${this.fmtMoney(Math.abs(subject.remaining))}`
+        }
+        return `${subject.label}${subject.planned > 0 ? '低于目标，转入后' : '高于目标，转出后'}回到目标附近`
+      },
+      fundingRows() {
+        const internal = this.plan?.fund_transfer?.a_internal
+        if (!internal?.current || !internal?.final_targets) return []
+        const planned = internal.planned_deltas || {}
+        const remaining = internal.deferred_gaps || {}
+        return [
+          ['stock', '广发账户'], ['bond', '华泰账户'], ['cash_pool', '资金账户'],
+        ].map(([key, label]) => {
+          const current = Number(internal.current[key] || 0)
+          const target = Number(internal.final_targets[key] || 0)
+          const plannedDelta = Number(planned[key] || 0)
+          const currentDeviation = target - current
+          const deferred = Number(remaining[key] || 0)
+          return {
+            key, label, current,
+            target,
+            currentPct: internal.a_exec ? `${(current / internal.a_exec * 100).toFixed(2)}%` : '-',
+            targetPct: internal.a_exec ? `${(target / internal.a_exec * 100).toFixed(2)}%` : '-',
+            currentDeviation,
+            currentDeviationText: this.fundingDeltaText(currentDeviation, '当前'),
+            planned: plannedDelta,
+            plannedText: this.fundingDeltaText(plannedDelta, '本次'),
+            after: current + plannedDelta,
+            remaining: deferred,
+            remainingText: this.fundingDeltaText(deferred, '调后'),
+          }
+        })
+      },
+      fundingDeltaText(delta, stage) {
+        const amount = Number(delta || 0)
+        if (Math.abs(amount) < 0.005) return stage === '调后' ? '已达目标' : '无偏离'
+        if (stage === '调后') {
+          return amount > 0
+            ? `调后仍需转入 ${this.fmtMoney(amount)}`
+            : `调后暂可转出 ${this.fmtMoney(Math.abs(amount))}`
+        }
+        if (stage === '本次') return `本次${amount > 0 ? '转入' : '转出'} ${this.fmtMoney(Math.abs(amount))}`
+        return `当前${amount > 0 ? '需转入' : '可转出'} ${this.fmtMoney(Math.abs(amount))}`
       },
       readinessItems() {
         const transferReady = Boolean(this.plan?.fund_transfer)
@@ -923,11 +1030,6 @@
         const delta = (this.plan?.transfer_deltas || this.transferPlan?.transfer_deltas)?.[dk] || 0
         // 正delta(入金)当日可用, 负delta(转出)必须预留
         return Math.round(base + delta)
-      },
-      transferSteps() {
-        return this.plan?.transfer_steps?.length
-          ? this.plan.transfer_steps
-          : (this.transferPlan?.transfer_steps || [])
       },
       async generateOrders(strategy) {
         if (!this.plan?.account) throw new Error('请先在账户页补齐账户事实')

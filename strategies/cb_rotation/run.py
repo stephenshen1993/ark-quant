@@ -5,7 +5,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, replace
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Iterable
 
@@ -90,6 +90,34 @@ def latest_cache(name: str, max_age_days: int) -> Path | None:
         if cache_date >= cutoff:
             return path
     return None
+
+
+def latest_dated_cache(name: str, max_age_days: int) -> Path | None:
+    if not CACHE_DIR.exists():
+        return None
+    files = sorted(
+        (path for path in CACHE_DIR.glob(f"{name}_*.csv") if not path.stem.endswith("_latest")),
+        reverse=True,
+    )
+    cutoff = date.today() - timedelta(days=max_age_days)
+    for path in files:
+        stamps = re.findall(r"(?<!\d)(20\d{6})(?!\d)", path.stem)
+        if not stamps:
+            continue
+        cache_date = datetime.strptime(stamps[-1], "%Y%m%d").date()
+        if cache_date >= cutoff:
+            return path
+    return None
+
+
+def latest_completed_market_data_date(now: datetime | None = None) -> date:
+    current = now or datetime.now()
+    candidate = current.date()
+    if current.weekday() >= 5 or current.time() < time(15, 10):
+        candidate = candidate - timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate = candidate - timedelta(days=1)
+    return candidate
 
 
 def require_fresh_dates(df: pd.DataFrame, column: str, max_age_days: int, stage: str) -> None:
@@ -389,21 +417,39 @@ def normalize_cb_data(raw: pd.DataFrame) -> pd.DataFrame:
 
 def fetch_cb_daily_turnover(ak, bond_codes: Iterable[str], config: dict) -> pd.DataFrame:
     codes = sorted({str(c).zfill(6) for c in bond_codes if pd.notna(c)})
-    name = f"bond_daily_turnover_{date.today():%Y%m%d}"
-    cached_today = cache_path(name, stamp="latest")
-    if cached_today.exists():
-        cached = pd.read_csv(cached_today, dtype={"bond_code": str})
+    expected_data_date = latest_completed_market_data_date()
+    data_cache = cache_path("bond_daily_turnover", stamp=f"{expected_data_date:%Y%m%d}")
+
+    def _usable_cache(path: Path) -> pd.DataFrame | None:
+        if not path.exists():
+            return None
+        cached = pd.read_csv(path, dtype={"bond_code": str})
+        if "turnover_trade_date" not in cached.columns:
+            return None
+        trade_dates = pd.to_datetime(cached["turnover_trade_date"], errors="coerce").dropna()
+        if trade_dates.empty or trade_dates.max().date() != expected_data_date:
+            logging.info(
+                "Ignoring stale bond turnover cache %s; expected data date %s.",
+                path,
+                expected_data_date,
+            )
+            return None
         cached_codes = set(cached["bond_code"].astype(str).str.zfill(6))
         if set(codes).issubset(cached_codes):
-            logging.info("Using same-day bond turnover cache: %s", cached_today)
+            logging.info("Using bond turnover cache: %s", path)
             return cached[cached["bond_code"].astype(str).str.zfill(6).isin(codes)].copy()
+        return None
+
+    cached = _usable_cache(data_cache)
+    if cached is not None:
+        return cached
 
     rows: list[dict] = []
     cached_codes: set[str] = set()
-    if cached_today.exists():
-        cached = pd.read_csv(cached_today, dtype={"bond_code": str})
+    cached = _usable_cache(data_cache)
+    if cached is not None:
         cached["bond_code"] = cached["bond_code"].astype(str).str.zfill(6)
-        cached_codes = set(cached["bond_code"])
+        cached_codes.update(cached["bond_code"])
         rows.extend(cached[cached["bond_code"].isin(codes)].to_dict("records"))
 
     missing_codes = [code for code in codes if code not in cached_codes]
@@ -440,13 +486,13 @@ def fetch_cb_daily_turnover(ak, bond_codes: Iterable[str], config: dict) -> pd.D
     )
     turnover = turnover.drop_duplicates(subset=["bond_code"], keep="last")
     if not turnover.empty:
-        turnover.to_csv(cached_today, index=False, encoding="utf-8-sig")
-        logging.info("Saved bond turnover cache: %s", cached_today)
+        turnover.to_csv(data_cache, index=False, encoding="utf-8-sig")
+        logging.info("Saved bond turnover cache: %s", data_cache)
         return turnover
 
     data_config = config.get("data", {})
     if data_config.get("use_cache_on_failure", True):
-        cached = latest_cache("bond_daily_turnover", int(data_config.get("max_cache_age_days", 7)))
+        cached = latest_dated_cache("bond_daily_turnover", int(data_config.get("max_cache_age_days", 7)))
         if cached is not None:
             logging.warning("Using cached bond turnover: %s", cached)
             return pd.read_csv(cached, dtype={"bond_code": str})
