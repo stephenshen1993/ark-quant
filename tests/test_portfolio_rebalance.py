@@ -1,0 +1,203 @@
+import unittest
+
+from portfolio_rebalance import build_fund_transfer_plan
+
+
+class TestFundTransferTargets(unittest.TestCase):
+    def setUp(self):
+        self.account = {
+            "stock_total": 45_000,
+            "bond_total": 30_000,
+            "cash_pool": 10_000,
+            "changqian_total": 15_000,
+            "overseas_total": 20_000,
+        }
+        self.context = {
+            "temperature": 50,
+            "check_type": "a_internal",
+            "cash_available": 10_000,
+        }
+
+    def test_neutral_targets_conserve_top_level_and_a_internal_amounts(self):
+        result = build_fund_transfer_plan(self.account, self.context, qualified_cb_count=20)
+
+        self.assertEqual(result["top_level"]["targets"], {
+            "A": 78_000.0,
+            "B": 24_000.0,
+            "C": 18_000.0,
+        })
+        self.assertEqual(result["a_internal"]["a_current"], 85_000.0)
+        self.assertEqual(result["a_internal"]["a_exec"], 85_000.0)
+        self.assertEqual(result["a_internal"]["base_targets"], {
+            "stock": 45_000.0,
+            "bond": 30_000.0,
+            "cash_pool": 10_000.0,
+        })
+        self.assertEqual(sum(result["a_internal"]["final_targets"].values()), 85_000.0)
+
+    def test_convertible_bond_safety_valve_moves_uninvestable_amount_to_cash(self):
+        result = build_fund_transfer_plan(self.account, self.context, qualified_cb_count=10)
+
+        self.assertEqual(result["a_internal"]["final_targets"], {
+            "stock": 45_000.0,
+            "bond": 15_000.0,
+            "cash_pool": 25_000.0,
+        })
+        self.assertEqual(result["a_internal"]["safety_valve_cash"], 15_000.0)
+
+    def test_missing_same_day_convertible_bond_universe_pauses_a_internal_cash_outflows(self):
+        result = build_fund_transfer_plan(self.account, self.context, qualified_cb_count=None)
+
+        self.assertEqual(result["a_internal"]["status"], "paused")
+        self.assertEqual(result["a_internal"]["immediate_actions"], [])
+        self.assertIn("可转债榜单", result["a_internal"]["pause_reason"])
+
+    def test_a_internal_builds_thresholded_star_actions_and_strategy_deltas(self):
+        result = build_fund_transfer_plan(
+            {
+                "stock_total": 40_000,
+                "bond_total": 40_000,
+                "cash_pool": 5_000,
+                "changqian_total": 15_000,
+                "overseas_total": 20_000,
+            },
+            {
+                "temperature": 50,
+                "check_type": "a_internal",
+                "cash_available": 5_000,
+            },
+            qualified_cb_count=20,
+        )
+
+        internal = result["a_internal"]
+        self.assertEqual(internal["status"], "ready")
+        self.assertEqual(internal["planned_deltas"], {
+            "stock": 5_000.0,
+            "bond": -10_000.0,
+            "cash_pool": 5_000.0,
+        })
+        self.assertEqual(
+            [(a["source"], a["target"], a["amount"], a["immediate"]) for a in internal["actions"]],
+            [
+                ("bond", "cash_pool", 10_000.0, False),
+                ("cash_pool", "stock", 5_000.0, True),
+            ],
+        )
+
+    def test_pure_fund_transfer_does_not_request_or_read_a_strategy_universe(self):
+        result = build_fund_transfer_plan(
+            self.account,
+            self.context,
+            include_a_internal=False,
+        )
+
+        self.assertEqual(result["top_level"]["status"], "ready")
+        self.assertEqual(result["a_internal"]["status"], "not_requested")
+        self.assertIn("不读取账户内榜单", result["a_internal"]["pause_reason"])
+
+
+class TestTopLevelFundingTriggers(unittest.TestCase):
+    def test_monthly_contribution_never_generates_old_holding_sales(self):
+        result = build_fund_transfer_plan(
+            {
+                "stock_total": 70_000,
+                "bond_total": 0,
+                "cash_pool": 7_500,
+                "changqian_total": 15_000,
+                "overseas_total": 20_000,
+            },
+            {
+                "temperature": 50,
+                "check_type": "monthly_contribution",
+                "cash_available": 7_500,
+                "new_contribution": 7_500,
+                "b_purchase_limit": 0,
+            },
+            qualified_cb_count=20,
+        )
+
+        actions = result["top_level"]["executed_actions"]
+        self.assertTrue(actions)
+        self.assertTrue(all(action["origin"] == "cash_pool" for action in actions))
+        self.assertTrue(all(action["amount"] > 0 for action in actions))
+        self.assertFalse(result["top_level"]["old_holding_sales_allowed"])
+
+    def test_quarterly_b_unavailable_removes_b_inflow_and_scales_source_outflows(self):
+        result = build_fund_transfer_plan(
+            {
+                "stock_total": 85_000,
+                "bond_total": 10_000,
+                "cash_pool": 5_000,
+                "changqian_total": 15_000,
+                "overseas_total": 5_000,
+            },
+            {
+                "temperature": 50,
+                "check_type": "quarterly",
+                "cash_available": 0,
+                "b_purchase_limit": 0,
+            },
+            qualified_cb_count=20,
+        )
+
+        top = result["top_level"]
+        self.assertTrue(top["hard_rebalance_triggered"])
+        self.assertEqual(top["b_purchase_status"], "unavailable")
+        self.assertFalse(any(action["target"] == "B" for action in top["executed_actions"]))
+        self.assertGreater(sum(action["amount"] for action in top["outflows"]), 0)
+        self.assertEqual(
+            sum(action["amount"] for action in top["outflows"]),
+            sum(action["amount"] for action in top["executed_actions"]),
+        )
+
+    def test_a_internal_execution_budget_only_deducts_approved_a_outflow(self):
+        result = build_fund_transfer_plan(
+            {
+                "stock_total": 85_000,
+                "bond_total": 10_000,
+                "cash_pool": 5_000,
+                "changqian_total": 15_000,
+                "overseas_total": 5_000,
+            },
+            {
+                "temperature": 50,
+                "check_type": "quarterly",
+                "cash_available": 5_000,
+                "b_purchase_limit": 0,
+            },
+            qualified_cb_count=20,
+        )
+
+        approved_a_outflow = sum(
+            action["amount"]
+            for action in result["top_level"]["outflows"]
+            if action["source"] == "A"
+        )
+        a_internal = result["a_internal"]
+        self.assertEqual(a_internal["q_out"], approved_a_outflow)
+        self.assertEqual(a_internal["a_exec"], a_internal["a_current"] - approved_a_outflow)
+
+    def test_immediate_actions_never_spend_more_than_real_cash(self):
+        result = build_fund_transfer_plan(
+            {
+                "stock_total": 70_000,
+                "bond_total": 0,
+                "cash_pool": 2_000,
+                "changqian_total": 15_000,
+                "overseas_total": 20_000,
+            },
+            {
+                "temperature": 50,
+                "check_type": "monthly_contribution",
+                "cash_available": 2_000,
+                "new_contribution": 9_000,
+                "b_purchase_limit": 0,
+            },
+            qualified_cb_count=20,
+        )
+
+        self.assertLessEqual(result["cash"]["immediate_outflow"], 2_000)
+        self.assertEqual(
+            result["cash"]["remaining"],
+            2_000 - result["cash"]["immediate_outflow"],
+        )

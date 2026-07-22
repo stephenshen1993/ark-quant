@@ -14,7 +14,7 @@
   <span class="text-xs text-gray-400 font-medium px-2 mb-2">ark-quant</span>
   <template x-data x-for="item in [
     {id:'account', label:'账户', icon:'📊'},
-    {id:'trading', label:'交易', icon:'📈'}
+    {id:'trading', label:'计划', icon:'📋'}
   ]">
     <button @click="$dispatch('nav', item.id)"
       :class="$store.page === item.id
@@ -39,6 +39,10 @@
         <div>
           <h1 class="text-xl font-semibold tracking-normal">账户</h1>
         </div>
+        <label class="text-xs text-gray-500 flex items-center gap-2">
+          账户事实日
+          <input type="date" x-model="form.snapshot_date" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white">
+        </label>
       </div>
 
       <!-- 总资产 -->
@@ -100,15 +104,18 @@
     </div>
   </div>
 
-<!-- 交易 -->
+<!-- 计划 -->
   <template x-if="$store.page === 'trading'">
-  <div x-data="tradingPage()" class="max-w-7xl">
-    <!-- T 日收盘数据 -->
-    <div class="flex items-center gap-4 mb-5 p-4 bg-white border border-gray-100 rounded-xl shadow-sm">
-      <h1 class="text-xl font-semibold">交易</h1>
+  <div x-data="tradingPage()" class="max-w-7xl mx-auto">
+    <!-- 计划基准与唯一主操作 -->
+    <div class="flex flex-col xl:flex-row xl:items-center gap-4 mb-5 p-4 bg-white border border-gray-100 rounded-xl shadow-sm">
+      <div>
+        <h1 class="text-xl font-semibold">生成计划</h1>
+        <div class="text-xs text-gray-400 mt-1" x-text="tDate ? '基于 ' + tDate + ' 收盘数据' : '等待计划基准日'"></div>
+      </div>
       <span x-show="executionDate()" class="text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full"
         x-text="'适用 ' + executionDate() + ' 开盘执行'"></span>
-      <div class="flex items-center gap-3 ml-auto">
+      <div class="flex flex-wrap items-center gap-2 xl:ml-auto">
         <span class="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">
           温度 <span class="text-gray-700 font-medium tabular-nums" x-text="temperatureText()"></span>
         </span>
@@ -116,42 +123,119 @@
           x-text="temperatureLabel()"></span>
         <span x-show="temperatureUpdatedAt()" class="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2"
           x-text="'更新 ' + temperatureUpdatedAt()"></span>
-        <button @click="refreshTemperature()" class="px-3 py-1.5 border border-gray-200 bg-white text-xs rounded-lg hover:bg-gray-50">刷新温度</button>
+        <button @click="generateCompletePlan()" :disabled="loadingPlan" class="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 disabled:bg-gray-400">
+          <span x-show="!loadingPlan">生成完整计划</span><span x-show="loadingPlan" x-text="generationStage ? generationStage + '…' : '正在生成…'"></span>
+        </button>
       </div>
     </div>
+
+    <!-- 本次计划条件 -->
+    <section class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40">
+      <div class="mb-3">
+        <div class="text-sm font-semibold">本次计划条件</div>
+        <div class="text-xs text-gray-400 mt-1">账户余额和持仓在“账户”页维护；这里只填写本次计划特有的事实。</div>
+      </div>
+      <div x-show="funding.check_type === 'a_internal'" class="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-3">
+        <div class="font-medium">日常计划（主动组合内部）</div>
+        <div class="text-xs text-gray-400 mt-1">检查股票、转债和现金之间是否需要调拨，并生成交易计划；不调整长期组合之间的既有资金。</div>
+      </div>
+      <details class="mt-3 text-sm" :open="funding.check_type !== 'a_internal'">
+        <summary class="cursor-pointer text-xs text-gray-500 select-none">特殊情况</summary>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+          <label class="text-xs text-gray-500">本次计划场景
+            <select x-model="funding.check_type" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700">
+              <option value="a_internal">日常计划（主动组合内部）</option>
+              <option value="monthly_contribution">新增资金分配</option>
+              <option value="quarterly">季度组合再平衡</option>
+              <option value="b_recovery">海外长钱恢复申购</option>
+              <option value="ad_hoc">临时专项检查</option>
+            </select>
+          </label>
+          <label x-show="needsContribution()" class="text-xs text-gray-500">本次新增本金（元）
+            <input type="text" inputmode="decimal" x-model="funding.new_contribution" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm" placeholder="0">
+          </label>
+          <div x-show="needsBCheck()" class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label class="text-xs text-gray-500">海外长钱（QDII）申购状态
+            <select x-model="funding.b_purchase_status" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700">
+              <option value="unchecked">尚未核验</option>
+              <option value="unavailable">已核验，不可申购</option>
+              <option value="available">已核验，可申购</option>
+            </select>
+          </label>
+          <label x-show="funding.b_purchase_status === 'available'" class="text-xs text-gray-500">海外长钱单次实际可申购额度（元）
+            <input type="text" inputmode="decimal" x-model="funding.b_purchase_limit" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm" placeholder="0">
+          </label>
+          <label x-show="funding.b_purchase_status !== 'unchecked'" class="text-xs text-gray-500">海外长钱额度核验时间
+            <input type="datetime-local" x-model="funding.b_purchase_checked_at" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm">
+          </label>
+          <label x-show="funding.b_purchase_status !== 'unchecked'" class="text-xs text-gray-500">海外长钱额度核验来源
+            <input type="text" x-model="funding.b_purchase_source" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm" placeholder="如：券商页面人工核验">
+          </label>
+          <div x-show="funding.b_purchase_status === 'unchecked'" class="md:col-span-2 text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">尚未核验时，计划会安全地把海外长钱按不可申购处理，但不会冒充“已核验不可申购”。</div>
+          </div>
+        </div>
+      </details>
+    </section>
+
     <div x-show="planError" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-sm text-red-700 whitespace-pre-line" x-text="planError"></div>
-    <div x-show="plan?.trade_errors?.length" class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm text-amber-700">
-      <template x-for="err in plan?.trade_errors || []">
-        <div x-text="err.message"></div>
+
+    <!-- 就绪状态 -->
+    <section class="bg-white border border-gray-100 rounded-xl p-4 mb-4 shadow-sm shadow-gray-100/40">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-sm font-semibold">计划就绪状态</div>
+        <div class="text-xs text-gray-400">榜单生成受盘中保护；盘中可查看已有计划。</div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-2">
+        <template x-for="item in readinessItems()" :key="item.label">
+          <div class="rounded-lg border px-3 py-2" :class="statusClass(item.state)">
+            <div class="text-xs font-medium" x-text="item.label"></div>
+            <div class="text-xs mt-1 opacity-80" x-text="item.text"></div>
+          </div>
+        </template>
+      </div>
+    </section>
+
+    <details class="bg-white border border-gray-100 rounded-xl px-4 py-3 mb-4 text-sm shadow-sm shadow-gray-100/40">
+      <summary class="cursor-pointer text-xs text-gray-500 select-none">高级操作</summary>
+      <div class="flex flex-wrap items-center gap-2 mt-3">
+        <button @click="refreshFullPlan(true)" :disabled="loadingPlan" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300">更新市场温度</button>
+        <button @click="runStrategy('cb')" :disabled="running.cb || loadingPlan" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300">生成转债榜单</button>
+        <button @click="runStrategy('stock')" :disabled="running.stock || loadingPlan" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300">生成股票榜单</button>
+        <span class="text-xs text-gray-400">这些操作只准备计划数据，不会执行交易。</span>
+      </div>
+      <template x-for="strategy in ['cb', 'stock']" :key="strategy">
+        <div x-show="componentErrors[strategy]" class="text-xs text-red-600 mt-2" x-text="componentErrors[strategy]"></div>
       </template>
-    </div>
-    <!-- 资产再平衡 -->
-    <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40" x-show="transferSteps().length">
-      <div class="text-sm font-semibold mb-3">① 资金调拨</div>
+    </details>
+
+    <!-- 资金调拨结果始终可见 -->
+    <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-sm font-semibold">资金调拨</div>
+        <span class="text-xs rounded-full px-2.5 py-1" :class="statusClass(plan?.fund_transfer ? 'ready' : 'waiting')" x-text="transferStatusText()"></span>
+      </div>
       <template x-for="(step, i) in transferSteps()">
         <div class="flex gap-3 text-sm text-gray-700 py-2 border-b border-gray-50 last:border-0">
           <span class="text-xs w-5 h-5 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center shrink-0" x-text="i+1"></span>
           <span x-text="step"></span>
         </div>
       </template>
+      <div x-show="plan && !transferSteps().length" class="text-sm text-gray-500 py-2">无需资金调拨</div>
+      <div x-show="!plan" class="text-sm text-gray-400 py-2">等待生成计划。</div>
     </div>
-    <!-- ② 转债 -->
+
+    <!-- 转债计划 -->
     <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40">
       <div class="flex items-center justify-between mb-3">
-        <div class="text-sm font-semibold">② 转债调仓
+        <div class="text-sm font-semibold">转债计划
           <span class="text-xs text-gray-400 font-normal ml-2" x-text="plan?.cb?.data_date ? '基于 ' + plan?.cb?.data_date + ' 收盘' : ''"></span>
         </div>
         <div class="flex gap-2 items-center">
           <button @click="exportMd('cb')" class="px-2 py-1 border border-gray-200 bg-white text-xs rounded hover:bg-gray-50" x-show="cbItems.length">导出</button>
-          <button @click="runStrategy('cb')" :disabled="running.cb"
-            class="px-3 py-1.5 text-xs rounded-lg text-white"
-            :class="running.cb ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700'">
-            <span x-show="!running.cb">运行策略</span>
-            <span x-show="running.cb" class="flex items-center gap-1">⋯ 运行中</span>
-          </button>
+          <span class="text-xs rounded-full px-2.5 py-1" :class="statusClass(strategyStatus('cb').state)" x-text="strategyStatus('cb').text"></span>
         </div>
       </div>
-      <div x-show="error" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-3 text-sm text-red-700" x-text="error"></div>
+      <div x-show="componentErrors.cb" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-3 text-sm text-red-700" x-text="componentErrors.cb"></div>
       <!-- 排名表 -->
       <div x-show="cbItems.length && !plan?.cb?.orders?.length" class="mb-4">
         <div class="text-xs text-gray-400 mb-2" x-text="cbTradeDate ? '基于 ' + cbDate + ' 收盘 · 适用 ' + cbTradeDate + ' 开盘执行' : ''"></div>
@@ -203,25 +287,21 @@
         </div>
       </template>
       <!-- 无排名提示 -->
-      <div x-show="!cbItems.length && !running.cb" class="text-sm text-gray-400 py-4" x-text="'暂无 ' + tDate + ' 转债榜单，点击「运行策略」生成。'"></div>
+      <div x-show="!cbItems.length && !running.cb" class="text-sm text-gray-400 py-4" x-text="'暂无 ' + tDate + ' 转债榜单；点击上方「生成完整计划」会自动补齐。'"></div>
     </div>
-    <!-- ③ 股票 -->
+
+    <!-- 股票计划 -->
     <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
       <div class="flex items-center justify-between mb-3">
-        <div class="text-sm font-semibold">③ 股票调仓
+        <div class="text-sm font-semibold">股票计划
           <span class="text-xs text-gray-400 font-normal ml-2" x-text="plan?.stock?.data_date ? '基于 ' + plan?.stock?.data_date + ' 收盘' : ''"></span>
         </div>
         <div class="flex gap-2 items-center">
           <button @click="exportMd('stock')" class="px-2 py-1 border border-gray-200 bg-white text-xs rounded hover:bg-gray-50" x-show="stockItems.length">导出</button>
-          <button @click="runStrategy('stock')" :disabled="running.stock"
-            class="px-3 py-1.5 text-xs rounded-lg text-white"
-            :class="running.stock ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700'">
-            <span x-show="!running.stock">运行策略</span>
-            <span x-show="running.stock" class="flex items-center gap-1">⋯ 运行中</span>
-          </button>
+          <span class="text-xs rounded-full px-2.5 py-1" :class="statusClass(strategyStatus('stock').state)" x-text="strategyStatus('stock').text"></span>
         </div>
       </div>
-      <div x-show="error" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-3 text-sm text-red-700" x-text="error"></div>
+      <div x-show="componentErrors.stock" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-3 text-sm text-red-700" x-text="componentErrors.stock"></div>
       <!-- 排名表（有排名但无订单时展开） -->
       <div x-show="stockItems.length && !plan?.stock?.orders?.length" class="mb-4">
         <div class="text-xs text-gray-400 mb-2" x-text="stockTradeDate ? '基于 ' + stockDate + ' 收盘 · 适用 ' + stockTradeDate + ' 开盘执行' : ''"></div>
@@ -273,7 +353,7 @@
         </div>
       </template>
       <!-- 无排名提示 -->
-      <div x-show="!stockItems.length && !running.stock" class="text-sm text-gray-400 py-4" x-text="'暂无 ' + tDate + ' 股票榜单，点击「运行策略」生成。'"></div>
+      <div x-show="!stockItems.length && !running.stock" class="text-sm text-gray-400 py-4" x-text="'暂无 ' + tDate + ' 股票榜单；点击上方「生成完整计划」会自动补齐。'"></div>
     </div>
   </div>
   </template>
@@ -287,6 +367,12 @@
   document.addEventListener('alpine:init', () => {
     Alpine.store('page', 'account')
   })
+
+  function localDate() {
+    const now = new Date()
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    return local.toISOString().slice(0, 10)
+  }
 
   // 账户总览（含持仓）
   function accountPage() {
@@ -308,7 +394,7 @@
         { id: 'cash',     label: '资金账户', sub: '现金仓位',   color: '#9ca3af', totalKey: 'cash_pool',       posType: null    },
       ],
       form: {
-        snapshot_date: new Date().toISOString().slice(0, 10),
+        snapshot_date: localDate(),
         temperature: null, stock_total: null, stock_available_cash: null, stock_frozen_cash: 0,
         bond_total: null, bond_available_cash: null, bond_frozen_cash: 0, changqian_total: null,
         cash_pool: null, overseas_total: null,
@@ -345,6 +431,8 @@
       applySummary(summary) {
         this.summary = summary
         if (!summary) return
+        const context = summary.context || {}
+        this.form.temperature = context.temperature ?? this.form.temperature
         ;(summary.accounts || []).forEach(item => {
           const acc = this.accounts.find(a => a.id === item.id)
           if (!acc) return
@@ -436,17 +524,17 @@
         return total > 0 ? (this.num(this.form[acc.totalKey]) / total * 100).toFixed(1) + '%' : '0%'
       },
       accUpdateDate(acc) {
-        const accountTime = this.accountItem(acc.id)?.updated_at
-        if (accountTime) return this.formatUpdateDate(accountTime)
+        const accountDate = this.accountItem(acc.id)?.snapshot_date
+        if (accountDate) return this.formatFactDate(accountDate)
         if (acc.posType) {
           const d = this.form['_' + acc.id + '_updated'] || ''
-          return d ? this.formatUpdateDate(d) : ''
+          return d ? this.formatFactDate(d) : ''
         }
-        return this.form.snapshot_date ? this.formatUpdateDate(this.form.snapshot_date) : ''
+        return this.form.snapshot_date ? this.formatFactDate(this.form.snapshot_date) : ''
       },
-      formatUpdateDate(value) {
+      formatFactDate(value) {
         if (!value) return ''
-        return '更新于 ' + String(value).slice(0, 10)
+        return '事实日 ' + String(value).slice(0, 10)
       },
       async saveSimpleAccount(id) {
         this.editingSimple = null
@@ -461,7 +549,7 @@
           : id === 'cb' ? this.num(this.form.bond_frozen_cash)
           : null
         return {
-          snapshot_date: this.form.snapshot_date || new Date().toISOString().slice(0, 10),
+          snapshot_date: this.form.snapshot_date || localDate(),
           total: acc ? this.num(this.form[acc.totalKey]) : 0,
           available_cash,
           frozen_cash,
@@ -480,7 +568,7 @@
         try {
           const src = strategy === 'cb' ? this.cbRows : this.stockRows
           const rows = src.filter(r => r.code).map(r => ({ code: r.code, name: r.name, shares: r.shares }))
-          const positionDate = this.form.snapshot_date || new Date().toISOString().slice(0, 10)
+          const positionDate = this.form.snapshot_date || localDate()
 
           // 持仓与账户金额必须同一事务写入，避免部分保存。
           if (this.loaded[strategy]) {
@@ -513,12 +601,14 @@
   function tradingPage() {
     return {
       // T 日数据
-      tDate: new Date().toISOString().slice(0, 10), marketTemperature: null,
+      tDate: localDate(), marketTemperature: null,
       // 资金分配 + 订单
-      plan: null, transferPlan: null, planError: '',
+      plan: null, transferPlan: null, planError: '', loadingPlan: false,
+      generationStage: '', componentErrors: { cb: '', stock: '' },
+      funding: { snapshot_date: '', temperature: null, check_type: 'a_internal', new_contribution: 0, b_purchase_status: 'unchecked', b_purchase_limit: 0, b_purchase_checked_at: '', b_purchase_source: '' },
       sizingCb: false, sizingStock: false,
       // 排名
-      running: { cb: false, stock: false }, error: '',
+      running: { cb: false, stock: false },
       cbItems: [], stockItems: [],
       cbDates: [], stockDates: [],
       cbDate: '', stockDate: '',
@@ -528,17 +618,30 @@
         const summary = await fetch('/api/account/summary').then(r => r.json().catch(() => null))
         if (summary) {
           this.tDate = summary.context?.snapshot_date || this.tDate
+          const context = summary.context || {}
+          this.funding.snapshot_date = context.snapshot_date || this.tDate
+          this.funding.temperature = context.temperature
+          this.funding.check_type = context.check_type || 'a_internal'
+          this.funding.new_contribution = context.new_contribution || 0
+          this.funding.b_purchase_limit = context.b_purchase_limit || 0
+          this.funding.b_purchase_checked_at = context.b_purchase_checked_at || ''
+          this.funding.b_purchase_source = context.b_purchase_source || ''
+          this.funding.b_purchase_status = this.inferBPurchaseStatus(context)
         }
-        await this.loadTransferPlan()
-        await this.loadPlan(false, true)
-        const [cbD, stD] = await Promise.all([
-          fetch('/api/rankings/cb/dates').then(r => r.json()),
-          fetch('/api/rankings/stock/dates').then(r => r.json()),
-        ])
-        this.cbDates = cbD.sort().reverse(); this.cbDate = this.cbDates.includes(this.tDate) ? this.tDate : ''
-        this.stockDates = stD.sort().reverse(); this.stockDate = this.stockDates.includes(this.tDate) ? this.tDate : ''
-        if (this.cbDate) await this.loadCb()
-        if (this.stockDate) await this.loadStock()
+        await this.refreshFullPlan(false)
+        await this.refreshRankingState()
+      },
+
+      inferBPurchaseStatus(context) {
+        const checked = Boolean(context.b_purchase_checked_at && context.b_purchase_source)
+        if (!checked) return 'unchecked'
+        return Number(context.b_purchase_limit) > 0 ? 'available' : 'unavailable'
+      },
+      needsContribution() {
+        return this.funding.check_type === 'monthly_contribution'
+      },
+      needsBCheck() {
+        return ['monthly_contribution', 'quarterly', 'b_recovery', 'ad_hoc'].includes(this.funding.check_type)
       },
 
       async loadTransferPlan(refreshTemperature = false) {
@@ -552,6 +655,98 @@
         if (this.transferPlan?.plan_date) this.tDate = this.transferPlan.plan_date
       },
 
+      async refreshFullPlan(refreshTemperature = false) {
+        this.loadingPlan = true
+        try {
+          await this.loadPlan(refreshTemperature)
+          if (this.plan) this.transferPlan = this.plan
+        } finally {
+          this.loadingPlan = false
+        }
+      },
+
+      async saveFundingContext() {
+        let temperature = Number(this.funding.temperature)
+        if (!Number.isFinite(temperature)) {
+          const response = await fetch('/api/plan/context')
+          if (!response.ok) throw new Error('无法取得当前市场温度，暂不能保存本次计划条件')
+          temperature = Number((await response.json()).market_temperature?.temperature)
+        }
+
+        const usesB = this.needsBCheck()
+        const bStatus = usesB ? this.funding.b_purchase_status : 'unchecked'
+        const checked = bStatus !== 'unchecked'
+        const source = checked ? String(this.funding.b_purchase_source || '').trim() : ''
+        const checkedAt = checked ? this.funding.b_purchase_checked_at : ''
+        const limit = bStatus === 'available' ? Number(this.funding.b_purchase_limit) : 0
+        if (checked && (!checkedAt || !source)) {
+          throw new Error('已核验 B 申购状态必须填写核验时间和来源')
+        }
+        if (bStatus === 'available' && (!Number.isFinite(limit) || limit <= 0)) {
+          throw new Error('B 可申购时必须填写大于 0 的实际单次额度')
+        }
+
+        const res = await fetch('/api/account/context', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            snapshot_date: this.funding.snapshot_date || this.tDate,
+            temperature,
+            check_type: this.funding.check_type,
+            new_contribution: this.needsContribution() ? Number(this.funding.new_contribution) || 0 : 0,
+            b_purchase_limit: limit,
+            b_purchase_checked_at: checkedAt || null,
+            b_purchase_source: source || null,
+          }),
+        })
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({ detail: '保存本次计划条件失败' }))
+          throw new Error(typeof body.detail === 'string' ? body.detail : body.detail?.message || '保存本次计划条件失败')
+        }
+      },
+
+      async generateCompletePlan() {
+        this.loadingPlan = true
+        this.planError = ''
+        this.componentErrors = { cb: '', stock: '' }
+        try {
+          this.generationStage = '保存计划条件'
+          await this.saveFundingContext()
+          this.generationStage = '检查账户与资金调拨'
+          await this.loadPlan(false)
+          if (!this.plan) throw new Error(this.planError || '账户或资金调拨输入尚未就绪')
+          this.transferPlan = this.plan
+
+          for (const strategy of ['cb', 'stock']) {
+            try {
+              this.generationStage = `准备${this.strategyLabel(strategy)}榜单`
+              await this.ensureRanking(strategy)
+            } catch (error) {
+              this.componentErrors[strategy] = error.message || `${this.strategyLabel(strategy)}计划生成失败`
+            }
+          }
+
+          for (const strategy of ['cb', 'stock']) {
+            if (this.componentErrors[strategy]) continue
+            try {
+              this.generationStage = `计算${this.strategyLabel(strategy)}订单`
+              await this.generateOrders(strategy)
+            } catch (error) {
+              this.componentErrors[strategy] = error.message || `${this.strategyLabel(strategy)}计划生成失败`
+            }
+          }
+
+          this.generationStage = '汇总完整计划'
+          await this.loadPlan(false)
+          if (this.plan) this.transferPlan = this.plan
+          await this.refreshRankingState()
+        } catch (error) {
+          this.planError = error.message || '完整计划生成失败'
+        } finally {
+          this.generationStage = ''
+          this.loadingPlan = false
+        }
+      },
+
       async loadPlan(refreshTemperature = false, suppressDateMismatch = false) {
         this.planError = ''
         const url = refreshTemperature ? '/api/plan?refresh_temperature=true' : '/api/plan'
@@ -561,7 +756,10 @@
           const detail = body.detail || {}
           this.plan = null
           this.marketTemperature = detail.market_temperature || this.marketTemperature
-          if (detail.plan_date) this.tDate = detail.plan_date
+          if (detail.plan_date) {
+            this.tDate = detail.plan_date
+            this.funding.snapshot_date = this.tDate
+          }
           if (suppressDateMismatch && detail.code === 'PLAN_INPUT_DATE_MISMATCH') {
             return
           }
@@ -573,22 +771,8 @@
         this.marketTemperature = this.plan?.market_temperature || null
         if (this.plan?.market_temperature?.updated_at) {
           this.tDate = this.plan.market_temperature.updated_at.slice(0, 10)
+          this.funding.snapshot_date = this.tDate
         }
-      },
-
-      async refreshTemperature() {
-        this.planError = ''
-        const res = await fetch('/api/plan/context?refresh_temperature=true')
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
-          const detail = body.detail || {}
-          this.planError = detail.message || String(detail || `温度刷新失败 (${res.status})`)
-          return
-        }
-        const context = await res.json()
-        this.marketTemperature = context.market_temperature || null
-        if (context.plan_date) this.tDate = context.plan_date
-        await this.loadTransferPlan(refreshTemperature)
       },
 
       // ── 排名 ──
@@ -604,8 +788,20 @@
         this.stockItems = r.items || []
         this.stockTradeDate = r.trade_date || ''
       },
-      async runStrategy(strategy) {
-        this.running[strategy] = true; this.error = ''
+      async refreshRankingState() {
+        const [cbD, stD] = await Promise.all([
+          fetch('/api/rankings/cb/dates').then(r => r.json()),
+          fetch('/api/rankings/stock/dates').then(r => r.json()),
+        ])
+        this.cbDates = cbD.sort().reverse(); this.cbDate = this.cbDates.includes(this.tDate) ? this.tDate : ''
+        this.stockDates = stD.sort().reverse(); this.stockDate = this.stockDates.includes(this.tDate) ? this.tDate : ''
+        if (this.cbDate) await this.loadCb()
+        else { this.cbItems = []; this.cbTradeDate = '' }
+        if (this.stockDate) await this.loadStock()
+        else { this.stockItems = []; this.stockTradeDate = '' }
+      },
+      async generateRanking(strategy) {
+        this.running[strategy] = true
         try {
           const res = await fetch(`/api/rankings/${strategy}/run`, { method: 'POST' })
           if (!res.ok) {
@@ -614,21 +810,37 @@
             throw new Error(msg)
           }
           const data = await res.json()
-          const datesRes = await fetch(`/api/rankings/${strategy}/dates`).then(r => r.json())
-          if (strategy === 'cb') {
-            this.cbDates = datesRes.sort().reverse(); this.cbDate = this.cbDates.includes(this.tDate) ? this.tDate : ''
-            if (this.cbDate) await this.loadCb()
-            else { this.cbItems = []; this.cbTradeDate = '' }
-          } else {
-            this.stockDates = datesRes.sort().reverse(); this.stockDate = this.stockDates.includes(this.tDate) ? this.tDate : ''
-            if (this.stockDate) await this.loadStock()
-            else { this.stockItems = []; this.stockTradeDate = '' }
+          if (data.data_date !== this.tDate) {
+            throw new Error(`生成的${this.strategyLabel(strategy)}榜单日期为 ${data.data_date}，与计划基准日 ${this.tDate} 不一致`)
           }
-          await this.loadPlan()
-        } catch (e) {
-          this.error = e.message || '运行失败'
+          if (strategy === 'cb') {
+            this.cbDate = data.data_date
+            this.cbItems = data.items || []
+            this.cbTradeDate = data.trade_date || ''
+          } else {
+            this.stockDate = data.data_date
+            this.stockItems = data.items || []
+            this.stockTradeDate = data.trade_date || ''
+          }
         } finally {
           this.running[strategy] = false
+        }
+      },
+      async ensureRanking(strategy) {
+        const missing = (this.plan?.trade_errors || []).some(item => item.input === strategy)
+        if (!missing) return
+        await this.generateRanking(strategy)
+        await this.loadPlan(false)
+        if (!this.plan) throw new Error(this.planError || `${this.strategyLabel(strategy)}榜单生成后计划仍不可用`)
+      },
+      async runStrategy(strategy) {
+        this.componentErrors[strategy] = ''
+        try {
+          await this.generateRanking(strategy)
+          await this.loadPlan(false)
+          await this.refreshRankingState()
+        } catch (error) {
+          this.componentErrors[strategy] = error.message || `${this.strategyLabel(strategy)}榜单生成失败`
         }
       },
       async exportMd(strategy) {
@@ -661,6 +873,43 @@
         if (!raw) return ''
         return raw.replace('T', ' ')
       },
+      strategyLabel(strategy) {
+        return strategy === 'cb' ? '转债' : '股票'
+      },
+      statusClass(state) {
+        if (state === 'ready') return 'bg-green-50 border-green-100 text-green-700'
+        if (state === 'failed' || state === 'blocked') return 'bg-red-50 border-red-100 text-red-700'
+        if (state === 'missing') return 'bg-amber-50 border-amber-100 text-amber-700'
+        return 'bg-gray-50 border-gray-100 text-gray-500'
+      },
+      strategyStatus(strategy) {
+        if (this.componentErrors[strategy]) return { state: 'failed', text: '生成失败' }
+        const section = this.plan?.[strategy]
+        if (section?.orders?.length) return { state: 'ready', text: '订单已生成' }
+        const items = strategy === 'cb' ? this.cbItems : this.stockItems
+        if (items.length) return { state: 'missing', text: '榜单已就绪，待生成订单' }
+        const missing = (this.plan?.trade_errors || []).some(item => item.input === strategy)
+        if (missing) return { state: 'missing', text: '缺少榜单' }
+        return { state: 'waiting', text: this.plan ? '暂无订单' : '等待生成' }
+      },
+      transferStatusText() {
+        if (!this.plan?.fund_transfer) return '等待生成'
+        const internal = this.plan.fund_transfer.a_internal
+        if (internal?.status === 'not_requested') return '主动组合内部资金调拨尚未检查'
+        if (internal?.status === 'paused') return internal.pause_reason || '主动组合内部资金调拨等待必要事实'
+        return this.transferSteps().length ? `已生成 ${this.transferSteps().length} 步` : '已完整检查，本次无需资金调拨'
+      },
+      readinessItems() {
+        const transferReady = Boolean(this.plan?.fund_transfer)
+        const cb = this.strategyStatus('cb')
+        const stock = this.strategyStatus('stock')
+        return [
+          { label: '账户事实', state: this.plan?.account ? 'ready' : this.planError ? 'blocked' : 'waiting', text: this.plan?.account ? '已就绪' : '等待校验' },
+          { label: '资金调拨', state: transferReady ? 'ready' : this.planError ? 'blocked' : 'waiting', text: this.transferStatusText() },
+          { label: '转债计划', state: cb.state, text: cb.text },
+          { label: '股票计划', state: stock.state, text: stock.text },
+        ]
+      },
       groupClass(action) {
         if (action === 'BUY' || action === 'ADD') return 'text-green-600'
         if (action === 'SELL') return 'text-red-500'
@@ -680,16 +929,25 @@
           ? this.plan.transfer_steps
           : (this.transferPlan?.transfer_steps || [])
       },
+      async generateOrders(strategy) {
+        if (!this.plan?.account) throw new Error('请先在账户页补齐账户事实')
+        const response = await fetch(`/api/plan/${strategy}/size-orders`, { method: 'POST' })
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({ detail: '订单生成失败' }))
+          const detail = body.detail || {}
+          throw new Error(typeof detail === 'string' ? detail : detail.message || `${this.strategyLabel(strategy)}订单生成失败`)
+        }
+        await this.loadPlan(false)
+        if (!this.plan) throw new Error(this.planError || `${this.strategyLabel(strategy)}订单生成后计划不可用`)
+      },
       async sizeOrders(strategy) {
         const key = strategy === 'cb' ? 'sizingCb' : 'sizingStock'
-        if (!this.plan?.account) { alert('请先在账户详情页录入账户信息'); return }
+        this.componentErrors[strategy] = ''
         this[key] = true
         try {
-          const r = await fetch(`/api/plan/${strategy}/size-orders`, {
-            method: 'POST',
-          })
-          if (!r.ok) { const e = await r.json(); alert(e.detail?.message || '生成失败'); return }
-          await this.loadPlan()
+          await this.generateOrders(strategy)
+        } catch (error) {
+          this.componentErrors[strategy] = error.message || `${this.strategyLabel(strategy)}订单生成失败`
         } finally { this[key] = false }
       },
       cbGroups() {

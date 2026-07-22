@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from datasource import db
@@ -19,6 +19,11 @@ class StrictRequest(BaseModel):
 class AccountContextIn(StrictRequest):
     snapshot_date: str
     temperature: FiniteFloat
+    check_type: Literal["monthly_contribution", "quarterly", "a_internal", "b_recovery", "ad_hoc"] = "a_internal"
+    new_contribution: NonnegativeFinite = 0
+    b_purchase_limit: NonnegativeFinite = 0
+    b_purchase_checked_at: Optional[str] = None
+    b_purchase_source: Optional[str] = None
 
 
 class AccountValueSnapshotIn(StrictRequest):
@@ -69,6 +74,11 @@ def public_account_summary(summary: dict | None) -> dict | None:
         context = {
             "snapshot_date": summary.get("snapshot_date"),
             "temperature": summary.get("temperature"),
+            "check_type": summary.get("check_type", "a_internal"),
+            "new_contribution": summary.get("new_contribution", 0) or 0,
+            "b_purchase_limit": summary.get("b_purchase_limit", 0) or 0,
+            "b_purchase_checked_at": summary.get("b_purchase_checked_at"),
+            "b_purchase_source": summary.get("b_purchase_source"),
         }
     return {
         "total_assets": summary.get("total_assets", 0) or 0,
@@ -101,7 +111,16 @@ def get_investment_model():
 @router.post("/context")
 def post_context(body: AccountContextIn):
     try:
-        db.insert_account_context(body.snapshot_date, body.temperature)
+        db.insert_account_context(
+            body.snapshot_date,
+            body.temperature,
+            check_type=body.check_type,
+            new_contribution=body.new_contribution,
+            b_purchase_limit=body.b_purchase_limit,
+            b_purchase_checked_at=body.b_purchase_checked_at,
+            b_purchase_source=body.b_purchase_source,
+        )
+        db.clear_latest_orders()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return public_account_summary(db.get_current_account_summary())
@@ -116,6 +135,7 @@ def post_account_snapshot(account_id: str, body: AccountValueSnapshotIn):
         db.insert_account_value_snapshot(
             account_id, body.snapshot_date, body.total, cash, body.frozen_cash
         )
+        db.clear_latest_orders()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return public_account_summary(db.get_current_account_summary())
@@ -137,6 +157,7 @@ def post_account_state(account_id: str, body: AccountStateIn):
             [position.model_dump() for position in body.positions],
             body.frozen_cash,
         )
+        db.clear_latest_orders()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     response = public_account_summary(db.get_current_account_summary())

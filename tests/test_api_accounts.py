@@ -1,5 +1,8 @@
 import unittest
 import sqlite3
+from datetime import date
+
+import pandas as pd
 from fastapi.testclient import TestClient
 from datasource import db
 
@@ -46,6 +49,33 @@ class TestAccountsApi(unittest.TestCase):
         self.assertNotIn("account_updated_at", r.json())
         self.assertEqual(r.json()["total_assets"], 0)
         self.assertEqual(len(r.json()["accounts"]), 5)
+
+    def test_context_accepts_auditable_funding_check_facts(self):
+        r = self.client.post("/api/account/context", json={
+            "snapshot_date": "2026-07-21",
+            "temperature": 50.0,
+            "check_type": "quarterly",
+            "new_contribution": 5_000,
+            "b_purchase_limit": 2_000,
+            "b_purchase_checked_at": "2026-07-21T15:30:00",
+            "b_purchase_source": "manual",
+        })
+
+        self.assertEqual(r.status_code, 200)
+        context = r.json()["context"]
+        self.assertEqual(context["check_type"], "quarterly")
+        self.assertEqual(context["b_purchase_limit"], 2_000)
+        self.assertEqual(context["b_purchase_source"], "manual")
+
+    def test_b_purchase_limit_requires_auditable_check_facts(self):
+        r = self.client.post("/api/account/context", json={
+            "snapshot_date": "2026-07-21",
+            "temperature": 50.0,
+            "b_purchase_limit": 1_000,
+        })
+
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("checked_at", r.json()["detail"])
 
     def test_context_and_account_snapshots_are_aggregated(self):
         self.client.post("/api/account/context", json={
@@ -171,6 +201,55 @@ class TestAccountsApi(unittest.TestCase):
         stock = {item["id"]: item for item in r.json()["accounts"]}["stock"]
         self.assertEqual(stock["available_cash"], 600)
         self.assertEqual(stock["frozen_cash"], 400)
+
+    def test_account_fact_update_invalidates_current_derived_orders(self):
+        cb_run = db.insert_strategy_run("cb", date(2026, 7, 17))
+        db.insert_cb_rankings(cb_run, pd.DataFrame([{
+            "bond_code": "113062", "bond_name": "常银转债",
+            "cb_price": 126.8, "premium_rate": 10.0,
+            "double_low": 136.8, "score": 0.9,
+        }]))
+        db.insert_cb_orders(cb_run, pd.DataFrame([{
+            "action": "BUY", "bond_code": "113062", "bond_name": "常银转债",
+            "price": 126.8, "delta_shares": 10, "amount": 1268.0,
+        }]))
+        stock_run = db.insert_strategy_run("stock", date(2026, 7, 17))
+        db.insert_stock_rankings(stock_run, pd.DataFrame([{
+            "rank": 1, "stock_code": "600051", "stock_name": "宁波联合",
+            "total_mv_yuan": 1000000000, "pe_ttm": 10.0, "roe_pct": 12.0,
+        }]))
+        db.insert_stock_orders(stock_run, pd.DataFrame([{
+            "action": "BUY", "stock_code": "600051", "stock_name": "宁波联合",
+            "price": 5.68, "delta_shares": 100, "amount": 568.0,
+        }]))
+
+        r = self.client.post("/api/account/cash/snapshot", json={
+            "snapshot_date": "2026-07-17", "total": 10000,
+        })
+
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(db.get_orders("cb", "2026-07-17"), [])
+        self.assertEqual(db.get_orders("stock", "2026-07-17"), [])
+
+    def test_plan_context_update_invalidates_current_derived_orders(self):
+        cb_run = db.insert_strategy_run("cb", date(2026, 7, 17))
+        db.insert_cb_rankings(cb_run, pd.DataFrame([{
+            "bond_code": "113062", "bond_name": "常银转债",
+            "cb_price": 126.8, "premium_rate": 10.0,
+            "double_low": 136.8, "score": 0.9,
+        }]))
+        db.insert_cb_orders(cb_run, pd.DataFrame([{
+            "action": "BUY", "bond_code": "113062", "bond_name": "常银转债",
+            "price": 126.8, "delta_shares": 10, "amount": 1268.0,
+        }]))
+
+        r = self.client.post("/api/account/context", json={
+            "snapshot_date": "2026-07-17", "temperature": 45,
+            "check_type": "a_internal",
+        })
+
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(db.get_orders("cb", "2026-07-17"), [])
 
     def test_position_metadata_distinguishes_missing_from_empty(self):
         missing = self.client.get("/api/positions/cb/snapshot?date=2026-06-29")

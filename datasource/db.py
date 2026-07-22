@@ -151,6 +151,11 @@ def init_db() -> None:
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             snapshot_date TEXT    NOT NULL,
             temperature   REAL,
+            check_type    TEXT    NOT NULL DEFAULT 'a_internal',
+            new_contribution REAL NOT NULL DEFAULT 0,
+            b_purchase_limit REAL NOT NULL DEFAULT 0,
+            b_purchase_checked_at TEXT,
+            b_purchase_source TEXT,
             created_at    TEXT    NOT NULL
         );
 
@@ -234,6 +239,18 @@ def init_db() -> None:
         if "frozen_cash" not in value_cols:
             conn.execute("ALTER TABLE account_value_snapshots ADD COLUMN frozen_cash REAL")
             conn.execute("UPDATE account_value_snapshots SET frozen_cash=0 WHERE frozen_cash IS NULL")
+        context_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(account_contexts)").fetchall()
+        }
+        for column, definition in (
+            ("check_type", "TEXT NOT NULL DEFAULT 'a_internal'"),
+            ("new_contribution", "REAL NOT NULL DEFAULT 0"),
+            ("b_purchase_limit", "REAL NOT NULL DEFAULT 0"),
+            ("b_purchase_checked_at", "TEXT"),
+            ("b_purchase_source", "TEXT"),
+        ):
+            if column not in context_columns:
+                conn.execute(f"ALTER TABLE account_contexts ADD COLUMN {column} {definition}")
         _migrate_strategy_run_status(conn)
         _migrate_legacy_account_snapshots(conn)
         _migrate_legacy_positions(conn)
@@ -371,6 +388,16 @@ def _validate_iso_date(value: str, field: str = "snapshot_date") -> str:
         raise ValueError(f"{field} must be an ISO date") from exc
     if parsed.isoformat() != value:
         raise ValueError(f"{field} must be an ISO date")
+    return value
+
+
+def _validate_iso_datetime(value: str, field: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be an ISO datetime")
+    try:
+        datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"{field} must be an ISO datetime") from exc
     return value
 
 
@@ -658,12 +685,37 @@ def _insert_account_value_snapshot(
     return cur.lastrowid
 
 
-def insert_account_context(snapshot_date: str, temperature: float) -> int:
+def insert_account_context(
+    snapshot_date: str,
+    temperature: float,
+    *,
+    check_type: str = "a_internal",
+    new_contribution: float = 0,
+    b_purchase_limit: float = 0,
+    b_purchase_checked_at: str | None = None,
+    b_purchase_source: str | None = None,
+) -> int:
     _validate_iso_date(snapshot_date)
+    if check_type not in {"monthly_contribution", "quarterly", "a_internal", "b_recovery", "ad_hoc"}:
+        raise ValueError("invalid check_type")
+    new_contribution = _validate_nonnegative_finite(new_contribution, "new_contribution")
+    b_purchase_limit = _validate_nonnegative_finite(b_purchase_limit, "b_purchase_limit")
+    if b_purchase_checked_at is not None:
+        _validate_iso_datetime(b_purchase_checked_at, "b_purchase_checked_at")
+    if b_purchase_source is not None and not isinstance(b_purchase_source, str):
+        raise ValueError("b_purchase_source must be text")
+    if b_purchase_limit >= 1000 and (not b_purchase_checked_at or not b_purchase_source):
+        raise ValueError("b_purchase limit requires checked_at and source")
     with _conn() as conn:
         cur = conn.execute(
-            "INSERT INTO account_contexts (snapshot_date,temperature,created_at) VALUES (?,?,?)",
-            (snapshot_date, temperature, datetime.now().isoformat()),
+            """INSERT INTO account_contexts
+               (snapshot_date,temperature,check_type,new_contribution,b_purchase_limit,
+                b_purchase_checked_at,b_purchase_source,created_at)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (
+                snapshot_date, temperature, check_type, new_contribution, b_purchase_limit,
+                b_purchase_checked_at, b_purchase_source, datetime.now().isoformat(),
+            ),
         )
         return cur.lastrowid
 
@@ -894,6 +946,11 @@ def get_current_account_summary() -> dict | None:
             base["id"] = ctx["id"]
             base["snapshot_date"] = ctx["snapshot_date"]
             base["temperature"] = ctx["temperature"]
+            base["check_type"] = ctx["check_type"]
+            base["new_contribution"] = ctx["new_contribution"]
+            base["b_purchase_limit"] = ctx["b_purchase_limit"]
+            base["b_purchase_checked_at"] = ctx["b_purchase_checked_at"]
+            base["b_purchase_source"] = ctx["b_purchase_source"]
             base["created_at"] = ctx["created_at"]
         elif values:
             first = dict(values[0])
@@ -903,6 +960,11 @@ def get_current_account_summary() -> dict | None:
             "id": base.get("id"),
             "snapshot_date": base.get("snapshot_date"),
             "temperature": base.get("temperature"),
+            "check_type": base.get("check_type", "a_internal"),
+            "new_contribution": base.get("new_contribution", 0) or 0,
+            "b_purchase_limit": base.get("b_purchase_limit", 0) or 0,
+            "b_purchase_checked_at": base.get("b_purchase_checked_at"),
+            "b_purchase_source": base.get("b_purchase_source"),
             "stock_total": base.get("stock_total", 0) or 0,
             "stock_cash": base.get("stock_cash", 0) or 0,
             "stock_frozen_cash": 0,
@@ -1103,6 +1165,23 @@ def get_position_snapshot_asof(strategy: str, date_str: str) -> dict | None:
         )
 
 
+def get_position_snapshot_between(
+    strategy: str,
+    start_date: str,
+    end_date: str,
+) -> dict | None:
+    _validate_strategy(strategy)
+    _validate_iso_date(start_date, "start_date")
+    _validate_iso_date(end_date, "end_date")
+    with _conn() as conn:
+        return _get_position_snapshot(
+            conn,
+            "s.strategy=? AND s.position_date>=? AND s.position_date<=?",
+            (strategy, start_date, end_date),
+            order_by="s.position_date DESC, s.id DESC",
+        )
+
+
 def get_position_snapshot_updated_between(
     strategy: str,
     start_date: str,
@@ -1260,6 +1339,27 @@ def get_latest_rankings(strategy: str) -> list[dict]:
 def get_latest_orders(strategy: str) -> list[dict]:
     dates = get_ranking_dates(strategy)
     return get_orders(strategy, dates[0]) if dates else []
+
+
+def clear_latest_orders() -> None:
+    """Invalidate the current derived orders after any plan input changes."""
+    with _conn() as conn:
+        for strategy, order_table, ranking_table in (
+            ("cb", "cb_orders", "cb_rankings"),
+            ("stock", "stock_orders", "stock_rankings"),
+        ):
+            conn.execute(
+                f"""DELETE FROM {order_table}
+                    WHERE run_id=(
+                        SELECT sr.id FROM strategy_runs sr
+                        WHERE sr.strategy=? AND sr.status='complete'
+                          AND EXISTS (
+                              SELECT 1 FROM {ranking_table} r WHERE r.run_id=sr.id
+                          )
+                        ORDER BY sr.id DESC LIMIT 1
+                    )""",
+                (strategy,),
+            )
 
 
 # ── 原始数据快照（本地优先缓存） ──────────────────────────────────────────────

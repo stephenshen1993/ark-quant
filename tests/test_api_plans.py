@@ -80,6 +80,17 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(data["stock"]["trade_date"], "2026-06-30")
         self.assertEqual([phase["phase"] for phase in data["execution_sequence"]], ["sell", "transfer", "buy"])
 
+    def test_full_plan_uses_the_same_structured_fund_transfer_result(self):
+        r = self.client.get("/api/plan")
+
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertTrue({"top_level", "a_internal", "cash"} <= set(data["fund_transfer"]))
+        self.assertEqual(data["fund_transfer"]["a_internal"]["status"], "ready")
+        self.assertNotEqual(data["transfer_deltas"]["stock"], 0)
+        self.assertNotEqual(data["transfer_deltas"]["bond"], 0)
+        self.assertTrue(data["transfer_steps"])
+
     def test_plan_returns_none_account_when_missing(self):
         db._TEST_CONN.execute("DELETE FROM account_contexts")
         db._TEST_CONN.execute("DELETE FROM account_value_snapshots")
@@ -101,8 +112,38 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(data["plan_date"], "2026-06-29")
         self.assertIn("transfer_steps", data)
         self.assertIn("transfer_deltas", data)
+        self.assertEqual(data["fund_transfer"]["top_level"]["status"], "ready")
+        self.assertEqual(data["fund_transfer"]["a_internal"]["status"], "not_requested")
         self.assertNotIn("cb", data)
         self.assertNotIn("stock", data)
+
+    def test_transfer_plan_exposes_structured_fund_transfer_result(self):
+        r = self.client.get("/api/plan/transfer")
+
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue({"top_level", "a_internal", "cash"} <= set(r.json()["fund_transfer"]))
+
+    def test_transfer_plan_requires_current_overseas_snapshot(self):
+        db._TEST_CONN.execute(
+            "DELETE FROM account_value_snapshots WHERE account_id='overseas'"
+        )
+        db._TEST_CONN.commit()
+
+        r = self.client.get("/api/plan/transfer")
+
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("account.overseas", {e["input"] for e in r.json()["detail"]["errors"]})
+
+    def test_order_sizing_stops_when_complete_funding_inputs_are_missing(self):
+        db._TEST_CONN.execute(
+            "DELETE FROM account_value_snapshots WHERE account_id='overseas'"
+        )
+        db._TEST_CONN.commit()
+
+        r = self.client.post("/api/plan/cb/size-orders")
+
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("account.overseas", {e["input"] for e in r.json()["detail"]["errors"]})
 
     def test_get_plan_returns_transfer_with_trade_errors_when_rankings_missing(self):
         db._TEST_CONN.execute("DELETE FROM cb_rankings")
@@ -255,25 +296,61 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertTrue(any(order["action"] == "BUY" for order in r.json()["orders"]))
 
-    def test_order_summary_reports_small_transfer_delta_without_transfer_step(self):
-        with patch(
-            "app.routers.plans._portfolio_targets_and_deltas",
-            return_value=({}, {"stock": 0, "bond": 1, "changqian": 0, "cash_pool": -1}),
-        ):
-            r = self.client.get("/api/plan")
-
+    def test_order_summary_uses_explicit_internal_transfer_plan(self):
+        r = self.client.get("/api/plan")
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.json()["transfer_steps"], [])
-        self.assertEqual(r.json()["cb"]["summary"]["transfer_delta"], 1)
+        data = r.json()
+        self.assertEqual(
+            data["cb"]["summary"]["transfer_delta"],
+            data["transfer_deltas"]["bond"],
+        )
 
-    def test_overseas_stale_warns_without_blocking_domestic_plan(self):
-        db.insert_account_value_snapshot("overseas", "2026-06-28", 93030)
+    def test_overseas_stale_blocks_complete_funding_plan(self):
+        db._TEST_CONN.execute(
+            "DELETE FROM account_value_snapshots WHERE account_id='overseas'"
+        )
+        db._TEST_CONN.commit()
 
         r = self.client.get("/api/plan")
 
-        self.assertEqual(r.status_code, 200)
-        warnings = r.json()["warnings"]
-        self.assertEqual(warnings[0]["input"], "account.overseas")
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("account.overseas", {e["input"] for e in r.json()["detail"]["errors"]})
+
+    def test_account_fact_date_cannot_be_hidden_by_recent_entry_time(self):
+        db.insert_account_value_snapshot("stock", "2026-06-01", 209555, 274)
+        db._TEST_CONN.execute(
+            """UPDATE account_value_snapshots
+               SET created_at='2026-06-30T08:30:00'
+               WHERE id=(SELECT MAX(id) FROM account_value_snapshots WHERE account_id='stock')"""
+        )
+        db._TEST_CONN.commit()
+
+        r = self.client.get("/api/plan")
+
+        self.assertEqual(r.status_code, 409)
+        stock_error = next(
+            item for item in r.json()["detail"]["errors"]
+            if item["input"] == "account.stock"
+        )
+        self.assertEqual(stock_error["date"], "2026-06-01")
+
+    def test_position_fact_date_cannot_be_hidden_by_recent_entry_time(self):
+        db._TEST_CONN.execute("DELETE FROM position_snapshot_items")
+        db._TEST_CONN.execute("DELETE FROM position_snapshots")
+        db._TEST_CONN.commit()
+        db.append_position_snapshot("cb", "2026-06-01", [{
+            "code": "113062", "name": "常银转债", "shares": 10,
+        }])
+        db._TEST_CONN.execute(
+            "UPDATE position_snapshots SET created_at='2026-06-30T08:30:00'"
+        )
+        db._TEST_CONN.commit()
+
+        from app.routers.plans import _position_snapshot_for_plan
+
+        self.assertIsNone(
+            _position_snapshot_for_plan("cb", "2026-06-29", "2026-06-30")
+        )
 
     def test_monday_preopen_account_updates_are_valid_for_friday_plan(self):
         db._TEST_CONN.execute("DELETE FROM market_temperatures")
@@ -290,6 +367,7 @@ class TestPlansApi(unittest.TestCase):
         db.insert_account_value_snapshot("cb", "2026-07-13", 227183, 110)
         db.insert_account_value_snapshot("changqian", "2026-07-13", 110606)
         db.insert_account_value_snapshot("cash", "2026-07-13", 59013)
+        db.insert_account_value_snapshot("overseas", "2026-07-13", 93030)
         run_id = db.create_complete_strategy_run("cb", date(2026, 7, 10), date(2026, 7, 13), pd.DataFrame([{
             "bond_code": "113062", "bond_name": "常银转债",
             "cb_price": 126.80, "premium_rate": 10.0, "double_low": 136.8, "score": 0.9,

@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException
 from datasource import db
 from datasource.youzhiyouxing import TemperatureFetchError, get_or_fetch_market_temperature
+from portfolio_rebalance import PlanValidationError, build_fund_transfer_plan
 
 router = APIRouter(prefix="/api/plan", tags=["plan"])
 
@@ -49,6 +50,7 @@ def get_transfer_plan(refresh_temperature: bool = False):
         plan_date,
         account,
         _account_transfer_window_end(plan_date),
+        include_overseas=True,
     )
     if account_errors:
         raise HTTPException(
@@ -62,13 +64,14 @@ def get_transfer_plan(refresh_temperature: bool = False):
             },
         )
 
-    targets = {}
-    deltas = {}
-    transfer_steps = []
-    if account:
-        from rebalance import build_transfer_plan
-        targets, deltas = _portfolio_targets_and_deltas(account)
-        transfer_steps = build_transfer_plan(deltas)
+    try:
+        fund_transfer = _build_fund_transfer(account)
+    except PlanValidationError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
+    targets, deltas, transfer_steps = _fund_transfer_compatibility(fund_transfer)
 
     return {
         "generated_at": datetime.now().isoformat(),
@@ -78,6 +81,7 @@ def get_transfer_plan(refresh_temperature: bool = False):
         "targets": targets,
         "transfer_steps": transfer_steps,
         "transfer_deltas": deltas,
+        "fund_transfer": fund_transfer,
         "warnings": _plan_input_warnings(plan_date, account),
     }
 
@@ -106,6 +110,7 @@ def get_plan(refresh_temperature: bool = False):
         plan_date,
         account,
         _account_transfer_window_end(plan_date),
+        include_overseas=True,
     )
     if account_errors:
         raise HTTPException(
@@ -124,23 +129,26 @@ def get_plan(refresh_temperature: bool = False):
     cb_orders = db.get_orders("cb", plan_date)
     cb_data_date = plan_date
     cb_trade_date = _trade_date_for("cb", cb_data_date)
-    cb_rankings = db.get_rankings("cb", plan_date) if not cb_orders else []
+    cb_universe = db.get_rankings("cb", plan_date)
+    cb_rankings = cb_universe if not cb_orders else []
 
     stock_orders = db.get_orders("stock", plan_date)
     stock_data_date = plan_date
     stock_trade_date = _trade_date_for("stock", stock_data_date)
     stock_rankings = db.get_rankings("stock", plan_date) if not stock_orders else []
 
-    transfer_steps = []
-    targets = {}
-    deltas = {}
-    if account:
-        try:
-            from rebalance import build_transfer_plan
-            targets, deltas = _portfolio_targets_and_deltas(account)
-            transfer_steps = build_transfer_plan(deltas)
-        except Exception:
-            transfer_steps = []
+    try:
+        fund_transfer = _build_fund_transfer(
+            account,
+            qualified_cb_count=len(cb_universe) if cb_universe else None,
+            include_a_internal=True,
+        )
+    except PlanValidationError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
+    targets, deltas, transfer_steps = _fund_transfer_compatibility(fund_transfer)
 
     def _order_summary(orders, cash_key: str) -> dict | None:
         if not orders or not account:
@@ -168,6 +176,7 @@ def get_plan(refresh_temperature: bool = False):
         "targets": targets,
         "transfer_steps": transfer_steps,
         "transfer_deltas": deltas,
+        "fund_transfer": fund_transfer,
         "execution_sequence": _execution_sequence(cb_orders, stock_orders, transfer_steps),
         "cb": {
             "data_date": cb_data_date,
@@ -195,39 +204,87 @@ def _trade_date_for(strategy: str, data_date: str | None) -> str | None:
 
 def _validate_plan_inputs(plan_date: str, account: dict | None) -> list[dict]:
     return (
-        _validate_account_inputs(plan_date, account, _account_input_window_end(plan_date))
+        _validate_account_inputs(
+            plan_date,
+            account,
+            _account_input_window_end(plan_date),
+            include_overseas=True,
+        )
         + _validate_strategy_inputs(plan_date)
     )
 
 
-def _validate_account_inputs(plan_date: str, account: dict | None, account_input_end: str) -> list[dict]:
+def _validate_account_inputs(
+    plan_date: str,
+    account: dict | None,
+    account_input_end: str,
+    *,
+    include_overseas: bool = False,
+) -> list[dict]:
     errors = []
     if not account:
         errors.append({"input": "account", "date": None, "expected": plan_date, "message": "缺少账户快照"})
     else:
-        account_updates = account.get("account_updated_at") or {}
-        legacy_account_dates = account.get("account_snapshot_dates") or {}
+        account_dates = account.get("account_snapshot_dates") or {}
         required_accounts = {
             "stock": "股票账户",
             "cb": "转债账户",
             "changqian": "长钱账户",
             "cash": "现金账户",
         }
+        if include_overseas:
+            required_accounts["overseas"] = "海外长钱账户"
         for account_id, label in required_accounts.items():
-            actual = account_updates.get(account_id)
-            legacy_date = legacy_account_dates.get(account_id)
-            if (
-                not _is_account_update_acceptable(actual, plan_date, account_input_end)
-                and legacy_date != plan_date
-            ):
+            actual = account_dates.get(account_id)
+            if not _is_fact_date_acceptable(actual, plan_date, account_input_end):
                 errors.append({
                     "input": f"account.{account_id}",
                     "date": actual,
                     "expected": f"{plan_date} 至 {account_input_end}",
-                    "message": f"{label}更新时间不在计划输入窗口内",
+                    "message": f"{label}事实日期不在计划输入窗口内",
                 })
 
     return errors
+
+
+def _build_fund_transfer(
+    account: dict | None,
+    *,
+    qualified_cb_count: int | None = None,
+    include_a_internal: bool = False,
+) -> dict:
+    if not account:
+        raise PlanValidationError("MISSING_ACCOUNT", "缺少账户快照")
+    context = {
+        "temperature": account["temperature"],
+        "check_type": account.get("check_type", "a_internal"),
+        "new_contribution": account.get("new_contribution", 0),
+        "b_purchase_limit": account.get("b_purchase_limit", 0),
+        "cash_available": account.get("cash_pool", 0),
+    }
+    return build_fund_transfer_plan(
+        account,
+        context,
+        qualified_cb_count,
+        include_a_internal=include_a_internal,
+    )
+
+
+def _fund_transfer_compatibility(fund_transfer: dict) -> tuple[dict, dict, list[str]]:
+    top = fund_transfer["top_level"]
+    internal = fund_transfer["a_internal"]
+    targets = {"A": top["targets"]["A"], "B": top["targets"]["B"], "C": top["targets"]["C"]}
+    internal_deltas = internal.get("planned_deltas") or {"stock": 0.0, "bond": 0.0, "cash_pool": 0.0}
+    deltas = {**top["executed_deltas"], **internal_deltas}
+    if internal["status"] in {"ready", "within_threshold"}:
+        targets.update(internal["final_targets"])
+    actions = top["executed_actions"] + top["outflows"] + internal.get("actions", [])
+    labels = {"stock": "股票账户", "bond": "转债账户", "cash_pool": "现金池"}
+    steps = [
+        f"{labels.get(action['source'], action['source'])} → {labels.get(action['target'], action['target'])}：{action['amount']:.2f}（{action['reason']}）"
+        for action in actions
+    ]
+    return targets, deltas, steps
 
 
 def _validate_strategy_inputs(plan_date: str) -> list[dict]:
@@ -251,19 +308,14 @@ def _plan_input_warnings(plan_date: str, account: dict | None) -> list[dict]:
     if not account:
         return warnings
     account_input_end = _account_input_window_end(plan_date)
-    account_updates = account.get("account_updated_at") or {}
-    legacy_account_dates = account.get("account_snapshot_dates") or {}
-    overseas_updated_at = account_updates.get("overseas")
-    overseas_snapshot_date = legacy_account_dates.get("overseas")
-    if (
-        not _is_account_update_acceptable(overseas_updated_at, plan_date, account_input_end)
-        and overseas_snapshot_date != plan_date
-    ):
+    account_dates = account.get("account_snapshot_dates") or {}
+    overseas_snapshot_date = account_dates.get("overseas")
+    if not _is_fact_date_acceptable(overseas_snapshot_date, plan_date, account_input_end):
         warnings.append({
             "input": "account.overseas",
-            "date": overseas_updated_at,
+            "date": overseas_snapshot_date,
             "expected": f"{plan_date} 至 {account_input_end}",
-            "message": "海外长钱更新时间不在计划输入窗口内；它不参与国内再平衡，本次仅提示。",
+            "message": "海外长钱事实日期不在计划输入窗口内；它不参与国内再平衡，本次仅提示。",
         })
     return warnings
 
@@ -292,11 +344,11 @@ def _account_transfer_window_end(plan_date: str) -> str:
     return max(input_end, today)
 
 
-def _is_account_update_acceptable(updated_at: str | None, plan_date: str, window_end: str) -> bool:
-    if updated_at is None:
+def _is_fact_date_acceptable(fact_date: str | None, plan_date: str, window_end: str) -> bool:
+    if fact_date is None:
         return False
     try:
-        actual_date = datetime.fromisoformat(updated_at).date()
+        actual_date = date.fromisoformat(fact_date)
         start = date.fromisoformat(plan_date)
         end = date.fromisoformat(window_end)
     except ValueError:
@@ -488,20 +540,6 @@ def _current_plan_date() -> str:
     return market_temperature.updated_at[:10]
 
 
-def _portfolio_targets_and_deltas(account: dict) -> tuple[dict, dict]:
-    from rebalance import calc_targets
-    from investment_model import domestic_target_current_amounts
-
-    current_amounts = domestic_target_current_amounts(account)
-    domestic = sum(current_amounts.values())
-    targets = calc_targets(domestic, account["temperature"])
-    deltas = {
-        target_id: targets[target_id] - current_amounts[target_id]
-        for target_id in targets
-    }
-    return targets, deltas
-
-
 def _strategy_cash_after_transfer(strategy: str, account: dict, deltas: dict) -> float:
     if strategy == "cb":
         return round((account.get("bond_available_cash") or 0) + (deltas.get("bond") or 0), 2)
@@ -560,10 +598,7 @@ def _execution_sequence(cb_orders: list[dict], stock_orders: list[dict], transfe
 
 
 def _position_snapshot_for_plan(strategy: str, plan_date: str, input_end: str) -> dict | None:
-    snapshot = db.get_position_snapshot_updated_between(strategy, plan_date, input_end)
-    if snapshot is not None:
-        return snapshot
-    return db.get_position_snapshot_by_date(strategy, plan_date)
+    return db.get_position_snapshot_between(strategy, plan_date, input_end)
 
 
 def _positions_for_plan(strategy: str, plan_date: str, input_end: str) -> list[dict]:
@@ -590,5 +625,11 @@ def _ensure_plan_inputs_consistent() -> tuple[str, dict, dict]:
     account = dict(account)
     market_temperature = get_or_fetch_market_temperature()
     account["temperature"] = market_temperature.temperature
-    _, deltas = _portfolio_targets_and_deltas(account)
+    cb_rankings = db.get_rankings("cb", plan_date)
+    fund_transfer = _build_fund_transfer(
+        account,
+        qualified_cb_count=len(cb_rankings) if cb_rankings else None,
+        include_a_internal=True,
+    )
+    _, deltas, _ = _fund_transfer_compatibility(fund_transfer)
     return plan_date, account, deltas

@@ -33,6 +33,22 @@ class TestDb(unittest.TestCase):
         self.assertAlmostEqual(summary["temperature"], 45.0)
         self.assertAlmostEqual(summary["total_assets"], 699387)
 
+    def test_account_context_preserves_funding_check_facts(self):
+        db.insert_account_context(
+            "2026-07-21", 50.0,
+            check_type="quarterly",
+            new_contribution=5_000,
+            b_purchase_limit=2_000,
+            b_purchase_checked_at="2026-07-21T15:30:00",
+            b_purchase_source="manual",
+        )
+
+        summary = db.get_current_account_summary()
+        self.assertEqual(summary["check_type"], "quarterly")
+        self.assertEqual(summary["new_contribution"], 5_000)
+        self.assertEqual(summary["b_purchase_limit"], 2_000)
+        self.assertEqual(summary["b_purchase_source"], "manual")
+
     def test_available_cash_defaults_to_cash_and_subtracts_frozen_cash(self):
         db.insert_account_value_snapshot("cb", "2026-07-17", 12000, 1000)
         db.insert_account_value_snapshot("stock", "2026-07-17", 12000, 1000, 250)
