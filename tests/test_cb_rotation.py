@@ -188,6 +188,7 @@ class ConvertibleBondRotationTests(unittest.TestCase):
 
     def test_bond_turnover_cache_is_named_by_data_date(self) -> None:
         today = date.today()
+        expected_data_date = run.latest_completed_market_data_date()
 
         class FakeAk:
             @staticmethod
@@ -197,8 +198,8 @@ class ConvertibleBondRotationTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir, patch.object(run, "CACHE_DIR", Path(temp_dir)):
             run.fetch_cb_daily_turnover(FakeAk(), ["123456"], {"data": {}})
 
-            self.assertTrue((Path(temp_dir) / f"bond_daily_turnover_{today:%Y%m%d}.csv").exists())
-            self.assertFalse((Path(temp_dir) / f"bond_daily_turnover_{today:%Y%m%d}_latest.csv").exists())
+            self.assertTrue((Path(temp_dir) / f"bond_daily_turnover_{expected_data_date:%Y%m%d}.csv").exists())
+            self.assertFalse((Path(temp_dir) / f"bond_daily_turnover_{expected_data_date:%Y%m%d}_latest.csv").exists())
 
     def test_daily_bond_market_data_rejects_old_cache_without_close(self) -> None:
         cached = pd.DataFrame(

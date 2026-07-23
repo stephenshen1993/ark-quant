@@ -23,6 +23,7 @@ from strategies.stock_smallcap.run import (
     load_current_positions,
     setup_logging,
 )
+from strategies.stock_smallcap.target_sizing import size_target_state
 
 LOT = 100  # 1手 = 100股
 
@@ -190,6 +191,17 @@ def size_rebalance(
         "skipped": skipped,
     }
     return pd.DataFrame(rows), summary
+
+
+def size_rebalance(
+    rankings: pd.DataFrame,
+    positions: pd.DataFrame,
+    cash: float,
+    prices: dict[str, float],
+    **_ignored,
+) -> tuple[pd.DataFrame, dict]:
+    """Compatibility adapter for the shared formal target-state sizer."""
+    return size_target_state(rankings, positions, cash, prices)
 
 
 def _trade_cost(amount: float, action: str) -> float:
