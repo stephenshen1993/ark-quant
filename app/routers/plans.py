@@ -440,7 +440,7 @@ def _size_cb_orders(cash: float) -> dict:
 def _size_stock_orders(cash: float) -> dict:
     import pandas as pd
     from datasource.market import fetch_tencent_snapshot
-    from strategies.stock_smallcap.size_orders import size_rebalance
+    from strategies.stock_smallcap.target_sizing import SizingError, size_target_state
 
     plan_date = _current_plan_date()
     rankings = db.get_rankings("stock", plan_date)
@@ -496,7 +496,13 @@ def _size_stock_orders(cash: float) -> dict:
         })
 
     try:
-        sheet, summary = size_rebalance(reb, positions, cash, prices, min_trade_value=1000)
+        sheet, summary = size_target_state(pd.DataFrame(rankings), positions, cash, prices)
+    except SizingError as exc:
+        raise HTTPException(409, {
+            "code": exc.code,
+            "message": exc.message,
+            **exc.details,
+        }) from exc
     except SystemExit as exc:
         raise HTTPException(400, {
             "code": "ORDER_SIZING_FAILED",
