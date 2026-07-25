@@ -49,13 +49,22 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn('value="available"', self.html)
         self.assertIn('x-show="funding.b_purchase_status === \'available\'"', self.html)
 
-    def test_complete_plan_orchestrates_existing_independent_steps(self):
+    def test_complete_plan_is_generated_by_one_server_endpoint(self):
         self.assertIn("async generateCompletePlan()", self.html)
-        self.assertIn("await this.saveFundingContext()", self.html)
-        self.assertIn("await this.ensureRanking(strategy)", self.html)
-        self.assertIn("await this.generateOrders(strategy)", self.html)
+        start = self.html.index("async generateCompletePlan()")
+        end = self.html.index("async loadPlan(", start)
+        body = self.html[start:end]
+        self.assertIn("await this.saveFundingContext()", body)
+        self.assertIn("fetch('/api/plan/generate', { method: 'POST' })", body)
+        self.assertNotIn("await this.ensureRanking(strategy)", body)
+        self.assertNotIn("await this.generateOrders(strategy)", body)
         self.assertIn("componentErrors: { cb: '', stock: '' }", self.html)
-        self.assertEqual(self.html.count("for (const strategy of ['cb', 'stock'])"), 2)
+
+    def test_missing_trade_errors_trigger_strategy_run(self):
+        self.assertIn("async ensureRanking(strategy)", self.html)
+        self.assertIn("(this.plan?.trade_errors || []).some(item => item.input === strategy)", self.html)
+        self.assertIn("await this.generateRanking(strategy)", self.html)
+        self.assertIn("fetch(`/api/rankings/${strategy}/run`, { method: 'POST' })", self.html)
 
     def test_plan_context_is_rebased_to_the_loaded_plan_date(self):
         self.assertIn("this.funding.snapshot_date = this.tDate", self.html)
@@ -104,6 +113,51 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn("转债账户", self.html)
         self.assertNotIn("股票账户", self.html)
         self.assertNotIn('<template x-for="(step, i) in transferSteps()">', self.html)
+
+    def test_order_cash_summary_labels_show_transfer_sequence(self):
+        self.assertIn("下单后现金", self.html)
+        self.assertIn("当日入金", self.html)
+        self.assertIn("订单净额", self.html)
+        self.assertIn("次日回流", self.html)
+        self.assertIn("cashSummary(strategy)", self.html)
+        self.assertNotIn("sell_proceeds", self.html)
+        self.assertNotIn("buy_cost", self.html)
+        self.assertNotIn(">卖出回款<", self.html)
+        self.assertNotIn(">买入占用<", self.html)
+        self.assertNotIn(">下单现金口径<", self.html)
+        self.assertNotIn(">订单净影响<", self.html)
+        self.assertNotIn(">订单后可用<", self.html)
+        self.assertNotIn('x-show="plan?.cb?.summary?.sizing_cash != null"', self.html)
+        self.assertNotIn('x-show="plan?.stock?.summary?.sizing_cash != null"', self.html)
+        self.assertNotIn(">账面余额<", self.html)
+        self.assertNotIn(">实际可用<", self.html)
+        self.assertNotIn(">待转入(调拨)<", self.html)
+        self.assertNotIn(">当前可用现金<", self.html)
+        self.assertNotIn(">资金调拨<", self.html)
+        self.assertNotIn(">交易净影响<", self.html)
+        self.assertNotIn(">预计剩余现金<", self.html)
+
+    def test_execution_copy_keeps_same_day_inflow_and_next_day_return_separate(self):
+        self.assertIn("当日从资金账户转入", self.html)
+        self.assertIn("次交易日回流资金账户", self.html)
+        self.assertIn("fundingActionTiming(action)", self.html)
+        self.assertNotIn("先卖出或减仓释放资金", self.html)
+        self.assertNotIn("再通过现金池调拨", self.html)
+
+    def test_order_cash_summary_is_a_footer_not_a_grid_card(self):
+        self.assertEqual(self.html.count("order-cash-summary-footer"), 2)
+        self.assertNotIn(
+            'class="mt-3 pt-3 border-t border-gray-100 text-xs space-y-1"',
+            self.html,
+        )
+
+    def test_trade_controls_have_visible_keyboard_focus(self):
+        self.assertIn("focus-visible:outline-gray-900", self.html)
+        self.assertIn("focus-visible:ring-gray-900", self.html)
+
+    def test_plan_conditions_collapse_after_plan_exists(self):
+        self.assertIn(':open="!plan"', self.html)
+        self.assertIn("计划条件", self.html)
 
 
 if __name__ == "__main__":

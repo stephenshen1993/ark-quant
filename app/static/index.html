@@ -28,7 +28,7 @@
 </nav>
 
 <!-- 主内容 -->
-<main class="flex-1 overflow-auto p-8" x-data @nav.window="$store.page = $event.detail">
+<main class="flex-1 overflow-auto px-5 py-4" x-data @nav.window="$store.page = $event.detail">
 
   <!-- 账户总览 -->
   <div x-show="$store.page === 'account'" x-data="accountPage()" x-init="ensureLoaded($store.page)" x-effect="ensureLoaded($store.page)">
@@ -123,59 +123,63 @@
           x-text="temperatureLabel()"></span>
         <span x-show="temperatureUpdatedAt()" class="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2"
           x-text="'更新 ' + temperatureUpdatedAt()"></span>
-        <button @click="generateCompletePlan()" :disabled="loadingPlan" class="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 disabled:bg-gray-400">
+        <button @click="generateCompletePlan()" :disabled="loadingPlan" class="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 disabled:bg-gray-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">
           <span x-show="!loadingPlan">生成完整计划</span><span x-show="loadingPlan" x-text="generationStage ? generationStage + '…' : '正在生成…'"></span>
         </button>
       </div>
     </div>
 
     <!-- 本次计划条件 -->
-    <section class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40">
-      <div class="mb-3">
-        <div class="text-sm font-semibold">本次计划条件</div>
-        <div class="text-xs text-gray-400 mt-1">账户余额和持仓在“账户”页维护；这里只填写本次计划特有的事实。</div>
-      </div>
-      <div x-show="funding.check_type === 'a_internal'" class="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-3">
-        <div class="font-medium">日常计划（主动组合内部）</div>
-        <div class="text-xs text-gray-400 mt-1">检查股票、转债和现金之间是否需要调拨，并生成交易计划；不调整长期组合之间的既有资金。</div>
-      </div>
-      <details class="mt-3 text-sm" :open="funding.check_type !== 'a_internal'">
-        <summary class="cursor-pointer text-xs text-gray-500 select-none">特殊情况</summary>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-          <label class="text-xs text-gray-500">本次计划场景
-            <select x-model="funding.check_type" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700">
-              <option value="a_internal">日常计划（主动组合内部）</option>
-              <option value="monthly_contribution">新增资金分配</option>
-              <option value="quarterly">季度组合再平衡</option>
-              <option value="b_recovery">海外长钱恢复申购</option>
-              <option value="ad_hoc">临时专项检查</option>
-            </select>
-          </label>
-          <label x-show="needsContribution()" class="text-xs text-gray-500">本次新增本金（元）
-            <input type="text" inputmode="decimal" x-model="funding.new_contribution" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm" placeholder="0">
-          </label>
-          <div x-show="needsBCheck()" class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
-          <label class="text-xs text-gray-500">海外长钱（QDII）申购状态
-            <select x-model="funding.b_purchase_status" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700">
-              <option value="unchecked">尚未核验</option>
-              <option value="unavailable">已核验，不可申购</option>
-              <option value="available">已核验，可申购</option>
-            </select>
-          </label>
-          <label x-show="funding.b_purchase_status === 'available'" class="text-xs text-gray-500">海外长钱单次实际可申购额度（元）
-            <input type="text" inputmode="decimal" x-model="funding.b_purchase_limit" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm" placeholder="0">
-          </label>
-          <label x-show="funding.b_purchase_status !== 'unchecked'" class="text-xs text-gray-500">海外长钱额度核验时间
-            <input type="datetime-local" x-model="funding.b_purchase_checked_at" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm">
-          </label>
-          <label x-show="funding.b_purchase_status !== 'unchecked'" class="text-xs text-gray-500">海外长钱额度核验来源
-            <input type="text" x-model="funding.b_purchase_source" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm" placeholder="如：券商页面人工核验">
-          </label>
-          <div x-show="funding.b_purchase_status === 'unchecked'" class="md:col-span-2 text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">尚未核验时，计划会安全地把海外长钱按不可申购处理，但不会冒充“已核验不可申购”。</div>
-          </div>
+    <details class="bg-white border border-gray-100 rounded-xl px-5 py-3 mb-4 shadow-sm shadow-gray-100/40" :open="!plan">
+      <summary class="cursor-pointer select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">
+        <div class="inline-flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span class="text-sm font-semibold">本次计划条件</span>
+          <span class="text-xs text-gray-400">账户余额和持仓在“账户”页维护；这里只填写本次计划特有的事实。</span>
         </div>
-      </details>
-    </section>
+      </summary>
+      <div class="mt-3">
+        <div x-show="funding.check_type === 'a_internal'" class="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-3">
+          <div class="font-medium">日常计划（主动组合内部）</div>
+          <div class="text-xs text-gray-400 mt-1">检查股票、转债和现金之间是否需要调拨，并生成交易计划；不调整长期组合之间的既有资金。</div>
+        </div>
+        <details class="mt-3 text-sm" :open="funding.check_type !== 'a_internal'">
+          <summary class="cursor-pointer text-xs text-gray-500 select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">特殊情况</summary>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+            <label class="text-xs text-gray-500">本次计划场景
+              <select x-model="funding.check_type" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none">
+                <option value="a_internal">日常计划（主动组合内部）</option>
+                <option value="monthly_contribution">新增资金分配</option>
+                <option value="quarterly">季度组合再平衡</option>
+                <option value="b_recovery">海外长钱恢复申购</option>
+                <option value="ad_hoc">临时专项检查</option>
+              </select>
+            </label>
+            <label x-show="needsContribution()" class="text-xs text-gray-500">本次新增本金（元）
+              <input type="text" inputmode="decimal" x-model="funding.new_contribution" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none" placeholder="0">
+            </label>
+            <div x-show="needsBCheck()" class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <label class="text-xs text-gray-500">海外长钱（QDII）申购状态
+                <select x-model="funding.b_purchase_status" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none">
+                  <option value="unchecked">尚未核验</option>
+                  <option value="unavailable">已核验，不可申购</option>
+                  <option value="available">已核验，可申购</option>
+                </select>
+              </label>
+              <label x-show="funding.b_purchase_status === 'available'" class="text-xs text-gray-500">海外长钱单次实际可申购额度（元）
+                <input type="text" inputmode="decimal" x-model="funding.b_purchase_limit" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none" placeholder="0">
+              </label>
+              <label x-show="funding.b_purchase_status !== 'unchecked'" class="text-xs text-gray-500">海外长钱额度核验时间
+                <input type="datetime-local" x-model="funding.b_purchase_checked_at" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none">
+              </label>
+              <label x-show="funding.b_purchase_status !== 'unchecked'" class="text-xs text-gray-500">海外长钱额度核验来源
+                <input type="text" x-model="funding.b_purchase_source" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none" placeholder="如：券商页面人工核验">
+              </label>
+              <div x-show="funding.b_purchase_status === 'unchecked'" class="md:col-span-2 text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">尚未核验时，计划会安全地把海外长钱按不可申购处理，但不会冒充“已核验不可申购”。</div>
+            </div>
+          </div>
+        </details>
+      </div>
+    </details>
 
     <div x-show="planError" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-sm text-red-700 whitespace-pre-line" x-text="planError"></div>
 
@@ -196,11 +200,11 @@
     </section>
 
     <details class="bg-white border border-gray-100 rounded-xl px-4 py-3 mb-4 text-sm shadow-sm shadow-gray-100/40">
-      <summary class="cursor-pointer text-xs text-gray-500 select-none">高级操作</summary>
+      <summary class="cursor-pointer text-xs text-gray-500 select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">高级操作</summary>
       <div class="flex flex-wrap items-center gap-2 mt-3">
-        <button @click="refreshFullPlan(true)" :disabled="loadingPlan" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300">更新市场温度</button>
-        <button @click="runStrategy('cb')" :disabled="running.cb || loadingPlan" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300">生成转债榜单</button>
-        <button @click="runStrategy('stock')" :disabled="running.stock || loadingPlan" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300">生成股票榜单</button>
+        <button @click="refreshFullPlan(true)" :disabled="loadingPlan" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">更新市场温度</button>
+        <button @click="runStrategy('cb')" :disabled="running.cb || loadingPlan" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">生成转债榜单</button>
+        <button @click="runStrategy('stock')" :disabled="running.stock || loadingPlan" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">生成股票榜单</button>
         <span class="text-xs text-gray-400">这些操作只准备计划数据，不会执行交易。</span>
       </div>
       <template x-for="strategy in ['cb', 'stock']" :key="strategy">
@@ -223,6 +227,7 @@
                 <span class="text-xs w-5 h-5 rounded-full bg-white border border-gray-100 text-gray-500 flex items-center justify-center shrink-0" x-text="i + 1"></span>
                 <div>
                   <div class="font-medium text-gray-900 tabular-nums" x-text="fundingActionSentence(action)"></div>
+                  <div class="mt-1 text-xs text-amber-600" x-show="fundingActionTiming(action)" x-text="fundingActionTiming(action)"></div>
                   <div x-show="fundingActionReason(action)" class="mt-1 text-xs text-gray-500" x-text="fundingActionReason(action)"></div>
                 </div>
               </div>
@@ -232,7 +237,7 @@
         </div>
         <div x-show="fundingRows().length">
           <details class="text-xs text-gray-500">
-            <summary class="cursor-pointer select-none">展开查看计算依据</summary>
+            <summary class="cursor-pointer select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">展开查看计算依据</summary>
             <div class="mt-2 overflow-x-auto">
               <table class="w-full min-w-[680px] tabular-nums">
                 <thead class="text-gray-400 border-b border-gray-100">
@@ -266,7 +271,7 @@
           <span class="text-xs text-gray-400 font-normal ml-2" x-text="plan?.cb?.data_date ? '基于 ' + plan?.cb?.data_date + ' 收盘' : ''"></span>
         </div>
         <div class="flex gap-2 items-center">
-          <button @click="exportMd('cb')" class="px-2 py-1 border border-gray-200 bg-white text-xs rounded hover:bg-gray-50" x-show="cbItems.length">导出</button>
+          <button @click="exportMd('cb')" class="px-2 py-1 border border-gray-200 bg-white text-xs rounded hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900" x-show="cbItems.length">导出</button>
           <span class="text-xs rounded-full px-2.5 py-1" :class="statusClass(strategyStatus('cb').state)" x-text="strategyStatus('cb').text"></span>
         </div>
       </div>
@@ -289,22 +294,22 @@
       <div x-show="cbItems.length && !plan?.cb?.orders?.length" class="flex items-center gap-2 mb-3 text-sm p-3 bg-gray-50 rounded-lg">
         <span class="text-gray-400 text-xs">可用现金（含调拨） <span class="text-gray-600 font-medium" x-text="fmtMoney(adjustedCash('cb'))"></span>（卖出回款自动计入）</span>
         <button @click="sizeOrders('cb')" :disabled="sizingCb"
-          class="ml-auto px-3 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 disabled:opacity-50"
+          class="ml-auto px-3 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900"
           x-text="sizingCb ? '计算中…' : '生成订单'"></button>
       </div>
       <!-- 订单卡片（有订单时） -->
       <template x-if="plan?.cb?.orders?.length">
         <div>
-          <button @click="showCbRank = !showCbRank" class="text-xs text-gray-400 hover:text-gray-600 mb-2" x-text="showCbRank ? '收起排名' : '查看排名'"></button>
+          <button @click="showCbRank = !showCbRank" class="text-xs text-gray-500 hover:text-gray-700 mb-2 underline decoration-gray-200 underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900" x-text="showCbRank ? '收起排名' : '查看排名'"></button>
           <div x-show="showCbRank" class="mb-4">
             <table class="w-full text-sm">
               <thead class="bg-gray-50 text-xs text-gray-400"><tr><th class="text-center px-3 py-2 w-10 font-normal">#</th><th class="text-left px-2 py-2 font-normal">代码</th><th class="text-left px-2 py-2 font-normal">名称</th><th class="text-right px-2 py-2 font-normal">价格</th><th class="text-right px-2 py-2 font-normal">溢价率</th><th class="text-right px-2 py-2 font-normal">双低值</th><th class="text-right px-3 py-2 font-normal">评分</th></tr></thead>
               <tbody><template x-for="r in cbItems" :key="r.bond_code"><tr class="border-t border-gray-50"><td class="text-center px-3 py-1.5 text-gray-400 text-xs" x-text="r.rank"></td><td class="px-2 py-1.5 text-gray-500 tabular-nums" x-text="r.bond_code"></td><td class="px-2 py-1.5 font-medium" x-text="r.bond_name"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.cb_price?.toFixed(2)"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.premium_rate?.toFixed(2) + '%'"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.double_low?.toFixed(2)"></td><td class="px-3 py-1.5 text-right tabular-nums text-gray-800" x-text="r.score?.toFixed(3)"></td></tr></template></tbody>
             </table>
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <template x-for="group in cbGroups()" :key="group.label">
-              <div class="bg-gray-50 rounded-lg p-3">
+              <div class="bg-gray-50 rounded-lg px-3 py-2.5">
                 <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
                 <table class="w-full text-sm">
                   <template x-for="r in group.items" :key="r.bond_code">
@@ -313,10 +318,17 @@
                 </table>
               </div>
             </template>
-            <div x-show="plan?.cb?.summary?.book_balance != null" class="mt-3 pt-3 border-t border-gray-100 text-xs space-y-1">
-              <div class="flex justify-between"><span class="text-gray-400">账面余额</span><span class="tabular-nums text-gray-700" x-text="fmtMoney(plan?.cb?.summary?.book_balance)"></span></div>
-              <div class="flex justify-between" x-show="plan?.cb?.summary?.transfer_delta"><span class="text-gray-400" x-text="plan?.cb?.summary?.transfer_delta > 0 ? '待转入(调拨)' : '待转出(调拨)'"></span><span class="tabular-nums" :class="plan?.cb?.summary?.transfer_delta > 0 ? 'text-green-600' : 'text-orange-500'" x-text="(plan?.cb?.summary?.transfer_delta > 0 ? '+' : '') + fmtMoney(plan?.cb?.summary?.transfer_delta)"></span></div>
-              <div class="flex justify-between font-medium"><span class="text-gray-400">实际可用</span><span class="tabular-nums text-gray-900" x-text="fmtMoney(plan?.cb?.summary?.cash_left)"></span></div>
+          </div>
+          <div x-show="cashSummary('cb')" class="order-cash-summary-footer mt-4 border-t border-gray-100 pt-3 text-xs">
+            <div class="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+              <span class="font-medium text-gray-500">下单后现金</span>
+              <span class="tabular-nums text-sm font-semibold text-gray-900" x-text="fmtMoney(cashSummary('cb')?.cash_left)"></span>
+            </div>
+            <div class="mt-1 text-gray-400 tabular-nums sm:text-right">
+              <span>可用 </span><span x-text="fmtMoney(cashSummary('cb')?.starting_cash)"></span>
+              <span>；当日入金 </span><span x-text="signedMoney(cashSummary('cb')?.same_day_transfer)"></span>
+              <span>；订单净额 </span><span x-text="signedMoney(cashSummary('cb')?.order_delta)"></span>
+              <span x-show="cashSummary('cb')?.next_day_return">；次日回流 </span><span x-show="cashSummary('cb')?.next_day_return" x-text="signedMoney(cashSummary('cb')?.next_day_return)"></span>
             </div>
           </div>
         </div>
@@ -332,7 +344,7 @@
           <span class="text-xs text-gray-400 font-normal ml-2" x-text="plan?.stock?.data_date ? '基于 ' + plan?.stock?.data_date + ' 收盘' : ''"></span>
         </div>
         <div class="flex gap-2 items-center">
-          <button @click="exportMd('stock')" class="px-2 py-1 border border-gray-200 bg-white text-xs rounded hover:bg-gray-50" x-show="stockItems.length">导出</button>
+          <button @click="exportMd('stock')" class="px-2 py-1 border border-gray-200 bg-white text-xs rounded hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900" x-show="stockItems.length">导出</button>
           <span class="text-xs rounded-full px-2.5 py-1" :class="statusClass(strategyStatus('stock').state)" x-text="strategyStatus('stock').text"></span>
         </div>
       </div>
@@ -355,22 +367,22 @@
       <div x-show="stockItems.length && !plan?.stock?.orders?.length" class="flex items-center gap-2 mb-3 text-sm p-3 bg-gray-50 rounded-lg">
         <span class="text-gray-400 text-xs">可用现金（含调拨） <span class="text-gray-600 font-medium" x-text="fmtMoney(adjustedCash('stock'))"></span>（卖出回款自动计入）</span>
         <button @click="sizeOrders('stock')" :disabled="sizingStock"
-          class="ml-auto px-3 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 disabled:opacity-50"
+          class="ml-auto px-3 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900"
           x-text="sizingStock ? '计算中…' : '生成订单'"></button>
       </div>
       <!-- 订单卡片（有订单时） -->
       <template x-if="plan?.stock?.orders?.length">
         <div>
-          <button @click="showStockRank = !showStockRank" class="text-xs text-gray-400 hover:text-gray-600 mb-2" x-text="showStockRank ? '收起排名' : '查看排名'"></button>
+          <button @click="showStockRank = !showStockRank" class="text-xs text-gray-500 hover:text-gray-700 mb-2 underline decoration-gray-200 underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900" x-text="showStockRank ? '收起排名' : '查看排名'"></button>
           <div x-show="showStockRank" class="mb-4">
             <table class="w-full text-sm">
               <thead class="bg-gray-50 text-xs text-gray-400"><tr><th class="text-center px-3 py-2 w-10 font-normal">#</th><th class="text-left px-2 py-2 font-normal">代码</th><th class="text-left px-2 py-2 font-normal">名称</th><th class="text-right px-2 py-2 font-normal">总市值(亿)</th><th class="text-right px-2 py-2 font-normal">PE</th><th class="text-right px-3 py-2 font-normal">扣非ROE</th></tr></thead>
               <tbody><template x-for="r in stockItems" :key="r.stock_code"><tr class="border-t border-gray-50"><td class="text-center px-3 py-1.5 text-gray-400 text-xs" x-text="r.rank"></td><td class="px-2 py-1.5 text-gray-500 tabular-nums" x-text="r.stock_code"></td><td class="px-2 py-1.5 font-medium" x-text="r.stock_name"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.market_cap?.toFixed(2)"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.pe_ttm?.toFixed(2)"></td><td class="px-3 py-1.5 text-right tabular-nums text-gray-800" x-text="r.roe_ex?.toFixed(2) + '%'"></td></tr></template></tbody>
             </table>
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <template x-for="group in stockGroups()" :key="group.label">
-              <div class="bg-gray-50 rounded-lg p-3">
+              <div class="bg-gray-50 rounded-lg px-3 py-2.5">
                 <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
                 <table class="w-full text-sm">
                   <template x-for="r in group.items" :key="r.stock_code">
@@ -379,10 +391,17 @@
                 </table>
               </div>
             </template>
-            <div x-show="plan?.stock?.summary?.book_balance != null" class="mt-3 pt-3 border-t border-gray-100 text-xs space-y-1">
-              <div class="flex justify-between"><span class="text-gray-400">账面余额</span><span class="tabular-nums text-gray-700" x-text="fmtMoney(plan?.stock?.summary?.book_balance)"></span></div>
-              <div class="flex justify-between" x-show="plan?.stock?.summary?.transfer_delta"><span class="text-gray-400" x-text="plan?.stock?.summary?.transfer_delta > 0 ? '待转入(调拨)' : '待转出(调拨)'"></span><span class="tabular-nums" :class="plan?.stock?.summary?.transfer_delta > 0 ? 'text-green-600' : 'text-orange-500'" x-text="(plan?.stock?.summary?.transfer_delta > 0 ? '+' : '') + fmtMoney(plan?.stock?.summary?.transfer_delta)"></span></div>
-              <div class="flex justify-between font-medium"><span class="text-gray-400">实际可用</span><span class="tabular-nums text-gray-900" x-text="fmtMoney(plan?.stock?.summary?.cash_left)"></span></div>
+          </div>
+          <div x-show="cashSummary('stock')" class="order-cash-summary-footer mt-4 border-t border-gray-100 pt-3 text-xs">
+            <div class="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+              <span class="font-medium text-gray-500">下单后现金</span>
+              <span class="tabular-nums text-sm font-semibold text-gray-900" x-text="fmtMoney(cashSummary('stock')?.cash_left)"></span>
+            </div>
+            <div class="mt-1 text-gray-400 tabular-nums sm:text-right">
+              <span>可用 </span><span x-text="fmtMoney(cashSummary('stock')?.starting_cash)"></span>
+              <span>；当日入金 </span><span x-text="signedMoney(cashSummary('stock')?.same_day_transfer)"></span>
+              <span>；订单净额 </span><span x-text="signedMoney(cashSummary('stock')?.order_delta)"></span>
+              <span x-show="cashSummary('stock')?.next_day_return">；次日回流 </span><span x-show="cashSummary('stock')?.next_day_return" x-text="signedMoney(cashSummary('stock')?.next_day_return)"></span>
             </div>
           </div>
         </div>
@@ -746,33 +765,21 @@
         try {
           this.generationStage = '保存计划条件'
           await this.saveFundingContext()
-          this.generationStage = '检查账户与资金调拨'
-          await this.loadPlan(false)
-          if (!this.plan) throw new Error(this.planError || '账户或资金调拨输入尚未就绪')
+          this.generationStage = '生成完整计划'
+          const response = await fetch('/api/plan/generate', { method: 'POST' })
+          if (!response.ok) {
+            const body = await response.json().catch(() => ({ detail: '完整计划生成失败' }))
+            const detail = body.detail || {}
+            const lines = (detail.errors || []).map(e => `${e.message}: 更新时间 ${e.date || '无'}，输入窗口 ${e.expected}`)
+            throw new Error([detail.message || String(detail || '完整计划生成失败'), ...lines].join('\n'))
+          }
+          this.plan = await response.json()
+          this.marketTemperature = this.plan?.market_temperature || null
+          if (this.plan?.plan_date) {
+            this.tDate = this.plan.plan_date
+            this.funding.snapshot_date = this.tDate
+          }
           this.transferPlan = this.plan
-
-          for (const strategy of ['cb', 'stock']) {
-            try {
-              this.generationStage = `准备${this.strategyLabel(strategy)}榜单`
-              await this.ensureRanking(strategy)
-            } catch (error) {
-              this.componentErrors[strategy] = error.message || `${this.strategyLabel(strategy)}计划生成失败`
-            }
-          }
-
-          for (const strategy of ['cb', 'stock']) {
-            if (this.componentErrors[strategy]) continue
-            try {
-              this.generationStage = `计算${this.strategyLabel(strategy)}订单`
-              await this.generateOrders(strategy)
-            } catch (error) {
-              this.componentErrors[strategy] = error.message || `${this.strategyLabel(strategy)}计划生成失败`
-            }
-          }
-
-          this.generationStage = '汇总完整计划'
-          await this.loadPlan(false)
-          if (this.plan) this.transferPlan = this.plan
           await this.refreshRankingState()
         } catch (error) {
           this.planError = error.message || '完整计划生成失败'
@@ -804,8 +811,8 @@
         }
         this.plan = await res.json()
         this.marketTemperature = this.plan?.market_temperature || null
-        if (this.plan?.market_temperature?.updated_at) {
-          this.tDate = this.plan.market_temperature.updated_at.slice(0, 10)
+        if (this.plan?.plan_date) {
+          this.tDate = this.plan.plan_date
           this.funding.snapshot_date = this.tDate
         }
       },
@@ -893,6 +900,10 @@
       fmtMoney(v) {
         return v == null ? '-' : '¥' + Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
       },
+      signedMoney(v) {
+        const amount = Number(v || 0)
+        return (amount > 0 ? '+' : amount < 0 ? '-' : '') + this.fmtMoney(Math.abs(amount))
+      },
       executionDate() {
         return this.plan?.stock?.trade_date || this.plan?.cb?.trade_date || ''
       },
@@ -953,7 +964,18 @@
         }))
       },
       fundingActionSentence(action) {
-        return `${action.sourceLabel} 转出 ${this.fmtMoney(action.amount)} 到 ${action.targetLabel}`
+        if (action.source === 'cash_pool') {
+          return `当日从资金账户转入 ${this.fmtMoney(action.amount)} 到 ${action.targetLabel}`
+        }
+        if (action.target === 'cash_pool' && action.available_on === 'next_trading_day') {
+          return `${action.sourceLabel} 卖出/减仓后 ${this.fmtMoney(action.amount)} 次交易日回流资金账户`
+        }
+        return `${action.sourceLabel} 调拨 ${this.fmtMoney(action.amount)} 到 ${action.targetLabel}`
+      },
+      fundingActionTiming(action) {
+        if (action.available_on === 'next_trading_day') return '次交易日回流，不参与当日跨账户买入'
+        if (action.available_on === 'same_day') return '当日可用于目标账户下单'
+        return ''
       },
       fundingActionReason(action) {
         const rows = this.fundingRows()
@@ -961,6 +983,9 @@
         const target = rows.find(row => row.key === action.target)
         const subject = source?.key !== 'cash_pool' ? source : target
         if (!subject) return ''
+        if (action.target === 'cash_pool' && action.available_on === 'next_trading_day') {
+          return `${subject.label}高于目标，卖出资金次交易日再回到资金账户`
+        }
         if (subject.remaining) {
           if (subject.planned > 0) return `${subject.label}低于目标，转入后仍差 ${this.fmtMoney(subject.remaining)}`
           return `${subject.label}高于目标，转出后仍高出 ${this.fmtMoney(Math.abs(subject.remaining))}`
@@ -1030,6 +1055,35 @@
         const delta = (this.plan?.transfer_deltas || this.transferPlan?.transfer_deltas)?.[dk] || 0
         // 正delta(入金)当日可用, 负delta(转出)必须预留
         return Math.round(base + delta)
+      },
+      orderCashDelta(strategy) {
+        const orders = this.plan?.[strategy]?.orders || []
+        const sells = orders
+          .filter(order => (order.delta_shares ?? order.shares ?? 0) < 0)
+          .reduce((sum, order) => sum + Number(order.amount || 0), 0)
+        const buys = orders
+          .filter(order => (order.delta_shares ?? order.shares ?? 0) > 0)
+          .reduce((sum, order) => sum + Number(order.amount || 0), 0)
+        return Math.round((sells - buys) * 100) / 100
+      },
+      cashSummary(strategy) {
+        if (!this.plan?.[strategy]?.orders?.length || !this.plan?.account) return null
+        const accountKey = strategy === 'cb' ? 'bond_available_cash' : 'stock_available_cash'
+        const transferKey = strategy === 'cb' ? 'bond' : 'stock'
+        const startingCash = Number(this.plan.account[accountKey] || 0)
+        const transferDelta = Number((this.plan.transfer_deltas || {})[transferKey] || 0)
+        const sameDayTransfer = Math.max(transferDelta, 0)
+        const nextDayReturn = Math.max(-transferDelta, 0)
+        const orderDelta = this.orderCashDelta(strategy)
+        const cashLeft = startingCash + sameDayTransfer + orderDelta - nextDayReturn
+        return {
+          starting_cash: Math.round(startingCash * 100) / 100,
+          transfer_delta: Math.round(transferDelta * 100) / 100,
+          same_day_transfer: Math.round(sameDayTransfer * 100) / 100,
+          next_day_return: Math.round(nextDayReturn * 100) / 100,
+          order_delta: Math.round(orderDelta * 100) / 100,
+          cash_left: Math.round(cashLeft * 100) / 100,
+        }
       },
       async generateOrders(strategy) {
         if (!this.plan?.account) throw new Error('请先在账户页补齐账户事实')

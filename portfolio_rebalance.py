@@ -32,6 +32,7 @@ def build_fund_transfer_plan(
     context: dict,
     qualified_cb_count: int | None = None,
     *,
+    qualified_cb_lot_costs: list[float] | None = None,
     include_a_internal: bool = True,
 ) -> dict:
     """Build target amounts and safe execution boundaries for one manual check."""
@@ -56,6 +57,7 @@ def build_fund_transfer_plan(
             a_current=current["A"],
             approved_a_delta=top_level["executed_deltas"]["A"],
             qualified_cb_count=qualified_cb_count,
+            qualified_cb_lot_costs=qualified_cb_lot_costs,
             cash_available=max(0.0, cash_available - top_immediate_outflow),
         )
         if include_a_internal
@@ -179,13 +181,7 @@ def _top_level_plan(
             if amount >= -1000 or scale == 0:
                 continue
             scaled = -amount * scale
-            outflows.append({
-                "source": source,
-                "target": "cash_pool",
-                "amount": _money(scaled),
-                "reason": "half_band_repair",
-                "immediate": False,
-            })
+            outflows.append(_transfer_action(source, "cash_pool", scaled, "half_band_repair", False))
             executed_deltas[source] -= scaled
         b_status = _b_purchase_status(max(ideal_deltas.get("B", 0.0), 0.0), b_limit)
     else:
@@ -261,13 +257,31 @@ def _b_purchase_status(required_amount: float, limit: float) -> str:
 
 
 def _inflow_action(target: str, amount: float, reason: str, immediate: bool) -> dict:
+    return _transfer_action(
+        source="cash_pool",
+        target=target,
+        amount=amount,
+        reason=reason,
+        immediate=immediate,
+    )
+
+
+def _transfer_action(source: str, target: str, amount: float, reason: str, immediate: bool) -> dict:
+    if immediate:
+        available_on = "same_day"
+        cash_effect = "immediate_cash_in" if source == "cash_pool" else "immediate_cash_return"
+    else:
+        available_on = "next_trading_day" if target == "cash_pool" else "deferred"
+        cash_effect = "deferred_cash_return" if target == "cash_pool" else "deferred_cash_in"
     return {
-        "source": "cash_pool",
-        "origin": "cash_pool",
+        "source": source,
+        "origin": source,
         "target": target,
         "amount": _money(amount),
         "reason": reason,
         "immediate": immediate,
+        "available_on": available_on,
+        "cash_effect": cash_effect,
     }
 
 
@@ -291,6 +305,7 @@ def _a_internal_plan(
     a_current: float,
     approved_a_delta: float,
     qualified_cb_count: int | None,
+    qualified_cb_lot_costs: list[float] | None,
     cash_available: float,
 ) -> dict:
     q_out = max(0.0, -approved_a_delta)
@@ -323,7 +338,13 @@ def _a_internal_plan(
 
     if not isinstance(qualified_cb_count, int) or qualified_cb_count < 0:
         raise PlanValidationError("INVALID_CB_CANDIDATE_COUNT", "可转债合格候选数必须是非负整数")
-    executable_count = min(qualified_cb_count, 20)
+    slot_budget = base_targets["bond"] / 20.0
+    if qualified_cb_lot_costs is None:
+        executable_count = min(qualified_cb_count, 20)
+    else:
+        lot_costs = [_nonnegative(cost, "qualified_cb_lot_cost") for cost in qualified_cb_lot_costs]
+        affordable_count = sum(1 for cost in lot_costs if cost <= slot_budget + 0.01)
+        executable_count = min(qualified_cb_count, affordable_count, 20)
     executable_bond_target = base_targets["bond"] * executable_count / 20.0
     safety_valve_cash = base_targets["bond"] - executable_bond_target
     final_targets = {
@@ -356,22 +377,10 @@ def _a_internal_plan(
     actions: list[dict] = []
     for source, amount in source_outflows.items():
         planned_deltas[source] -= amount
-        actions.append({
-            "source": source,
-            "target": "cash_pool",
-            "amount": _money(amount),
-            "reason": "a_internal_rebalance",
-            "immediate": False,
-        })
+        actions.append(_transfer_action(source, "cash_pool", amount, "a_internal_rebalance", False))
     for target, amount in planned_inflows.items():
         planned_deltas[target] += amount
-        actions.append({
-            "source": "cash_pool",
-            "target": target,
-            "amount": _money(amount),
-            "reason": "a_internal_rebalance",
-            "immediate": True,
-        })
+        actions.append(_transfer_action("cash_pool", target, amount, "a_internal_rebalance", True))
     planned_deltas["cash_pool"] = -planned_deltas["stock"] - planned_deltas["bond"]
 
     return {
@@ -389,6 +398,8 @@ def _a_internal_plan(
             name: deltas[name] - planned_deltas[name] for name in final_targets
         }),
         "qualified_cb_count": qualified_cb_count,
+        "executable_cb_count": executable_count,
+        "cb_slot_budget": _money(slot_budget),
         "safety_valve_cash": _money(safety_valve_cash),
         "actions": actions,
         "immediate_actions": [action for action in actions if action["immediate"]],

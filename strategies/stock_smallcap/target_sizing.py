@@ -55,8 +55,9 @@ def size_target_state(
     """Generate one net order per code from the formal Top-20 target-state rules."""
     target = _normalise(rankings, "stock_code").sort_values("rank")
     target = target.drop_duplicates("stock_code", keep="first")
-    if len(target) != TARGET_COUNT:
-        raise SizingError("CAPACITY_CONFLICT", f"小市值目标必须恰好为 {TARGET_COUNT} 只", target_count=len(target))
+    target_count = len(target)
+    if target_count <= 0:
+        raise SizingError("CAPACITY_CONFLICT", "小市值目标不能为空", target_count=target_count)
     if budget < 0:
         raise SizingError("INSUFFICIENT_RELEASABLE_CASH", "股票可执行预算不能为负", budget=budget)
 
@@ -78,15 +79,15 @@ def size_target_state(
     if cap_conflicts or sum(minimum_costs.values()) > total_value + 0.01:
         raise SizingError(
             "CAPACITY_CONFLICT",
-            "可执行预算无法让 Top 20 各至少持有一手且满足单只 10% 上限",
+            "可执行预算无法让策略目标各至少持有一手且满足单只 10% 上限",
             cap_conflicts=cap_conflicts,
             minimum_required=round(sum(minimum_costs.values()), 2),
             total_value=total_value,
         )
 
-    per_target = total_value / TARGET_COUNT
+    per_target = total_value / target_count
     desired = {
-        code: max(LOT, int(per_target / prices[code] // LOT) * LOT)
+        code: max(LOT, int(min(per_target, cap_value) / prices[code] // LOT) * LOT)
         for code in target_codes
     }
 
@@ -102,14 +103,14 @@ def size_target_state(
     while left < -0.01:
         candidates = [code for code in target_codes if desired[code] > LOT]
         if not candidates:
-            raise SizingError("CAPACITY_CONFLICT", "Top 20 最低一手目标无法由可执行预算支持")
+            raise SizingError("CAPACITY_CONFLICT", "策略目标最低一手无法由可执行预算支持")
         code = max(candidates, key=lambda item: (target_value(item), target_codes.index(item)))
         desired[code] -= LOT
         left += minimum_costs[code]
 
     for code in target_codes:
         if target_value(code) > cap_value + 0.01:
-            raise SizingError("CAPACITY_CONFLICT", "整手目标超过单只 10% 上限", code=code)
+            raise SizingError("CAPACITY_CONFLICT", "整手目标超过单只 10% 上限", stock_code=code)
 
     ordinary_threshold = max(MIN_TRADE_VALUE, per_target * 0.10)
     active_targets = desired.copy()
@@ -131,9 +132,9 @@ def size_target_state(
     while True:
         candidates = []
         for code in target_codes:
-            if active_targets[code] >= desired[code]:
-                continue
             next_value = prices[code] * LOT
+            if active_targets[code] * prices[code] + next_value > cap_value + 0.01:
+                continue
             delta_after = (active_targets[code] + LOT - held.get(code, 0)) * prices[code]
             has_existing_ordinary_buy = active_targets[code] > held.get(code, 0) and (active_targets[code] - held.get(code, 0)) * prices[code] >= ordinary_threshold
             if next_value <= left + 0.01 and (has_existing_ordinary_buy or delta_after >= ordinary_threshold):
@@ -166,7 +167,7 @@ def size_target_state(
         "cash_in": round(budget, 2),
         "per_target": round(per_target, 2),
         "cash_left": round(left, 2),
-        "n_target": TARGET_COUNT,
+        "n_target": target_count,
         "ordinary_order_threshold": round(ordinary_threshold, 2),
         "warnings": [],
     }

@@ -5,6 +5,7 @@ datasource/db.py — SQLite 持久化层
 """
 from __future__ import annotations
 
+import json
 import math
 import sqlite3
 from contextlib import contextmanager
@@ -227,6 +228,24 @@ def init_db() -> None:
             last_attempt_at TEXT NOT NULL,
             last_error      TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS generated_plans (
+            plan_id    TEXT PRIMARY KEY,
+            plan_date  TEXT NOT NULL,
+            status     TEXT NOT NULL,
+            plan_json  TEXT NOT NULL,
+            error_json TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS plan_order_batches (
+            plan_id      TEXT NOT NULL REFERENCES generated_plans(plan_id) ON DELETE CASCADE,
+            strategy     TEXT NOT NULL CHECK(strategy IN ('cb', 'stock')),
+            orders_json  TEXT NOT NULL,
+            summary_json TEXT NOT NULL,
+            created_at   TEXT NOT NULL,
+            PRIMARY KEY(plan_id, strategy)
+        );
         """)
 
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(account_snapshots)").fetchall()}
@@ -251,6 +270,11 @@ def init_db() -> None:
         ):
             if column not in context_columns:
                 conn.execute(f"ALTER TABLE account_contexts ADD COLUMN {column} {definition}")
+        generated_plan_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(generated_plans)").fetchall()
+        }
+        if "error_json" not in generated_plan_columns:
+            conn.execute("ALTER TABLE generated_plans ADD COLUMN error_json TEXT")
         _migrate_strategy_run_status(conn)
         _migrate_legacy_account_snapshots(conn)
         _migrate_legacy_positions(conn)
@@ -1360,6 +1384,121 @@ def clear_latest_orders() -> None:
                     )""",
                 (strategy,),
             )
+
+
+def insert_generated_plan(plan_id: str, plan_date: str, status: str, plan: dict) -> None:
+    with _conn() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO generated_plans
+               (plan_id, plan_date, status, plan_json, error_json, created_at)
+               VALUES (?,?,?,?,?,?)""",
+            (
+                plan_id,
+                plan_date,
+                status,
+                _to_json(plan),
+                None,
+                datetime.now().isoformat(),
+            ),
+        )
+
+
+def update_generated_plan(
+    plan_id: str,
+    *,
+    status: str,
+    plan: dict | None = None,
+    error: dict | None = None,
+) -> None:
+    with _conn() as conn:
+        existing = conn.execute(
+            "SELECT plan_json FROM generated_plans WHERE plan_id=?",
+            (plan_id,),
+        ).fetchone()
+        if existing is None:
+            raise ValueError(f"Unknown generated plan: {plan_id}")
+        plan_json = _to_json(plan) if plan is not None else existing["plan_json"]
+        conn.execute(
+            """UPDATE generated_plans
+               SET status=?, plan_json=?, error_json=?
+               WHERE plan_id=?""",
+            (status, plan_json, _to_json(error) if error else None, plan_id),
+        )
+
+
+def mark_generated_plans_stale(reason: dict | None = None) -> None:
+    error = reason or {
+        "code": "PLAN_INPUTS_CHANGED",
+        "message": "账户事实已更新，既有计划需要重新生成。",
+    }
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE generated_plans SET status='stale', error_json=? WHERE status='complete'",
+            (_to_json(error),),
+        )
+
+
+def get_generated_plan(plan_id: str) -> dict | None:
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM generated_plans WHERE plan_id=?",
+            (plan_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        return {
+            "plan_id": item["plan_id"],
+            "plan_date": item["plan_date"],
+            "status": item["status"],
+            "plan": json.loads(item["plan_json"]),
+            "error": json.loads(item["error_json"]) if item.get("error_json") else None,
+            "created_at": item["created_at"],
+        }
+
+
+def insert_plan_order_batch(plan_id: str, strategy: str, orders: list[dict], summary: dict) -> None:
+    with _conn() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO plan_order_batches
+               (plan_id, strategy, orders_json, summary_json, created_at)
+               VALUES (?,?,?,?,?)""",
+            (
+                plan_id,
+                strategy,
+                _to_json(orders),
+                _to_json(summary),
+                datetime.now().isoformat(),
+            ),
+        )
+
+
+def get_plan_order_batch(plan_id: str, strategy: str) -> dict | None:
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM plan_order_batches WHERE plan_id=? AND strategy=?",
+            (plan_id, strategy),
+        ).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        return {
+            "plan_id": item["plan_id"],
+            "strategy": item["strategy"],
+            "orders": json.loads(item["orders_json"]),
+            "summary": json.loads(item["summary_json"]),
+            "created_at": item["created_at"],
+        }
+
+
+def _to_json(value) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, default=_json_default)
+
+
+def _json_default(value):
+    if hasattr(value, "item"):
+        return value.item()
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 # ── 原始数据快照（本地优先缓存） ──────────────────────────────────────────────

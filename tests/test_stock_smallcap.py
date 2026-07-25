@@ -103,6 +103,25 @@ class StockSmallCapTests(unittest.TestCase):
         # rank 5 > sell_rank → sell
         self.assertEqual(actions["000005"], "SELL")
 
+    def test_persisted_rankings_follow_rebalance_target_not_mechanical_head(self) -> None:
+        ranked = pd.DataFrame(
+            {
+                "stock_code": ["000001", "000002", "000003", "000004", "000005"],
+                "stock_name_q": ["甲", "乙", "丙", "丁", "戊"],
+                "rank": [1, 2, 3, 4, 5],
+            }
+        )
+        current = pd.DataFrame([
+            {"stock_code": "000004", "stock_name": "丁", "shares": 100},
+        ])
+        config = {**CONFIG, "selection": {**CONFIG["selection"], "hold_n": 3, "sell_rank": 5}}
+        target, _ = run.build_target_and_rebalance(current, ranked, config)
+
+        persisted = run.rankings_for_order_sizing(ranked, target, config)
+
+        self.assertEqual(list(persisted["stock_code"]), ["000001", "000002", "000004"])
+        self.assertNotIn("000003", set(persisted["stock_code"]))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -45,6 +45,22 @@ class TestFundTransferTargets(unittest.TestCase):
         })
         self.assertEqual(result["a_internal"]["safety_valve_cash"], 15_000.0)
 
+    def test_convertible_bond_safety_valve_uses_lot_affordability_not_only_count(self):
+        result = build_fund_transfer_plan(
+            self.account,
+            self.context,
+            qualified_cb_count=20,
+            qualified_cb_lot_costs=[1_200, 1_300, 1_400] + [9_000] * 17,
+        )
+
+        self.assertEqual(result["a_internal"]["executable_cb_count"], 3)
+        self.assertEqual(result["a_internal"]["final_targets"], {
+            "stock": 45_000.0,
+            "bond": 4_500.0,
+            "cash_pool": 35_500.0,
+        })
+        self.assertEqual(result["a_internal"]["safety_valve_cash"], 25_500.0)
+
     def test_missing_same_day_convertible_bond_universe_pauses_a_internal_cash_outflows(self):
         result = build_fund_transfer_plan(self.account, self.context, qualified_cb_count=None)
 
@@ -77,12 +93,23 @@ class TestFundTransferTargets(unittest.TestCase):
             "cash_pool": 5_000.0,
         })
         self.assertEqual(
-            [(a["source"], a["target"], a["amount"], a["immediate"]) for a in internal["actions"]],
             [
-                ("bond", "cash_pool", 10_000.0, False),
-                ("cash_pool", "stock", 5_000.0, True),
+                (
+                    a["source"],
+                    a["target"],
+                    a["amount"],
+                    a["immediate"],
+                    a["available_on"],
+                    a["cash_effect"],
+                )
+                for a in internal["actions"]
+            ],
+            [
+                ("bond", "cash_pool", 10_000.0, False, "next_trading_day", "deferred_cash_return"),
+                ("cash_pool", "stock", 5_000.0, True, "same_day", "immediate_cash_in"),
             ],
         )
+        self.assertEqual(internal["deferred_gaps"]["cash_pool"], 0.0)
 
     def test_pure_fund_transfer_does_not_request_or_read_a_strategy_universe(self):
         result = build_fund_transfer_plan(

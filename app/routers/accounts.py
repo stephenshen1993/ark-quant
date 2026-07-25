@@ -121,6 +121,7 @@ def post_context(body: AccountContextIn):
             b_purchase_source=body.b_purchase_source,
         )
         db.clear_latest_orders()
+        db.mark_generated_plans_stale()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return public_account_summary(db.get_current_account_summary())
@@ -136,6 +137,7 @@ def post_account_snapshot(account_id: str, body: AccountValueSnapshotIn):
             account_id, body.snapshot_date, body.total, cash, body.frozen_cash
         )
         db.clear_latest_orders()
+        db.mark_generated_plans_stale()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return public_account_summary(db.get_current_account_summary())
@@ -158,6 +160,7 @@ def post_account_state(account_id: str, body: AccountStateIn):
             body.frozen_cash,
         )
         db.clear_latest_orders()
+        db.mark_generated_plans_stale()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     response = public_account_summary(db.get_current_account_summary())

@@ -58,6 +58,23 @@ class TargetStateSizingTests(unittest.TestCase):
         self.assertTrue((sheet["target_shares"] % 100 == 0).all())
         self.assertGreaterEqual(summary["cash_left"], 0)
 
+    def test_reinvests_residual_cash_when_another_lot_fits(self):
+        target = rankings()
+        sheet, summary = size_target_state(target, positions(), 21_500, prices(target))
+
+        self.assertLess(summary["cash_left"], 1_000)
+        self.assertEqual(sheet["target_shares"].sum(), 2_100)
+
+    def test_sizes_the_strategy_target_set_without_forcing_twenty_names(self):
+        target = rankings(3)
+
+        sheet, summary = size_target_state(target, positions(), 30_000, prices(target))
+
+        self.assertEqual(summary["n_target"], 3)
+        self.assertEqual(set(sheet["stock_code"]), set(target["stock_code"]))
+        self.assertTrue((sheet["target_shares"] % 100 == 0).all())
+        self.assertGreaterEqual(summary["cash_left"], 0)
+
     def test_cli_adapter_uses_the_shared_target_state_result(self):
         target = rankings()
         expected_sheet, expected_summary = size_target_state(target, positions(), 400_000, prices(target))

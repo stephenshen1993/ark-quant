@@ -309,6 +309,16 @@ def persist_rankings(data_date: date, rankings: pd.DataFrame) -> int:
     return create_complete_strategy_run("stock", data_date, None, rankings)
 
 
+def rankings_for_order_sizing(ranked: pd.DataFrame, target_df: pd.DataFrame, config: dict) -> pd.DataFrame:
+    """Return the strategy target set that downstream order sizing should execute."""
+    if target_df.empty:
+        return target_df.copy()
+    result = target_df.copy()
+    if "rank" in result.columns:
+        result = result.sort_values("rank")
+    return result
+
+
 def save_outputs(ranked: pd.DataFrame, rebalance: pd.DataFrame, config: dict, log_file: Path, notes: list[str], data_date: "date | None" = None) -> RunArtifacts:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -440,8 +450,7 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
     data_date = latest_completed_data_date()
     artifacts = save_outputs(ranked, rebalance, config, log_file, notes, data_date=data_date)
     logging.info("Saved report to %s", artifacts.report_md)
-    hold_n = config.get("selection", {}).get("hold_n", 20)
-    run_id = persist_rankings(data_date, ranked.head(hold_n))
+    run_id = persist_rankings(data_date, rankings_for_order_sizing(ranked, target_df, config))
     artifacts = replace(artifacts, run_id=run_id, data_date=data_date)
     logging.info("DB write OK: stock rankings run_id=%s data_date=%s", run_id, data_date)
     try:

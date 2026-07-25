@@ -1,5 +1,6 @@
 from __future__ import annotations
 from datetime import date, datetime
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException
 from datasource import db
@@ -99,7 +100,7 @@ def get_plan(refresh_temperature: bool = False):
             },
         ) from exc
 
-    plan_date = _resolve_plan_date(market_temperature.updated_at[:10])
+    plan_date = market_temperature.updated_at[:10]
 
     account = db.get_current_account_summary()
     if account:
@@ -141,6 +142,7 @@ def get_plan(refresh_temperature: bool = False):
         fund_transfer = _build_fund_transfer(
             account,
             qualified_cb_count=len(cb_universe) if cb_universe else None,
+            qualified_cb_lot_costs=_cb_lot_costs(cb_universe) if cb_universe else None,
             include_a_internal=True,
         )
     except PlanValidationError as exc:
@@ -155,16 +157,7 @@ def get_plan(refresh_temperature: bool = False):
             return None
         delta = deltas.get(cash_key, 0)
         base = account.get(f"{cash_key}_available_cash", account.get(f"{cash_key}_cash", 0))
-        def shares(order: dict) -> int:
-            return order.get("delta_shares", order.get("shares", 0)) or 0
-        sells = sum(o.get("amount", 0) for o in orders if shares(o) < 0)
-        buys  = sum(o.get("amount", 0) for o in orders if shares(o) > 0)
-        book = round(base + sells - buys, 2)
-        return {
-            "book_balance": book,
-            "transfer_delta": round(delta, 2),
-            "cash_left": round(book + delta, 2),
-        }
+        return _summarize_order_cash(base, delta, orders)
 
     return {
         "generated_at": datetime.now().isoformat(),
@@ -195,6 +188,65 @@ def get_plan(refresh_temperature: bool = False):
     }
 
 
+@router.post("/generate")
+def generate_plan():
+    """Generate a full trading plan in one server-side workflow."""
+    plan_date, account, market_temperature, fund_transfer = _prepare_complete_plan_generation()
+    plan_id = f"plan-{plan_date}-{uuid4().hex[:8]}"
+    plan = _build_generated_plan_response(
+        plan_id=plan_id,
+        status="running",
+        plan_date=plan_date,
+        market_temperature=market_temperature,
+        account=account,
+        fund_transfer=fund_transfer,
+        cb_result=None,
+        stock_result=None,
+    )
+    db.insert_generated_plan(plan_id, plan_date, "running", plan)
+
+    try:
+        _, deltas, _ = _fund_transfer_compatibility(fund_transfer)
+        cb_result = _size_cb_orders(
+            _strategy_cash_after_transfer("cb", account, deltas),
+            plan_date=plan_date,
+        )
+        db.insert_plan_order_batch(plan_id, "cb", cb_result["orders"], cb_result["summary"])
+        plan = _build_generated_plan_response(
+            plan_id=plan_id,
+            status="running",
+            plan_date=plan_date,
+            market_temperature=market_temperature,
+            account=account,
+            fund_transfer=fund_transfer,
+            cb_result=cb_result,
+            stock_result=None,
+        )
+
+        stock_result = _size_stock_orders(
+            _strategy_cash_after_transfer("stock", account, deltas),
+            plan_date=plan_date,
+        )
+        db.insert_plan_order_batch(plan_id, "stock", stock_result["orders"], stock_result["summary"])
+        plan = _build_generated_plan_response(
+            plan_id=plan_id,
+            status="complete",
+            plan_date=plan_date,
+            market_temperature=market_temperature,
+            account=account,
+            fund_transfer=fund_transfer,
+            cb_result=cb_result,
+            stock_result=stock_result,
+        )
+        db.update_generated_plan(plan_id, status="complete", plan=plan)
+        return plan
+    except HTTPException as exc:
+        error = _generation_error("stock_orders" if plan["cb"]["orders"] else "cb_orders", exc.detail)
+        failed_plan = {**plan, "generation": {**plan["generation"], "status": "failed"}}
+        db.update_generated_plan(plan_id, status="failed", plan=failed_plan, error=error)
+        raise HTTPException(status_code=exc.status_code, detail={**error, "plan_id": plan_id}) from exc
+
+
 def _trade_date_for(strategy: str, data_date: str | None) -> str | None:
     if not data_date:
         return None
@@ -212,6 +264,144 @@ def _validate_plan_inputs(plan_date: str, account: dict | None) -> list[dict]:
         )
         + _validate_strategy_inputs(plan_date)
     )
+
+
+def _prepare_complete_plan_generation() -> tuple[str, dict, object, dict]:
+    plan_date = _current_plan_date()
+    account = db.get_current_account_summary()
+    account_errors = _validate_account_inputs(
+        plan_date,
+        account,
+        _account_transfer_window_end(plan_date),
+        include_overseas=True,
+    )
+    if account_errors:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "PLAN_INPUT_DATE_MISMATCH",
+                "message": "账户输入日期不一致，请按下方逐项更新到计划输入窗口内。",
+                "plan_date": plan_date,
+                "errors": account_errors,
+            },
+        )
+
+    _ensure_rankings_for_plan_date(plan_date)
+
+    strategy_errors = _validate_strategy_inputs(plan_date)
+    if strategy_errors:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "PLAN_INPUT_DATE_MISMATCH",
+                "message": "交易计划输入日期不一致，请按下方逐项更新到同一个计划日。",
+                "plan_date": plan_date,
+                "errors": strategy_errors,
+            },
+        )
+
+    market_temperature = get_or_fetch_market_temperature()
+    account = dict(account)
+    account["temperature"] = market_temperature.temperature
+    cb_rankings = db.get_rankings("cb", plan_date)
+    fund_transfer = _build_fund_transfer(
+        account,
+        qualified_cb_count=len(cb_rankings) if cb_rankings else None,
+        qualified_cb_lot_costs=_cb_lot_costs(cb_rankings) if cb_rankings else None,
+        include_a_internal=True,
+    )
+    return plan_date, account, market_temperature, fund_transfer
+
+
+def _ensure_rankings_for_plan_date(plan_date: str) -> None:
+    from app.routers.rankings import run_strategy
+
+    for strategy in ("cb", "stock"):
+        if plan_date in db.get_ranking_dates(strategy):
+            continue
+        result = run_strategy(strategy)
+        if result.get("data_date") != plan_date:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "PLAN_INPUT_DATE_MISMATCH",
+                    "message": f"生成的{_strategy_label(strategy)}榜单日期为 {result.get('data_date')}，与计划基准日 {plan_date} 不一致。",
+                    "plan_date": plan_date,
+                    "errors": [{
+                        "input": strategy,
+                        "date": result.get("data_date"),
+                        "expected": plan_date,
+                        "message": "榜单日期与计划基准日不一致",
+                    }],
+                },
+            )
+
+
+def _strategy_label(strategy: str) -> str:
+    return "转债" if strategy == "cb" else "股票"
+
+
+def _build_generated_plan_response(
+    *,
+    plan_id: str,
+    status: str,
+    plan_date: str,
+    market_temperature,
+    account: dict,
+    fund_transfer: dict,
+    cb_result: dict | None,
+    stock_result: dict | None,
+) -> dict:
+    targets, deltas, transfer_steps = _fund_transfer_compatibility(fund_transfer)
+    cb_orders = (cb_result or {}).get("orders", [])
+    stock_orders = (stock_result or {}).get("orders", [])
+    return {
+        "generated_at": datetime.now().isoformat(),
+        "plan_date": plan_date,
+        "market_temperature": market_temperature.to_dict(),
+        "account": account,
+        "warnings": _plan_input_warnings(plan_date, account),
+        "trade_errors": [],
+        "targets": targets,
+        "transfer_steps": transfer_steps,
+        "transfer_deltas": deltas,
+        "fund_transfer": fund_transfer,
+        "execution_sequence": _execution_sequence(cb_orders, stock_orders, transfer_steps),
+        "generation": {
+            "plan_id": plan_id,
+            "plan_date": plan_date,
+            "status": status,
+            "stages": ["account", "rankings", "fund_transfer", "orders", "summary"],
+        },
+        "cb": {
+            "data_date": plan_date,
+            "trade_date": _trade_date_for("cb", plan_date),
+            "orders": cb_orders,
+            "rankings": [],
+            "summary": (cb_result or {}).get("summary"),
+        },
+        "stock": {
+            "data_date": plan_date,
+            "trade_date": _trade_date_for("stock", plan_date),
+            "orders": stock_orders,
+            "rankings": [],
+            "summary": (stock_result or {}).get("summary"),
+        },
+    }
+
+
+def _generation_error(stage: str, detail) -> dict:
+    if isinstance(detail, dict):
+        return {
+            "stage": stage,
+            "code": detail.get("code", "PLAN_GENERATION_FAILED"),
+            "message": detail.get("message", "完整计划生成失败"),
+        }
+    return {
+        "stage": stage,
+        "code": "PLAN_GENERATION_FAILED",
+        "message": str(detail or "完整计划生成失败"),
+    }
 
 
 def _validate_account_inputs(
@@ -251,6 +441,7 @@ def _build_fund_transfer(
     account: dict | None,
     *,
     qualified_cb_count: int | None = None,
+    qualified_cb_lot_costs: list[float] | None = None,
     include_a_internal: bool = False,
 ) -> dict:
     if not account:
@@ -266,8 +457,24 @@ def _build_fund_transfer(
         account,
         context,
         qualified_cb_count,
+        qualified_cb_lot_costs=qualified_cb_lot_costs,
         include_a_internal=include_a_internal,
     )
+
+
+def _cb_lot_costs(rankings: list[dict]) -> list[float]:
+    costs = []
+    for row in rankings:
+        price = row.get("cb_price")
+        if price is None:
+            continue
+        try:
+            amount = float(price) * 10
+        except (TypeError, ValueError):
+            continue
+        if amount > 0:
+            costs.append(amount)
+    return costs
 
 
 def _fund_transfer_compatibility(fund_transfer: dict) -> tuple[dict, dict, list[str]]:
@@ -361,19 +568,19 @@ def size_orders(strategy: str):
     """根据计划日期榜单 + 持仓 + 服务端账户事实，生成具体买卖张数/股数。"""
     if strategy == "cb":
         plan_date, account, deltas = _ensure_plan_inputs_consistent()
-        return _size_cb_orders(_strategy_cash_after_transfer("cb", account, deltas))
+        return _size_cb_orders(_strategy_cash_after_transfer("cb", account, deltas), plan_date=plan_date)
     if strategy == "stock":
         plan_date, account, deltas = _ensure_plan_inputs_consistent()
-        return _size_stock_orders(_strategy_cash_after_transfer("stock", account, deltas))
+        return _size_stock_orders(_strategy_cash_after_transfer("stock", account, deltas), plan_date=plan_date)
     raise HTTPException(400, {"code": "INVALID_STRATEGY", "message": f"未知策略: {strategy}"})
 
 
-def _size_cb_orders(cash: float) -> dict:
+def _size_cb_orders(cash: float, *, plan_date: str | None = None) -> dict:
     import pandas as pd
     from datasource.market import fetch_cb_prices_tencent
     from strategies.cb_rotation.size_orders import size_rebalance
 
-    plan_date = _current_plan_date()
+    plan_date = plan_date or _current_plan_date()
     rankings = db.get_rankings("cb", plan_date)
     if not rankings:
         raise HTTPException(400, {"code": "NO_RANKINGS", "message": f"没有 {plan_date} 的转债榜单，请先运行策略。"})
@@ -413,7 +620,7 @@ def _size_cb_orders(cash: float) -> dict:
             "code": "ORDER_SIZING_FAILED",
             "message": str(exc),
         }) from exc
-    _ensure_sizing_cash_nonnegative("cb", summary)
+    _ensure_order_cash_nonnegative("cb", summary)
 
     db.init_db()
     meta = db.get_strategy_run_meta("cb", plan_date)
@@ -423,26 +630,20 @@ def _size_cb_orders(cash: float) -> dict:
 
     account = db.get_current_account_summary()
     acct_cash = account["bond_available_cash"] if account else 0
-    sells = sum(r["amount"] for r in sheet.to_dict("records") if r.get("delta_shares", 0) < 0)
-    buys  = sum(r["amount"] for r in sheet.to_dict("records") if r.get("delta_shares", 0) > 0)
-    book_balance = round(acct_cash + sells - buys, 2)
+    orders = sheet.to_dict("records")
 
     return {
-        "orders": sheet.to_dict("records"),
-        "summary": {
-            "book_balance": book_balance,
-            "transfer_delta": round(cash - acct_cash, 2),
-            "cash_left": round(book_balance + (cash - acct_cash), 2),
-        },
+        "orders": orders,
+        "summary": _summarize_order_cash(acct_cash, cash - acct_cash, orders),
     }
 
 
-def _size_stock_orders(cash: float) -> dict:
+def _size_stock_orders(cash: float, *, plan_date: str | None = None) -> dict:
     import pandas as pd
     from datasource.market import fetch_tencent_snapshot
     from strategies.stock_smallcap.target_sizing import SizingError, size_target_state
 
-    plan_date = _current_plan_date()
+    plan_date = plan_date or _current_plan_date()
     rankings = db.get_rankings("stock", plan_date)
     if not rankings:
         raise HTTPException(400, {"code": "NO_RANKINGS", "message": f"没有 {plan_date} 的股票榜单，请先运行策略。"})
@@ -508,7 +709,7 @@ def _size_stock_orders(cash: float) -> dict:
             "code": "ORDER_SIZING_FAILED",
             "message": str(exc),
         }) from exc
-    _ensure_sizing_cash_nonnegative("stock", summary)
+    _ensure_order_cash_nonnegative("stock", summary)
 
     db.init_db()
     meta = db.get_strategy_run_meta("stock", plan_date)
@@ -518,17 +719,11 @@ def _size_stock_orders(cash: float) -> dict:
 
     account = db.get_current_account_summary()
     acct_cash = account["stock_available_cash"] if account else 0
-    sells = sum(r["amount"] for r in sheet.to_dict("records") if r.get("delta_shares", 0) < 0)
-    buys  = sum(r["amount"] for r in sheet.to_dict("records") if r.get("delta_shares", 0) > 0)
-    book_balance = round(acct_cash + sells - buys, 2)
+    orders = sheet.to_dict("records")
 
     return {
-        "orders": sheet.to_dict("records"),
-        "summary": {
-            "book_balance": book_balance,
-            "transfer_delta": round(cash - acct_cash, 2),
-            "cash_left": round(book_balance + (cash - acct_cash), 2),
-        },
+        "orders": orders,
+        "summary": _summarize_order_cash(acct_cash, cash - acct_cash, orders),
     }
 
 
@@ -543,7 +738,7 @@ def _current_plan_date() -> str:
                 "message": str(exc),
             },
         ) from exc
-    return _resolve_plan_date(market_temperature.updated_at[:10])
+    return market_temperature.updated_at[:10]
 
 
 def _resolve_plan_date(market_date: str) -> str:
@@ -568,11 +763,25 @@ def _strategy_cash_after_transfer(strategy: str, account: dict, deltas: dict) ->
     raise ValueError(f"Unknown strategy: {strategy}")
 
 
+def _summarize_order_cash(base_cash: float, transfer_delta: float, orders: list[dict]) -> dict:
+    sells = sum(order.get("amount", 0) for order in orders if _shares(order) < 0)
+    buys = sum(order.get("amount", 0) for order in orders if _shares(order) > 0)
+    order_delta = round(sells - buys, 2)
+    starting_cash = round(base_cash or 0, 2)
+    transfer_delta = round(transfer_delta or 0, 2)
+    return {
+        "starting_cash": starting_cash,
+        "transfer_delta": transfer_delta,
+        "order_delta": order_delta,
+        "cash_left": round(starting_cash + transfer_delta + order_delta, 2),
+    }
+
+
 def _shares(order: dict) -> int:
     return order.get("delta_shares", order.get("shares", 0)) or 0
 
 
-def _ensure_sizing_cash_nonnegative(strategy: str, summary: dict) -> None:
+def _ensure_order_cash_nonnegative(strategy: str, summary: dict) -> None:
     cash_left = round(summary.get("cash_left", 0) or 0, 2)
     if cash_left < -0.01:
         label = "转债账户" if strategy == "cb" else "股票账户"
@@ -599,13 +808,13 @@ def _execution_sequence(cb_orders: list[dict], stock_orders: list[dict], transfe
     return [
         {
             "phase": "sell",
-            "label": "先卖出或减仓释放资金",
+            "label": "先执行账户内卖出或减仓",
             "orders": _phase_orders("cb", cb_orders, sell_actions)
             + _phase_orders("stock", stock_orders, sell_actions),
         },
         {
             "phase": "transfer",
-            "label": "再通过现金池调拨",
+            "label": "再执行当日入金，券商转出次交易日回流",
             "steps": transfer_steps,
         },
         {
@@ -649,6 +858,7 @@ def _ensure_plan_inputs_consistent() -> tuple[str, dict, dict]:
     fund_transfer = _build_fund_transfer(
         account,
         qualified_cb_count=len(cb_rankings) if cb_rankings else None,
+        qualified_cb_lot_costs=_cb_lot_costs(cb_rankings) if cb_rankings else None,
         include_a_internal=True,
     )
     _, deltas, _ = _fund_transfer_compatibility(fund_transfer)
