@@ -17,7 +17,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from datasource.db import get_latest_positions, init_db, insert_positions
+from datasource.db import get_latest_positions, init_db, insert_positions  # noqa: E402
 
 CSV_PATHS = {
     "cb": ROOT / "portfolios" / "current_cb_positions.csv",

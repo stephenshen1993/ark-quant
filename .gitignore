@@ -14,6 +14,7 @@ outputs/*.csv
 outputs/*.xlsx
 outputs/*.md
 data/*.db
+data/*.lock
 data/cache/*
 data/raw/*
 data/processed/*

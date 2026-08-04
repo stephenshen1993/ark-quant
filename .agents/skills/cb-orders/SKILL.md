@@ -11,7 +11,7 @@ Convert the latest target Top-N list into an executable order sheet (how many å¼
 Run:
 
 ```bash
-source .venv/bin/activate && python3 -m strategies.cb_rotation.size_orders --cash $ARGUMENTS
+.venv/bin/python -m strategies.cb_rotation.size_orders --cash $ARGUMENTS
 ```
 
 This reads the most recent `outputs/cb_rotation_top*_*.csv` as the target and `portfolios/current_cb_positions.csv` (schema: `bond_code,bond_name,shares`) as current holdings, fetches live convertible-bond prices from Tencent (eastmoney-free, works any time), and writes `outputs/cb_orders_<stamp>.csv`.

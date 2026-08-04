@@ -7,12 +7,14 @@
 常用命令：
 
 ```bash
-source .venv/bin/activate
-python3 -m unittest discover -s tests -v
-python3 run_app.py
-python3 -m strategies.cb_rotation.run
-python3 -m strategies.stock_smallcap.run
-python3 rebalance.py
+scripts/start_app.sh
+scripts/status_app.sh
+scripts/stop_app.sh
+.venv/bin/python -m unittest discover -s tests -v
+.venv/bin/ruff check .
+.venv/bin/python -m strategies.cb_rotation.run
+.venv/bin/python -m strategies.stock_smallcap.run
+.venv/bin/python rebalance.py
 ```
 
 具体操作和工程现状分别见：

@@ -7,7 +7,7 @@ disable-model-invocation: false
 Run the small-cap stock screen:
 
 ```bash
-source .venv/bin/activate && python3 -m strategies.stock_smallcap.run $ARGUMENTS
+.venv/bin/python -m strategies.stock_smallcap.run $ARGUMENTS
 ```
 
 Reads `config/stock_smallcap.json` and `portfolios/current_stock_positions.csv` (schema `stock_code,stock_name,shares`). Universe + names come from sina spot; price/成交额/PE/总市值/涨跌停 from Tencent (eastmoney-free); ROE from sina financial indicator. Writes `outputs/stock_smallcap_pool_*.csv`, `_rebalance_*.csv`, `_report_*.md`, and a `data/raw/<date>/stock_smallcap/` snapshot.

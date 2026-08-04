@@ -149,7 +149,7 @@ class TestTopLevelFundingTriggers(unittest.TestCase):
         self.assertTrue(all(action["amount"] > 0 for action in actions))
         self.assertFalse(result["top_level"]["old_holding_sales_allowed"])
 
-    def test_quarterly_b_unavailable_removes_b_inflow_and_scales_source_outflows(self):
+    def test_quarterly_b_unavailable_removes_b_inflow_but_keeps_other_outflows(self):
         result = build_fund_transfer_plan(
             {
                 "stock_total": 85_000,
@@ -172,10 +172,37 @@ class TestTopLevelFundingTriggers(unittest.TestCase):
         self.assertEqual(top["b_purchase_status"], "unavailable")
         self.assertFalse(any(action["target"] == "B" for action in top["executed_actions"]))
         self.assertGreater(sum(action["amount"] for action in top["outflows"]), 0)
-        self.assertEqual(
+        self.assertGreater(
             sum(action["amount"] for action in top["outflows"]),
             sum(action["amount"] for action in top["executed_actions"]),
         )
+
+    def test_quarterly_b_unavailable_still_allows_other_overweight_buckets_to_return_cash(self):
+        result = build_fund_transfer_plan(
+            {
+                "stock_total": 278_508.23,
+                "bond_total": 160_274.74,
+                "cash_pool": 51_702.44,
+                "changqian_total": 114_726.87,
+                "overseas_total": 92_076.14,
+            },
+            {
+                "temperature": 38,
+                "check_type": "quarterly",
+                "cash_available": 51_702.44,
+                "b_purchase_limit": 0,
+            },
+            qualified_cb_count=20,
+        )
+
+        top = result["top_level"]
+        self.assertTrue(top["hard_rebalance_triggered"])
+        self.assertEqual(top["b_purchase_status"], "unavailable")
+        self.assertFalse(any(action["target"] == "B" for action in top["executed_actions"]))
+        self.assertTrue(any(action["source"] == "A" for action in top["outflows"]))
+        self.assertTrue(any(action["source"] == "C" for action in top["outflows"]))
+        self.assertLess(top["executed_deltas"]["A"], 0)
+        self.assertLess(top["executed_deltas"]["C"], 0)
 
     def test_a_internal_execution_budget_only_deducts_approved_a_outflow(self):
         result = build_fund_transfer_plan(

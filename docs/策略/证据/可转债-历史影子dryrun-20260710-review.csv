@@ -1,0 +1,2 @@
+signal_date,execution_date,valid_observation_no,governance_stage,parameter_change,data_status,review_note
+2026-07-10,2026-07-13,0,historical_dry_run_toolchain_only,False,dry_run_invalid_for_forward_sample,Historical replay validates file shape and execution facts only; never counts as a forward observation.

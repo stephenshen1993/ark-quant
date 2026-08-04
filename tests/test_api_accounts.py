@@ -50,32 +50,35 @@ class TestAccountsApi(unittest.TestCase):
         self.assertEqual(r.json()["total_assets"], 0)
         self.assertEqual(len(r.json()["accounts"]), 5)
 
-    def test_context_accepts_auditable_funding_check_facts(self):
+    def test_context_accepts_b_purchase_status_without_audit_fields(self):
         r = self.client.post("/api/account/context", json={
             "snapshot_date": "2026-07-21",
             "temperature": 50.0,
             "check_type": "quarterly",
             "new_contribution": 5_000,
+            "b_purchase_status": "available",
             "b_purchase_limit": 2_000,
-            "b_purchase_checked_at": "2026-07-21T15:30:00",
-            "b_purchase_source": "manual",
         })
 
         self.assertEqual(r.status_code, 200)
         context = r.json()["context"]
         self.assertEqual(context["check_type"], "quarterly")
+        self.assertEqual(context["b_purchase_status"], "available")
         self.assertEqual(context["b_purchase_limit"], 2_000)
-        self.assertEqual(context["b_purchase_source"], "manual")
+        self.assertNotIn("b_purchase_source", context)
 
-    def test_b_purchase_limit_requires_auditable_check_facts(self):
+    def test_unavailable_b_purchase_status_does_not_require_a_limit(self):
         r = self.client.post("/api/account/context", json={
             "snapshot_date": "2026-07-21",
             "temperature": 50.0,
-            "b_purchase_limit": 1_000,
+            "check_type": "quarterly",
+            "b_purchase_status": "unavailable",
         })
 
-        self.assertEqual(r.status_code, 400)
-        self.assertIn("checked_at", r.json()["detail"])
+        self.assertEqual(r.status_code, 200)
+        context = r.json()["context"]
+        self.assertEqual(context["b_purchase_status"], "unavailable")
+        self.assertEqual(context["b_purchase_limit"], 0)
 
     def test_context_and_account_snapshots_are_aggregated(self):
         self.client.post("/api/account/context", json={

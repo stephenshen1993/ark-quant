@@ -6,7 +6,7 @@ description: Run the full test suite and surface any failures. Use when verifyin
 Run the test suite:
 
 ```bash
-source .venv/bin/activate && python3 -m unittest discover tests/ -v
+.venv/bin/python -m unittest discover -s tests -v
 ```
 
 Report back:

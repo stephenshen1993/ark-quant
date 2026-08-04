@@ -28,9 +28,8 @@
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -r requirements.txt
-python3 run_app.py
+.venv/bin/python -m pip install -r requirements.txt
+scripts/start_app.sh
 ```
 
 打开 `http://127.0.0.1:8000`。完整操作顺序见 [日常运行手册](docs/使用/日常运行手册.md)。
@@ -38,15 +37,23 @@ python3 run_app.py
 常用本地命令：
 
 ```bash
+# 启动 / 查看 / 停止本地看板
+scripts/start_app.sh
+scripts/status_app.sh
+scripts/stop_app.sh
+
 # 自动化测试
-python3 -m unittest discover -s tests -v
+.venv/bin/python -m unittest discover -s tests -v
+
+# 静态检查
+.venv/bin/ruff check .
 
 # 两条账户内策略
-python3 -m strategies.cb_rotation.run
-python3 -m strategies.stock_smallcap.run
+.venv/bin/python -m strategies.cb_rotation.run
+.venv/bin/python -m strategies.stock_smallcap.run
 
 # 当前体系级目标金额与调拨计划
-python3 rebalance.py
+.venv/bin/python rebalance.py
 ```
 
 ## 目录

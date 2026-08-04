@@ -6,6 +6,30 @@
 <title>ark-quant</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+<style>
+  .order-plan-table {
+    table-layout: fixed;
+    width: 100%;
+  }
+  .order-group-grid {
+    align-items: start;
+  }
+  .order-code-col { width: 16%; }
+  .order-name-col { width: 30%; }
+  .order-quantity-col { width: 18%; }
+  .order-price-col { width: 16%; }
+  .order-amount-col { width: 20%; }
+  .order-plan-table th,
+  .order-plan-table td {
+    padding-top: 0.375rem;
+    padding-bottom: 0.375rem;
+  }
+  .order-plan-table .order-name-cell {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+</style>
 </head>
 <body class="bg-gray-50 text-gray-900 flex h-screen antialiased">
 
@@ -137,47 +161,33 @@
           <span class="text-xs text-gray-400">账户余额和持仓在“账户”页维护；这里只填写本次计划特有的事实。</span>
         </div>
       </summary>
-      <div class="mt-3">
+      <div class="mt-3 grid grid-cols-1 lg:grid-cols-[minmax(220px,360px)_1fr] gap-3 items-start">
+        <label class="text-xs text-gray-500">计划模式
+          <select x-model="funding.check_type" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none">
+            <option value="a_internal">日常轮动</option>
+            <option value="quarterly">组合再平衡</option>
+          </select>
+        </label>
         <div x-show="funding.check_type === 'a_internal'" class="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-3">
-          <div class="font-medium">日常计划（主动组合内部）</div>
-          <div class="text-xs text-gray-400 mt-1">检查股票、转债和现金之间是否需要调拨，并生成交易计划；不调整长期组合之间的既有资金。</div>
+          <div class="font-medium">日常轮动</div>
+          <div class="text-xs text-gray-400 mt-1">检查股票、转债和资金账户之间的轮动，并生成下一交易日可执行订单；新增资金先留在资金账户等待下次轮动。</div>
         </div>
-        <details class="mt-3 text-sm" :open="funding.check_type !== 'a_internal'">
-          <summary class="cursor-pointer text-xs text-gray-500 select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">特殊情况</summary>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-            <label class="text-xs text-gray-500">本次计划场景
-              <select x-model="funding.check_type" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none">
-                <option value="a_internal">日常计划（主动组合内部）</option>
-                <option value="monthly_contribution">新增资金分配</option>
-                <option value="quarterly">季度组合再平衡</option>
-                <option value="b_recovery">海外长钱恢复申购</option>
-                <option value="ad_hoc">临时专项检查</option>
+        <div x-show="needsBCheck()" class="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-3">
+          <div class="font-medium">组合再平衡</div>
+          <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label class="text-xs text-gray-500">海外长钱申购额度
+              <select x-model="funding.b_purchase_status" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none">
+                <option value="unchecked">未确认</option>
+                <option value="unavailable">不能正常申购</option>
+                <option value="available">可以正常申购</option>
               </select>
             </label>
-            <label x-show="needsContribution()" class="text-xs text-gray-500">本次新增本金（元）
-              <input type="text" inputmode="decimal" x-model="funding.new_contribution" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none" placeholder="0">
+            <label x-show="funding.b_purchase_status === 'available'" class="text-xs text-gray-500">可申购额度（元）
+              <input type="text" inputmode="decimal" x-model="funding.b_purchase_limit" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none" placeholder="0">
             </label>
-            <div x-show="needsBCheck()" class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
-              <label class="text-xs text-gray-500">海外长钱（QDII）申购状态
-                <select x-model="funding.b_purchase_status" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none">
-                  <option value="unchecked">尚未核验</option>
-                  <option value="unavailable">已核验，不可申购</option>
-                  <option value="available">已核验，可申购</option>
-                </select>
-              </label>
-              <label x-show="funding.b_purchase_status === 'available'" class="text-xs text-gray-500">海外长钱单次实际可申购额度（元）
-                <input type="text" inputmode="decimal" x-model="funding.b_purchase_limit" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none" placeholder="0">
-              </label>
-              <label x-show="funding.b_purchase_status !== 'unchecked'" class="text-xs text-gray-500">海外长钱额度核验时间
-                <input type="datetime-local" x-model="funding.b_purchase_checked_at" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none">
-              </label>
-              <label x-show="funding.b_purchase_status !== 'unchecked'" class="text-xs text-gray-500">海外长钱额度核验来源
-                <input type="text" x-model="funding.b_purchase_source" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none" placeholder="如：券商页面人工核验">
-              </label>
-              <div x-show="funding.b_purchase_status === 'unchecked'" class="md:col-span-2 text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">尚未核验时，计划会安全地把海外长钱按不可申购处理，但不会冒充“已核验不可申购”。</div>
-            </div>
+            <div x-show="funding.b_purchase_status !== 'available'" class="md:col-span-2 text-xs text-gray-400">未确认或不能申购时，海外资产按暂不可买入处理。</div>
           </div>
-        </details>
+        </div>
       </div>
     </details>
 
@@ -219,6 +229,24 @@
         <span class="text-xs rounded-full px-2.5 py-1" :class="statusClass(plan?.fund_transfer ? 'ready' : 'waiting')" x-text="transferStatusText()"></span>
       </div>
       <div x-show="plan?.fund_transfer" class="text-sm">
+        <div x-show="topLevelSummaryRows().length" class="mb-4">
+          <div class="text-xs font-medium text-gray-500 mb-2">组合再平衡检查</div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <template x-for="row in topLevelSummaryRows()" :key="`top-summary-${row.key}`">
+              <div class="rounded-lg bg-gray-50 px-3 py-2.5">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs font-medium text-gray-700" x-text="row.label"></span>
+                  <span class="text-xs rounded-full px-2 py-0.5" :class="row.statusClass" x-text="topLevelRowStatus(row)"></span>
+                </div>
+                <div class="mt-2 grid grid-cols-2 gap-y-1 text-xs tabular-nums">
+                  <span class="text-gray-400">当前</span><span class="text-right text-gray-700" x-text="fmtMoney(row.current)"></span>
+                  <span class="text-gray-400">目标</span><span class="text-right text-gray-700" x-text="fmtMoney(row.target)"></span>
+                  <span class="text-gray-400">差额</span><span class="text-right" :class="row.remaining > 0 ? 'text-green-600' : row.remaining < 0 ? 'text-red-500' : 'text-gray-500'" x-text="signedMoney(row.remaining)"></span>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
         <div class="mb-3">
           <div class="text-xs font-medium text-gray-500 mb-2">本次请执行</div>
           <template x-for="(action, i) in fundingActions()" :key="`${action.source}-${action.target}-${i}`">
@@ -235,24 +263,41 @@
           </template>
           <div x-show="!fundingActions().length" class="text-sm text-gray-500 py-2">本次无需账户间调拨</div>
         </div>
-        <div x-show="fundingRows().length">
+        <div x-show="fundingBasisRows().length">
           <details class="text-xs text-gray-500">
             <summary class="cursor-pointer select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">展开查看计算依据</summary>
             <div class="mt-2 overflow-x-auto">
+              <div class="mb-1 text-gray-400">主动组合可展开查看其下属账户。</div>
               <table class="w-full min-w-[680px] tabular-nums">
                 <thead class="text-gray-400 border-b border-gray-100">
                   <tr><th class="text-left font-normal pb-2">账户</th><th class="text-right font-normal pb-2">当前占比</th><th class="text-right font-normal pb-2">目标占比</th><th class="text-right font-normal pb-2">当前金额</th><th class="text-right font-normal pb-2">目标金额</th><th class="text-right font-normal pb-2">本次调拨</th><th class="text-right font-normal pb-2">调后状态</th></tr>
                 </thead>
                 <tbody>
-                  <template x-for="row in fundingRows()" :key="`detail-${row.key}`">
-                    <tr class="border-b border-gray-50 last:border-0">
-                      <td class="py-2 font-medium text-gray-700" x-text="row.label"></td>
-                      <td class="py-2 text-right" x-text="row.currentPct"></td>
-                      <td class="py-2 text-right" x-text="row.targetPct"></td>
-                      <td class="py-2 text-right" x-text="fmtMoney(row.current)"></td>
-                      <td class="py-2 text-right" x-text="fmtMoney(row.target)"></td>
-                      <td class="py-2 text-right" :class="row.planned > 0 ? 'text-green-600' : row.planned < 0 ? 'text-red-500' : ''" x-text="row.plannedText"></td>
-                      <td class="py-2 text-right" :class="row.remaining ? 'text-amber-600' : ''" x-text="row.remainingText"></td>
+                  <template x-for="item in fundingBasisRows()" :key="item.key">
+                    <tr class="border-b border-gray-50 last:border-0" :class="item.kind === 'child' ? 'bg-gray-50/50' : ''">
+                      <td class="py-2 font-medium text-gray-700">
+                        <div class="flex items-center gap-1.5" :class="item.kind === 'child' ? 'ml-7 border-l border-gray-200 pl-3' : ''">
+                          <button
+                            x-show="hasFundingBasisChildren(item.row)"
+                            @click="toggleFundingBasis(item.row.key)"
+                            class="h-5 w-5 rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gray-900"
+                            :aria-expanded="basisExpanded[item.row.key] ? 'true' : 'false'"
+                            :aria-label="basisExpanded[item.row.key] ? '收起主动组合下属账户' : '展开主动组合下属账户'"
+                            type="button">
+                            <span x-text="basisExpanded[item.row.key] ? '▾' : '▸'"></span>
+                          </button>
+                          <span x-show="item.kind === 'child'" class="h-5 w-5 text-center text-gray-300" aria-hidden="true">└</span>
+                          <span x-show="item.kind === 'top' && !hasFundingBasisChildren(item.row)" class="h-5 w-5"></span>
+                          <span x-text="item.row.label"></span>
+                          <span x-show="hasFundingBasisChildren(item.row)" class="rounded bg-gray-100 px-1.5 py-0.5 font-normal text-gray-400">含 3 个账户</span>
+                        </div>
+                      </td>
+                      <td class="py-2 text-right" x-text="item.row.currentPct"></td>
+                      <td class="py-2 text-right" x-text="item.row.targetPct"></td>
+                      <td class="py-2 text-right" x-text="fmtMoney(item.row.current)"></td>
+                      <td class="py-2 text-right" x-text="fmtMoney(item.row.target)"></td>
+                      <td class="py-2 text-right" :class="item.row.planned > 0 ? 'text-green-600' : item.row.planned < 0 ? 'text-red-500' : ''" x-text="item.row.plannedText"></td>
+                      <td class="py-2 text-right" :class="item.row.remaining ? 'text-amber-600' : ''" x-text="item.row.remainingText"></td>
                     </tr>
                   </template>
                 </tbody>
@@ -307,15 +352,29 @@
               <tbody><template x-for="r in cbItems" :key="r.bond_code"><tr class="border-t border-gray-50"><td class="text-center px-3 py-1.5 text-gray-400 text-xs" x-text="r.rank"></td><td class="px-2 py-1.5 text-gray-500 tabular-nums" x-text="r.bond_code"></td><td class="px-2 py-1.5 font-medium" x-text="r.bond_name"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.cb_price?.toFixed(2)"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.premium_rate?.toFixed(2) + '%'"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.double_low?.toFixed(2)"></td><td class="px-3 py-1.5 text-right tabular-nums text-gray-800" x-text="r.score?.toFixed(3)"></td></tr></template></tbody>
             </table>
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <template x-for="group in cbGroups()" :key="group.label">
-              <div class="bg-gray-50 rounded-lg px-3 py-2.5">
-                <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
-                <table class="w-full text-sm">
-                  <template x-for="r in group.items" :key="r.bond_code">
-                    <tr class="border-b border-gray-50 last:border-0"><td class="py-1.5 pr-3 text-gray-400" x-text="r.bond_code"></td><td class="py-1.5 pr-4 font-medium" x-text="r.bond_name"></td><td class="py-1.5 pr-2 text-right whitespace-nowrap" :class="r.shares>0?'text-green-600':'text-red-500'" x-text="(r.shares>0?'+':'')+r.shares+'张'"></td><td class="py-1.5 text-right text-gray-800 whitespace-nowrap tabular-nums" x-text="fmtMoney(Math.abs(r.amount || 0))"></td><td class="py-1.5 pl-2 text-right text-xs text-gray-400 whitespace-nowrap tabular-nums" x-text="r.est_cost > 0 ? '费¥' + r.est_cost : ''"></td></tr>
-                  </template>
-                </table>
+          <div class="order-group-grid grid grid-cols-1 md:grid-cols-2 gap-3">
+            <template x-for="(column, columnIndex) in orderGroupColumns(cbGroups())" :key="'cb-col-' + columnIndex">
+              <div class="space-y-3">
+                <template x-for="group in column" :key="group.label">
+                  <div class="bg-gray-50 rounded-lg px-3 py-2.5">
+                    <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
+                    <table class="order-plan-table text-sm">
+                      <colgroup>
+                        <col class="order-code-col">
+                        <col class="order-name-col">
+                        <col class="order-quantity-col">
+                        <col class="order-price-col">
+                        <col class="order-amount-col">
+                      </colgroup>
+                      <thead class="text-xs text-gray-400">
+                        <tr><th class="text-left font-normal">代码</th><th class="text-left font-normal">名称</th><th class="text-right font-normal">数量</th><th class="text-right font-normal">参考价</th><th class="text-right font-normal">估算金额</th></tr>
+                      </thead>
+                      <template x-for="r in group.items" :key="r.bond_code">
+                        <tr class="border-b border-gray-50 last:border-0"><td class="text-gray-400 tabular-nums" x-text="r.bond_code"></td><td class="order-name-cell pr-3 font-medium" x-text="r.bond_name"></td><td class="text-right whitespace-nowrap tabular-nums" :class="orderQuantityClass(r)" x-text="orderQuantityText(r, '张')"></td><td class="text-right text-gray-500 whitespace-nowrap tabular-nums" x-text="orderReferencePrice(r)"></td><td class="text-right text-gray-800 whitespace-nowrap tabular-nums" x-text="fmtMoney(Math.abs(r.amount || 0))"></td></tr>
+                      </template>
+                    </table>
+                  </div>
+                </template>
               </div>
             </template>
           </div>
@@ -380,15 +439,29 @@
               <tbody><template x-for="r in stockItems" :key="r.stock_code"><tr class="border-t border-gray-50"><td class="text-center px-3 py-1.5 text-gray-400 text-xs" x-text="r.rank"></td><td class="px-2 py-1.5 text-gray-500 tabular-nums" x-text="r.stock_code"></td><td class="px-2 py-1.5 font-medium" x-text="r.stock_name"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.market_cap?.toFixed(2)"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.pe_ttm?.toFixed(2)"></td><td class="px-3 py-1.5 text-right tabular-nums text-gray-800" x-text="r.roe_ex?.toFixed(2) + '%'"></td></tr></template></tbody>
             </table>
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <template x-for="group in stockGroups()" :key="group.label">
-              <div class="bg-gray-50 rounded-lg px-3 py-2.5">
-                <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
-                <table class="w-full text-sm">
-                  <template x-for="r in group.items" :key="r.stock_code">
-                    <tr class="border-b border-gray-50 last:border-0"><td class="py-1.5 pr-3 text-gray-400" x-text="r.stock_code"></td><td class="py-1.5 pr-4 font-medium" x-text="r.stock_name"></td><td class="py-1.5 pr-2 text-right whitespace-nowrap" :class="r.shares>0?'text-green-600':r.shares<0?'text-red-500':'text-gray-400'" x-text="(r.shares>0?'+':'')+r.shares+'股'"></td><td class="py-1.5 text-right text-gray-800 whitespace-nowrap tabular-nums" x-text="r.amount ? fmtMoney(Math.abs(r.amount)) : ''"></td><td class="py-1.5 pl-2 text-right text-xs text-gray-400 whitespace-nowrap tabular-nums" x-text="r.est_cost > 0 ? '费¥' + r.est_cost : ''"></td></tr>
-                  </template>
-                </table>
+          <div class="order-group-grid grid grid-cols-1 md:grid-cols-2 gap-3">
+            <template x-for="(column, columnIndex) in orderGroupColumns(stockGroups())" :key="'stock-col-' + columnIndex">
+              <div class="space-y-3">
+                <template x-for="group in column" :key="group.label">
+                  <div class="bg-gray-50 rounded-lg px-3 py-2.5">
+                    <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
+                    <table class="order-plan-table text-sm">
+                      <colgroup>
+                        <col class="order-code-col">
+                        <col class="order-name-col">
+                        <col class="order-quantity-col">
+                        <col class="order-price-col">
+                        <col class="order-amount-col">
+                      </colgroup>
+                      <thead class="text-xs text-gray-400">
+                        <tr><th class="text-left font-normal">代码</th><th class="text-left font-normal">名称</th><th class="text-right font-normal">数量</th><th class="text-right font-normal">参考价</th><th class="text-right font-normal">估算金额</th></tr>
+                      </thead>
+                      <template x-for="r in group.items" :key="r.stock_code">
+                        <tr class="border-b border-gray-50 last:border-0"><td class="text-gray-400 tabular-nums" x-text="r.stock_code"></td><td class="order-name-cell pr-3 font-medium" x-text="r.stock_name"></td><td class="text-right whitespace-nowrap tabular-nums" :class="orderQuantityClass(r)" x-text="orderQuantityText(r, '股')"></td><td class="text-right text-gray-500 whitespace-nowrap tabular-nums" x-text="orderReferencePrice(r)"></td><td class="text-right text-gray-800 whitespace-nowrap tabular-nums" x-text="r.amount ? fmtMoney(Math.abs(r.amount)) : ''"></td></tr>
+                      </template>
+                    </table>
+                  </div>
+                </template>
               </div>
             </template>
           </div>
@@ -659,7 +732,8 @@
       // 资金分配 + 订单
       plan: null, transferPlan: null, planError: '', loadingPlan: false,
       generationStage: '', componentErrors: { cb: '', stock: '' },
-      funding: { snapshot_date: '', temperature: null, check_type: 'a_internal', new_contribution: 0, b_purchase_status: 'unchecked', b_purchase_limit: 0, b_purchase_checked_at: '', b_purchase_source: '' },
+      funding: { snapshot_date: '', temperature: null, check_type: 'a_internal', new_contribution: 0, b_purchase_status: 'unchecked', b_purchase_limit: 0 },
+      basisExpanded: { A: true },
       sizingCb: false, sizingStock: false,
       // 排名
       running: { cb: false, stock: false },
@@ -675,11 +749,9 @@
           const context = summary.context || {}
           this.funding.snapshot_date = context.snapshot_date || this.tDate
           this.funding.temperature = context.temperature
-          this.funding.check_type = context.check_type || 'a_internal'
-          this.funding.new_contribution = context.new_contribution || 0
+          this.funding.check_type = this.normalizeCheckType(context.check_type)
+          this.funding.new_contribution = 0
           this.funding.b_purchase_limit = context.b_purchase_limit || 0
-          this.funding.b_purchase_checked_at = context.b_purchase_checked_at || ''
-          this.funding.b_purchase_source = context.b_purchase_source || ''
           this.funding.b_purchase_status = this.inferBPurchaseStatus(context)
         }
         await this.refreshFullPlan(false)
@@ -687,15 +759,13 @@
       },
 
       inferBPurchaseStatus(context) {
-        const checked = Boolean(context.b_purchase_checked_at && context.b_purchase_source)
-        if (!checked) return 'unchecked'
-        return Number(context.b_purchase_limit) > 0 ? 'available' : 'unavailable'
-      },
-      needsContribution() {
-        return this.funding.check_type === 'monthly_contribution'
+        if (['unchecked', 'unavailable', 'available'].includes(context.b_purchase_status)) {
+          return context.b_purchase_status
+        }
+        return Number(context.b_purchase_limit) > 0 ? 'available' : 'unchecked'
       },
       needsBCheck() {
-        return ['monthly_contribution', 'quarterly', 'b_recovery', 'ad_hoc'].includes(this.funding.check_type)
+        return this.funding.check_type === 'quarterly'
       },
 
       async loadTransferPlan(refreshTemperature = false) {
@@ -707,6 +777,10 @@
         this.transferPlan = await res.json()
         this.marketTemperature = this.transferPlan?.market_temperature || this.marketTemperature
         if (this.transferPlan?.plan_date) this.tDate = this.transferPlan.plan_date
+      },
+
+      normalizeCheckType(checkType) {
+        return ['quarterly', 'b_recovery', 'ad_hoc'].includes(checkType) ? 'quarterly' : 'a_internal'
       },
 
       async refreshFullPlan(refreshTemperature = false) {
@@ -729,33 +803,54 @@
 
         const usesB = this.needsBCheck()
         const bStatus = usesB ? this.funding.b_purchase_status : 'unchecked'
-        const checked = bStatus !== 'unchecked'
-        const source = checked ? String(this.funding.b_purchase_source || '').trim() : ''
-        const checkedAt = checked ? this.funding.b_purchase_checked_at : ''
         const limit = bStatus === 'available' ? Number(this.funding.b_purchase_limit) : 0
-        if (checked && (!checkedAt || !source)) {
-          throw new Error('已核验 B 申购状态必须填写核验时间和来源')
-        }
         if (bStatus === 'available' && (!Number.isFinite(limit) || limit <= 0)) {
           throw new Error('B 可申购时必须填写大于 0 的实际单次额度')
         }
 
+        await this.postFundingContext({
+          snapshot_date: this.funding.snapshot_date || this.tDate,
+          temperature,
+          check_type: this.funding.check_type,
+          new_contribution: 0,
+          b_purchase_status: bStatus,
+          b_purchase_limit: limit,
+        })
+      },
+
+      async postFundingContext(payload) {
         const res = await fetch('/api/account/context', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            snapshot_date: this.funding.snapshot_date || this.tDate,
-            temperature,
-            check_type: this.funding.check_type,
-            new_contribution: this.needsContribution() ? Number(this.funding.new_contribution) || 0 : 0,
-            b_purchase_limit: limit,
-            b_purchase_checked_at: checkedAt || null,
-            b_purchase_source: source || null,
-          }),
+          body: JSON.stringify(payload),
         })
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({ detail: '保存本次计划条件失败' }))
-          throw new Error(typeof body.detail === 'string' ? body.detail : body.detail?.message || '保存本次计划条件失败')
+        if (res.ok) return
+
+        const body = await res.json().catch(() => ({ detail: '保存本次计划条件失败' }))
+        const rejectsStatus = Array.isArray(body.detail)
+          && body.detail.some(item => item.type === 'extra_forbidden' && item.loc?.includes('b_purchase_status'))
+        if (rejectsStatus) {
+          const legacyPayload = { ...payload }
+          delete legacyPayload.b_purchase_status
+          const retry = await fetch('/api/account/context', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(legacyPayload),
+          })
+          if (retry.ok) return
+          const retryBody = await retry.json().catch(() => ({ detail: '保存本次计划条件失败' }))
+          throw new Error(this.formatApiError(retryBody, '保存本次计划条件失败'))
         }
+        throw new Error(this.formatApiError(body, '保存本次计划条件失败'))
+      },
+
+      formatApiError(body, fallback) {
+        if (typeof body.detail === 'string') return body.detail
+        if (Array.isArray(body.detail)) {
+          return body.detail.map(item => {
+            const field = Array.isArray(item.loc) ? item.loc?.join('.') : ''
+            return [field, item.msg].filter(Boolean).join(': ')
+          }).join('\n') || fallback
+        }
+        return body.detail?.message || fallback
       },
 
       async generateCompletePlan() {
@@ -767,6 +862,10 @@
           await this.saveFundingContext()
           this.generationStage = '生成完整计划'
           const response = await fetch('/api/plan/generate', { method: 'POST' })
+          if (response.status === 404) {
+            await this.generateCompletePlanLegacy()
+            return
+          }
           if (!response.ok) {
             const body = await response.json().catch(() => ({ detail: '完整计划生成失败' }))
             const detail = body.detail || {}
@@ -787,6 +886,23 @@
           this.generationStage = ''
           this.loadingPlan = false
         }
+      },
+
+      async generateCompletePlanLegacy() {
+        this.generationStage = '检查计划'
+        await this.loadPlan(false)
+        if (!this.plan) throw new Error(this.planError || '完整计划生成失败')
+        for (const strategy of ['cb', 'stock']) {
+          this.generationStage = '准备' + this.strategyLabel(strategy) + '榜单'
+          await this.ensureRanking(strategy)
+        }
+        for (const strategy of ['cb', 'stock']) {
+          if (this.plan?.[strategy]?.orders?.length) continue
+          this.generationStage = '生成' + this.strategyLabel(strategy) + '订单'
+          await this.generateOrders(strategy)
+        }
+        this.transferPlan = this.plan
+        await this.refreshRankingState()
       },
 
       async loadPlan(refreshTemperature = false, suppressDateMismatch = false) {
@@ -945,23 +1061,96 @@
         if (internal?.status === 'paused') return internal.pause_reason || '账户间资金调拨等待必要事实'
         return this.fundingActions().length ? `需调拨 ${this.fundingActions().length} 笔` : '已完整检查，本次无需资金调拨'
       },
-      fundingActions() {
-        const transfer = this.plan?.fund_transfer
-        if (!transfer) return []
-        const labels = {
+      fundingLabels() {
+        return {
           stock: '广发账户', bond: '华泰账户', cash_pool: '资金账户',
           A: '主动组合', B: '海外长钱', C: '国内长钱',
         }
-        const actions = [
-          ...(transfer.top_level?.executed_actions || []),
-          ...(transfer.top_level?.outflows || []),
-          ...(transfer.a_internal?.actions || []),
-        ]
+      },
+      labelFundingActions(actions) {
+        const labels = this.fundingLabels()
         return actions.map(action => ({
           ...action,
           sourceLabel: labels[action.source] || action.source,
           targetLabel: labels[action.target] || action.target,
         }))
+      },
+      showTopLevelSection() {
+        const top = this.plan?.fund_transfer?.top_level
+        return Boolean(top && top.check_type !== 'a_internal')
+      },
+      topLevelActions() {
+        const top = this.plan?.fund_transfer?.top_level
+        if (!top) return []
+        const actions = (top.executed_actions || [])
+          .concat(top.outflows || [])
+          .filter(action => action.source !== 'A' && action.target !== 'A')
+        return this.labelFundingActions(actions)
+      },
+      aInternalActions() {
+        const internal = this.plan?.fund_transfer?.a_internal
+        if (!internal) return []
+        return this.labelFundingActions(internal.actions || [])
+      },
+      fundingActions() {
+        return this.topLevelActions().concat(this.aInternalActions())
+      },
+      topLevelStatusText() {
+        const top = this.plan?.fund_transfer?.top_level
+        if (!top) return '等待组合间再平衡检查'
+        if (top.check_type === 'quarterly' && !top.hard_rebalance_triggered) {
+          return '组合间偏离未超过阈值，本次无需组合间调拨'
+        }
+        if (top.b_purchase_status === 'unavailable') {
+          return '海外长钱暂不可申购，本次未生成海外买入调拨'
+        }
+        return '本次无需组合间调拨'
+      },
+      topLevelRows() {
+        const top = this.plan?.fund_transfer?.top_level
+        if (!top?.current || !top?.targets) return []
+        const labels = {
+          A: '主动组合', B: '海外长钱', C: '国内长钱',
+        }
+        const planned = top.executed_deltas || {}
+        const total = Object.values(top.current || {}).reduce((sum, value) => sum + Number(value || 0), 0)
+        return ['A', 'B', 'C'].map(key => {
+          const current = Number(top.current[key] || 0)
+          const target = Number(top.targets[key] || 0)
+          const plannedDelta = Number(planned[key] || 0)
+          const remaining = target - current - plannedDelta
+          return {
+            key, label: labels[key], current, target,
+            currentPct: total ? `${(current / total * 100).toFixed(2)}%` : '-',
+            targetPct: total ? `${(target / total * 100).toFixed(2)}%` : '-',
+            planned: plannedDelta,
+            plannedText: this.fundingDeltaText(plannedDelta, '本次'),
+            remaining,
+            remainingText: this.fundingDeltaText(remaining, '调后'),
+          }
+        })
+      },
+      topLevelSummaryRows() {
+        const top = this.plan?.fund_transfer?.top_level
+        if (!top || top.check_type === 'a_internal') return []
+        return this.topLevelRows().map(row => {
+          const absRemaining = Math.abs(Number(row.remaining || 0))
+          let statusClass = 'bg-gray-100 text-gray-500'
+          if (row.key === 'B' && row.remaining > 1000 && top.b_purchase_status === 'unavailable') {
+            statusClass = 'bg-amber-50 text-amber-700'
+          } else if (absRemaining >= 1000) {
+            statusClass = row.remaining > 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
+          }
+          return { ...row, statusClass }
+        })
+      },
+      topLevelRowStatus(row) {
+        const top = this.plan?.fund_transfer?.top_level
+        if (!top?.hard_rebalance_triggered) return '未触发'
+        if (row.key === 'B' && row.remaining > 1000 && top.b_purchase_status === 'unavailable') return '暂不可买'
+        if (row.remaining > 1000) return '低于目标'
+        if (row.remaining < -1000) return '高于目标'
+        return '接近目标'
       },
       fundingActionSentence(action) {
         if (action.source === 'cash_pool') {
@@ -992,7 +1181,7 @@
         }
         return `${subject.label}${subject.planned > 0 ? '低于目标，转入后' : '高于目标，转出后'}回到目标附近`
       },
-      fundingRows() {
+      aInternalRows() {
         const internal = this.plan?.fund_transfer?.a_internal
         if (!internal?.current || !internal?.final_targets) return []
         const planned = internal.planned_deltas || {}
@@ -1019,6 +1208,32 @@
             remainingText: this.fundingDeltaText(deferred, '调后'),
           }
         })
+      },
+      fundingRows() {
+        return this.topLevelRows().concat(this.aInternalRows())
+      },
+      hasFundingBasisChildren(row) {
+        return row?.key === 'A' && this.aInternalRows().length > 0
+      },
+      toggleFundingBasis(key) {
+        this.basisExpanded[key] = !this.basisExpanded[key]
+      },
+      fundingBasisRows() {
+        const topRows = this.topLevelRows()
+        const internalRows = this.aInternalRows()
+        if (!topRows.length) {
+          return internalRows.map(row => ({ kind: 'top', key: `internal-${row.key}`, row }))
+        }
+        const rows = []
+        topRows.forEach(row => {
+          rows.push({ kind: 'top', key: `top-${row.key}`, row })
+          if (row.key === 'A' && internalRows.length && this.basisExpanded.A) {
+            internalRows.forEach(child => {
+              rows.push({ kind: 'child', key: `top-A-${child.key}`, row: child })
+            })
+          }
+        })
+        return rows
       },
       fundingDeltaText(delta, stage) {
         const amount = Number(delta || 0)
@@ -1066,6 +1281,30 @@
           .reduce((sum, order) => sum + Number(order.amount || 0), 0)
         return Math.round((sells - buys) * 100) / 100
       },
+      orderShares(order) {
+        return Number(order?.delta_shares ?? order?.shares ?? 0)
+      },
+      orderQuantityText(order, unit) {
+        const shares = this.orderShares(order)
+        return `${shares > 0 ? '+' : ''}${shares}${unit}`
+      },
+      orderQuantityClass(order) {
+        const shares = this.orderShares(order)
+        if (shares > 0) return 'text-green-600'
+        if (shares < 0) return 'text-red-500'
+        return 'text-gray-400'
+      },
+      orderReferencePrice(order) {
+        const price = Number(order?.price)
+        return Number.isFinite(price) && price > 0 ? price.toFixed(3) : '-'
+      },
+      orderGroupColumns(groups) {
+        const byAction = Object.fromEntries(groups.map(group => [group.action, group]))
+        return [
+          ['SELL', 'BUY'].map(action => byAction[action]).filter(Boolean),
+          ['TRIM', 'ADD'].map(action => byAction[action]).filter(Boolean),
+        ].filter(column => column.length)
+      },
       cashSummary(strategy) {
         if (!this.plan?.[strategy]?.orders?.length || !this.plan?.account) return null
         const accountKey = strategy === 'cb' ? 'bond_available_cash' : 'stock_available_cash'
@@ -1110,14 +1349,14 @@
         const orders = this.plan?.cb?.orders || []
         return ['SELL','TRIM','BUY','ADD'].map(action => ({
           label: {SELL:'卖出', BUY:'买入', ADD:'加仓', TRIM:'减仓'}[action], action,
-          items: orders.filter(r => r.action === action && r.shares !== 0)
+          items: orders.filter(r => r.action === action && this.orderShares(r) !== 0)
         })).filter(g => g.items.length)
       },
       stockGroups() {
         const orders = this.plan?.stock?.orders || []
         return ['SELL','TRIM','BUY','ADD'].map(action => ({
           label: {SELL:'卖出', BUY:'买入', ADD:'加仓', TRIM:'减仓'}[action], action,
-          items: orders.filter(r => r.action === action && r.shares !== 0)
+          items: orders.filter(r => r.action === action && this.orderShares(r) !== 0)
         })).filter(g => g.items.length)
       },
     }

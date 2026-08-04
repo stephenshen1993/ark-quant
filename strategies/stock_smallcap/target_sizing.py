@@ -58,9 +58,6 @@ def size_target_state(
     target_count = len(target)
     if target_count <= 0:
         raise SizingError("CAPACITY_CONFLICT", "小市值目标不能为空", target_count=target_count)
-    if budget < 0:
-        raise SizingError("INSUFFICIENT_RELEASABLE_CASH", "股票可执行预算不能为负", budget=budget)
-
     held_frame = _normalise(positions, "stock_code") if not positions.empty else positions.copy()
     held = dict(zip(held_frame.get("stock_code", []), held_frame.get("shares", [])))
     target_codes = list(target["stock_code"])

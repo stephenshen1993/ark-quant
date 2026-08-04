@@ -7,7 +7,7 @@ disable-model-invocation: false
 Run the CB rotation strategy using the current positions file:
 
 ```bash
-source .venv/bin/activate && python3 -m strategies.cb_rotation.run $ARGUMENTS
+.venv/bin/python -m strategies.cb_rotation.run $ARGUMENTS
 ```
 
 If `$ARGUMENTS` includes `--max-universe N`, pass it through for a quick smoke test.

@@ -89,6 +89,17 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(data["stock"]["trade_date"], "2026-06-30")
         self.assertEqual([phase["phase"] for phase in data["execution_sequence"]], ["sell", "transfer", "buy"])
 
+    def test_plan_service_builds_current_plan_without_http_route(self):
+        from app.plan_service import build_current_plan
+
+        data = build_current_plan()
+
+        self.assertEqual(data["plan_date"], "2026-06-29")
+        self.assertIn("fund_transfer", data)
+        self.assertEqual([phase["phase"] for phase in data["execution_sequence"]], ["sell", "transfer", "buy"])
+        self.assertGreater(len(data["cb"]["orders"]), 0)
+        self.assertGreater(len(data["stock"]["orders"]), 0)
+
     def test_full_plan_uses_the_same_structured_fund_transfer_result(self):
         r = self.client.get("/api/plan")
 
@@ -99,6 +110,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertNotEqual(data["transfer_deltas"]["stock"], 0)
         self.assertNotEqual(data["transfer_deltas"]["bond"], 0)
         self.assertTrue(data["transfer_steps"])
+        self.assertFalse(any(step.startswith("A ") for step in data["transfer_steps"]))
 
     def test_generate_plan_runs_complete_plan_on_server_once(self):
         with patch(

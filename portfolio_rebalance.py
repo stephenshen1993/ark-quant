@@ -171,18 +171,15 @@ def _top_level_plan(
             if amount >= 1000
         ]
         executable_inflows = _constrained_hard_inflows(ideal_deltas, b_limit)
-        total_inflow = sum(executable_inflows.values())
-        source_total = sum(-amount for amount in ideal_deltas.values() if amount < -1000)
-        scale = total_inflow / source_total if source_total else 0.0
         for target, amount in executable_inflows.items():
             executed_actions.append(_inflow_action(target, amount, "half_band_repair", False))
             executed_deltas[target] += amount
         for source, amount in ideal_deltas.items():
-            if amount >= -1000 or scale == 0:
+            if amount >= -1000:
                 continue
-            scaled = -amount * scale
-            outflows.append(_transfer_action(source, "cash_pool", scaled, "half_band_repair", False))
-            executed_deltas[source] -= scaled
+            outflow_amount = -amount
+            outflows.append(_transfer_action(source, "cash_pool", outflow_amount, "half_band_repair", False))
+            executed_deltas[source] -= outflow_amount
         b_status = _b_purchase_status(max(ideal_deltas.get("B", 0.0), 0.0), b_limit)
     else:
         b_status = _b_purchase_status(max(deltas["B"], 0.0), b_limit)
