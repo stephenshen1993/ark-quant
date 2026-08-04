@@ -4,7 +4,7 @@
     "candidate_return": "price_ex_coupon_net_10bp",
     "mix": "daily constant weight; cash return zero; diagnostic only"
   },
-  "source_file": "/Users/Admin/Workspace/personal/repos/ark-quant/docs/策略/证据/小市值股票策略/果仁正式小市值策略-净值与合同.json",
+  "source_file": "/Users/Admin/Workspace/personal/repos/ark-quant/docs/策略/小市值研究/证据/果仁正式小市值策略-净值与合同.json",
   "source_sha256": "08a468ab17408cd196afc9f7e8e0c9810c1fe1d9157f198418b84688840678e7",
   "candidates": {
     "B0_BASE": {
