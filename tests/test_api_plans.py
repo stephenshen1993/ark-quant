@@ -273,7 +273,13 @@ class TestPlansApi(unittest.TestCase):
         r = self.client.get("/api/plan/transfer")
 
         self.assertEqual(r.status_code, 409)
-        self.assertIn("account.overseas", {e["input"] for e in r.json()["detail"]["errors"]})
+        overseas_error = next(
+            item for item in r.json()["detail"]["errors"]
+            if item["input"] == "account.overseas"
+        )
+        self.assertEqual(overseas_error["kind"], "account")
+        self.assertEqual(overseas_error["account_name"], "海外长钱投顾组合")
+        self.assertEqual(overseas_error["portfolio_id"], "B")
 
     def test_order_sizing_stops_when_complete_funding_inputs_are_missing(self):
         db._TEST_CONN.execute(
@@ -533,6 +539,12 @@ class TestPlansApi(unittest.TestCase):
             if item["input"] == "account.stock"
         )
         self.assertEqual(stock_error["date"], "2026-06-01")
+        self.assertEqual(stock_error["kind"], "account")
+        self.assertEqual(stock_error["account_id"], "stock")
+        self.assertEqual(stock_error["account_name"], "广发账户")
+        self.assertEqual(stock_error["account_role"], "A 组合小市值股票策略承载账户")
+        self.assertEqual(stock_error["portfolio_id"], "A")
+        self.assertNotIn("股票账户", stock_error["message"])
 
     def test_position_fact_date_cannot_be_hidden_by_recent_entry_time(self):
         db._TEST_CONN.execute("DELETE FROM position_snapshot_items")

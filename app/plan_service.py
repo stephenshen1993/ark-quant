@@ -4,6 +4,7 @@ from datetime import date, datetime
 from typing import Callable
 from zoneinfo import ZoneInfo
 
+from app.account_read_model import build_account_read_model
 from app import plan_lifecycle
 from datasource import db
 from datasource.youzhiyouxing import TemperatureFetchError, get_or_fetch_market_temperature
@@ -408,23 +409,27 @@ def validate_account_inputs(
     if not account:
         errors.append({"input": "account", "date": None, "expected": plan_date, "message": "缺少账户快照"})
     else:
-        account_dates = account.get("account_snapshot_dates") or {}
-        required_accounts = {
-            "stock": "股票账户",
-            "cb": "转债账户",
-            "changqian": "长钱账户",
-            "cash": "现金账户",
+        read_model = build_account_read_model(account)
+        account_facts = {
+            item["id"]: item for item in (read_model or {}).get("accounts", [])
         }
+        required_accounts = ["stock", "cb", "changqian", "cash"]
         if include_overseas:
-            required_accounts["overseas"] = "海外长钱账户"
-        for account_id, label in required_accounts.items():
-            actual = account_dates.get(account_id)
+            required_accounts.append("overseas")
+        for account_id in required_accounts:
+            account_fact = account_facts.get(account_id, {})
+            actual = account_fact.get("snapshot_date")
             if not is_fact_date_acceptable(actual, plan_date, account_input_end):
                 errors.append({
                     "input": f"account.{account_id}",
+                    "kind": "account",
+                    "account_id": account_id,
+                    "account_name": account_fact.get("name", account_id),
+                    "account_role": account_fact.get("role"),
+                    "portfolio_id": account_fact.get("portfolio_id"),
                     "date": actual,
                     "expected": f"{plan_date} 至 {account_input_end}",
-                    "message": f"{label}事实日期不在计划输入窗口内",
+                    "message": f"{account_fact.get('name', account_id)}事实日期不在计划输入窗口内",
                 })
 
     return errors
