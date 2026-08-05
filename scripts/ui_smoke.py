@@ -72,7 +72,7 @@ def main() -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run real-browser smoke checks for ark-quant account and plan pages.",
+        description="Run real-browser smoke checks for ark-quant account, plan and changelog pages.",
     )
     parser.add_argument(
         "--viewport",
@@ -212,7 +212,7 @@ def run_viewport(
         raise SmokeFailure("playwright-cli not found; install it before running browser smoke checks")
 
     viewport = VIEWPORTS[viewport_name]
-    screenshot_path = output_dir / f"{viewport_name}-plan-basis.png"
+    screenshot_path = output_dir / f"{viewport_name}-changelog.png"
     failure_screenshot_path = output_dir / f"{viewport_name}-failure.png"
     failure_text_path = output_dir / f"{viewport_name}-failure.txt"
     code = browser_check_code(
@@ -396,6 +396,41 @@ def browser_check_code(
             if (!box || box.width <= 0 || box.height <= 0) {{
               throw new Error('计算依据区域不可见');
             }}
+
+            await page.getByRole('button', {{ name: /更新日志/ }}).click();
+            await page.waitForFunction(
+              () => document.body.innerText.includes('最近发生了什么')
+                && document.body.innerText.includes('账户事实展示口径统一')
+                && document.body.innerText.includes('Web 看板实施计划形成'),
+              {{ timeout: 10000 }}
+            );
+            const changelogRequired = [
+              '更新日志',
+              '最近发生了什么',
+              '2026-08-05',
+              '15:59',
+              '优化',
+              '账户事实展示口径统一',
+              '2026-06-29',
+              'Web 看板实施计划形成',
+            ];
+            for (const text of changelogRequired) await assertVisibleText(text);
+            const changelogText = await page.locator('[x-data="changelogPage()"]').innerText();
+            const forbiddenText = ['issue', 'pull request', 'commit', 'hash', '影响范围', '内部模块', '验证命令', '维护者备注'];
+            forbiddenText.forEach(text => {{
+              if (changelogText.toLowerCase().includes(text.toLowerCase())) {{
+                throw new Error('更新日志泄露了工程追溯信息: ' + text);
+              }}
+            }});
+            if (/#\\d+/.test(changelogText) || /\\b[0-9a-f]{{7,40}}\\b/i.test(changelogText)) {{
+              throw new Error('更新日志泄露了编号或哈希');
+            }}
+
+            await page.locator('[x-data="changelogPage()"]').scrollIntoViewIfNeeded();
+            const changelogBox = await page.locator('[x-data="changelogPage()"]').boundingBox();
+            if (!changelogBox || changelogBox.width <= 0 || changelogBox.height <= 0) {{
+              throw new Error('更新日志区域不可见');
+            }}
             await page.screenshot({{ path: {json.dumps(screenshot)}, fullPage: true }});
             return {{
               ok: true,
@@ -405,6 +440,7 @@ def browser_check_code(
               accountChecks: accountRequired.length,
               planChecks: planRequired.length,
               hierarchyChecks: expectedHierarchy.length + expectedDomLabels.length + 1,
+              changelogChecks: changelogRequired.length,
               consoleErrors,
               pageErrors,
             }};

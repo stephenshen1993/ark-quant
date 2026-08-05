@@ -38,7 +38,8 @@
   <span class="text-xs text-gray-400 font-medium px-2 mb-2">ark-quant</span>
   <template x-data x-for="item in [
     {id:'account', label:'账户', icon:'📊'},
-    {id:'trading', label:'计划', icon:'📋'}
+    {id:'trading', label:'计划', icon:'📋'},
+    {id:'changelog', label:'更新日志', icon:'🕒'}
   ]">
     <button @click="$dispatch('nav', item.id)"
       :class="$store.page === item.id
@@ -489,6 +490,40 @@
   </template>
 
 
+  <!-- 更新日志 -->
+  <template x-if="$store.page === 'changelog'">
+  <div x-data="changelogPage()" x-init="load()" class="max-w-4xl mx-auto">
+    <div class="mb-5">
+      <h1 class="text-xl font-semibold tracking-normal">更新日志</h1>
+      <p class="text-sm text-gray-400 mt-1">最近发生了什么 — 新功能、调整、下线，都写在这里。</p>
+    </div>
+
+    <div x-show="loadError" class="bg-red-50 border border-red-100 rounded-lg px-4 py-3 mb-4 text-sm text-red-700" x-text="loadError"></div>
+
+    <div x-show="!loadError" class="space-y-8">
+      <template x-for="group in groupedEntries()" :key="group.date">
+        <section>
+          <h2 class="text-sm font-semibold text-gray-900 mb-3" x-text="group.date"></h2>
+          <div class="border-l border-gray-200">
+            <template x-for="entry in group.entries" :key="entry.date + entry.time + entry.title">
+              <article class="relative pl-5 pb-5 last:pb-0">
+                <span class="absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full bg-white border border-gray-300"></span>
+                <div class="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                  <time class="tabular-nums" x-text="entry.time"></time>
+                  <span class="rounded px-1.5 py-0.5 font-medium" :class="typeClass(entry.type)" x-text="entry.type"></span>
+                </div>
+                <h3 class="mt-1 text-sm font-semibold text-gray-900" x-text="entry.title"></h3>
+                <p class="mt-1 text-sm leading-6 text-gray-500" x-text="entry.body"></p>
+              </article>
+            </template>
+          </div>
+        </section>
+      </template>
+    </div>
+  </div>
+  </template>
+
+
 
 </main>
 
@@ -502,6 +537,46 @@
     const now = new Date()
     const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
     return local.toISOString().slice(0, 10)
+  }
+
+  function changelogPage() {
+    return {
+      entries: [],
+      loadError: '',
+      async load() {
+        try {
+          const response = await fetch('/static/changelog.json')
+          if (!response.ok) throw new Error('更新日志加载失败')
+          const entries = await response.json()
+          this.entries = entries
+            .slice()
+            .sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`))
+        } catch (error) {
+          this.loadError = error.message || '更新日志加载失败'
+        }
+      },
+      groupedEntries() {
+        const groups = []
+        this.entries.forEach(entry => {
+          let group = groups.find(item => item.date === entry.date)
+          if (!group) {
+            group = { date: entry.date, entries: [] }
+            groups.push(group)
+          }
+          group.entries.push(entry)
+        })
+        return groups
+      },
+      typeClass(type) {
+        const classes = {
+          更新: 'bg-green-50 text-green-700',
+          优化: 'bg-blue-50 text-blue-700',
+          公告: 'bg-gray-100 text-gray-600',
+          下线: 'bg-amber-50 text-amber-700',
+        }
+        return classes[type] || 'bg-gray-100 text-gray-500'
+      },
+    }
   }
 
   // 账户总览（含持仓）

@@ -48,6 +48,9 @@ class TestUiSmokeScript(unittest.TestCase):
         self.assertIn("主动组合下属账户没有以子行缩进展示", text)
         self.assertIn("账户事实日", text)
         self.assertIn("展开查看计算依据", text)
+        self.assertIn("更新日志", text)
+        self.assertIn("最近发生了什么", text)
+        self.assertIn("changelogChecks", text)
 
 
 if __name__ == "__main__":

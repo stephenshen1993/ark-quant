@@ -252,6 +252,24 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn(':open="!plan"', self.html)
         self.assertIn("计划条件", self.html)
 
+    def test_changelog_page_uses_static_aihot_style_stream(self):
+        self.assertIn("{id:'changelog', label:'更新日志'", self.html)
+        self.assertLess(self.html.index("label:'账户'"), self.html.index("label:'计划'"))
+        self.assertLess(self.html.index("label:'计划'"), self.html.index("label:'更新日志'"))
+        self.assertIn("$store.page === 'changelog'", self.html)
+        self.assertIn('x-data="changelogPage()"', self.html)
+        self.assertIn("fetch('/static/changelog.json')", self.html)
+        self.assertIn("最近发生了什么", self.html)
+        self.assertIn("groupedEntries()", self.html)
+        self.assertIn("entry.time", self.html)
+        self.assertIn("entry.type", self.html)
+        self.assertIn("entry.title", self.html)
+        self.assertIn("entry.body", self.html)
+        self.assertNotIn("entry.issue", self.html)
+        self.assertNotIn("entry.pr", self.html)
+        self.assertNotIn("entry.commit", self.html)
+        self.assertNotIn("entry.hash", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
