@@ -517,11 +517,11 @@
       _sortTimers: {},
       loadedOnce: false,
       accounts: [
-        { id: 'stock',    label: '广发账户', sub: '证券交易与托管', role: 'A 组合小市值股票策略承载账户', color: '#8b5cf6', totalKey: 'stock_total',     cashKey: 'stock_cash', posType: 'stock' },
-        { id: 'cb',       label: '华泰账户', sub: '证券交易与托管', role: 'A 组合多因子可转债策略承载账户', color: '#14b8a6', totalKey: 'bond_total',      cashKey: 'bond_cash',  posType: 'cb'    },
-        { id: 'changqian',label: '长钱投顾组合', sub: '雪球基金托管', role: 'C 组合当前承载通道', color: '#f59e0b', totalKey: 'changqian_total', posType: null    },
-        { id: 'overseas', label: '海外长钱投顾组合', sub: '雪球基金托管', role: 'B 组合当前承载通道', color: '#60a5fa', totalKey: 'overseas_total',  posType: null    },
-        { id: 'cash',     label: '浦发现金账户', sub: '资金调拨与现金管理', role: 'A 组合现金池承载账户', color: '#9ca3af', totalKey: 'cash_pool',       posType: null    },
+        { id: 'stock',    label: '广发账户', sub: '证券交易与托管', color: '#8b5cf6', totalKey: 'stock_total',     cashKey: 'stock_cash', posType: 'stock' },
+        { id: 'cb',       label: '华泰账户', sub: '证券交易与托管', color: '#14b8a6', totalKey: 'bond_total',      cashKey: 'bond_cash',  posType: 'cb'    },
+        { id: 'changqian',label: '长钱投顾组合', sub: '雪球基金托管', color: '#f59e0b', totalKey: 'changqian_total', posType: null    },
+        { id: 'overseas', label: '海外长钱投顾组合', sub: '雪球基金托管', color: '#60a5fa', totalKey: 'overseas_total',  posType: null    },
+        { id: 'cash',     label: '浦发现金账户', sub: '资金调拨与现金管理', color: '#9ca3af', totalKey: 'cash_pool',       posType: null    },
       ],
       form: {
         snapshot_date: localDate(),
@@ -576,7 +576,6 @@
           const acc = this.accounts.find(a => a.id === item.id)
           if (!acc) return
           acc.label = item.name || acc.label
-          acc.role = item.role || acc.role
           acc.sub = item.portfolio_node_name || acc.sub
           acc.readModel = item
         })
@@ -662,7 +661,7 @@
         return total > 0 ? (this.num(this.form[acc.totalKey]) / total * 100).toFixed(1) + '%' : '0%'
       },
       accountRole(acc) {
-        return acc.readModel?.role || acc.role || ''
+        return acc.readModel?.role || ''
       },
       accUpdateDate(acc) {
         const accountDate = this.accountItem(acc.id)?.snapshot_date
@@ -744,7 +743,7 @@
       // T 日数据
       tDate: localDate(), marketTemperature: null,
       // 资金分配 + 订单
-      plan: null, transferPlan: null, planError: '', loadingPlan: false,
+      plan: null, transferPlan: null, accountReadModel: null, planError: '', loadingPlan: false,
       generationStage: '', componentErrors: { cb: '', stock: '' },
       funding: { snapshot_date: '', temperature: null, check_type: 'a_internal', new_contribution: 0, b_purchase_status: 'unchecked', b_purchase_limit: 0 },
       basisExpanded: { A: true },
@@ -759,6 +758,7 @@
       async init() {
         const summary = await fetch('/api/account/summary').then(r => r.json().catch(() => null))
         if (summary) {
+          this.accountReadModel = summary.read_model || this.accountReadModel
           this.tDate = summary.context?.snapshot_date || this.tDate
           const context = summary.context || {}
           this.funding.snapshot_date = context.snapshot_date || this.tDate
@@ -789,6 +789,7 @@
           return
         }
         this.transferPlan = await res.json()
+        this.accountReadModel = this.transferPlan?.account_read_model || this.accountReadModel
         this.marketTemperature = this.transferPlan?.market_temperature || this.marketTemperature
         if (this.transferPlan?.plan_date) this.tDate = this.transferPlan.plan_date
       },
@@ -887,6 +888,7 @@
             throw new Error([detail.message || String(detail || '完整计划生成失败'), ...lines].join('\n'))
           }
           this.plan = await response.json()
+          this.accountReadModel = this.plan?.account_read_model || this.accountReadModel
           this.marketTemperature = this.plan?.market_temperature || null
           if (this.plan?.plan_date) {
             this.tDate = this.plan.plan_date
@@ -940,6 +942,7 @@
           return
         }
         this.plan = await res.json()
+        this.accountReadModel = this.plan?.account_read_model || this.accountReadModel
         this.marketTemperature = this.plan?.market_temperature || null
         if (this.plan?.plan_date) {
           this.tDate = this.plan.plan_date
@@ -1075,10 +1078,20 @@
         if (internal?.status === 'paused') return internal.pause_reason || '账户间资金调拨等待必要事实'
         return this.fundingActions().length ? `需调拨 ${this.fundingActions().length} 笔` : '已完整检查，本次无需资金调拨'
       },
+      readModelAccountById(id) {
+        return (this.accountReadModel?.accounts || []).find(item => item.id === id) || null
+      },
+      readModelPortfolioById(id) {
+        return (this.accountReadModel?.portfolios || []).find(item => item.id === id) || null
+      },
       fundingLabels() {
         return {
-          stock: '广发账户', bond: '华泰账户', cash_pool: '资金账户',
-          A: '主动组合', B: '海外长钱', C: '国内长钱',
+          stock: this.readModelAccountById('stock')?.name || '广发账户',
+          bond: this.readModelAccountById('cb')?.name || '华泰账户',
+          cash_pool: this.readModelAccountById('cash')?.name || '资金账户',
+          A: this.readModelPortfolioById('A')?.name || '主动组合',
+          B: this.readModelPortfolioById('B')?.name || '海外长钱',
+          C: this.readModelPortfolioById('C')?.name || '国内长钱',
         }
       },
       labelFundingActions(actions) {
@@ -1123,9 +1136,7 @@
       topLevelRows() {
         const top = this.plan?.fund_transfer?.top_level
         if (!top?.current || !top?.targets) return []
-        const labels = {
-          A: '主动组合', B: '海外长钱', C: '国内长钱',
-        }
+        const labels = this.fundingLabels()
         const planned = top.executed_deltas || {}
         const total = Object.values(top.current || {}).reduce((sum, value) => sum + Number(value || 0), 0)
         return ['A', 'B', 'C'].map(key => {
@@ -1200,8 +1211,9 @@
         if (!internal?.current || !internal?.final_targets) return []
         const planned = internal.planned_deltas || {}
         const remaining = internal.deferred_gaps || {}
+        const labels = this.fundingLabels()
         return [
-          ['stock', '广发账户'], ['bond', '华泰账户'], ['cash_pool', '资金账户'],
+          ['stock', labels.stock], ['bond', labels.bond], ['cash_pool', labels.cash_pool],
         ].map(([key, label]) => {
           const current = Number(internal.current[key] || 0)
           const target = Number(internal.final_targets[key] || 0)

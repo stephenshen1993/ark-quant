@@ -60,12 +60,14 @@ def build_transfer_plan(refresh_temperature: bool = False) -> dict:
             {"code": exc.code, "message": exc.message},
         ) from exc
     targets, deltas, transfer_steps = fund_transfer_compatibility(fund_transfer)
+    account_read_model = build_account_read_model(account)
 
     return {
         "generated_at": datetime.now().isoformat(),
         "plan_date": plan_date,
         "market_temperature": market_temperature.to_dict(),
         "account": account,
+        "account_read_model": account_read_model,
         "targets": targets,
         "transfer_steps": transfer_steps,
         "transfer_deltas": deltas,
@@ -127,6 +129,7 @@ def build_current_plan(refresh_temperature: bool = False) -> dict:
             {"code": exc.code, "message": exc.message},
         ) from exc
     targets, deltas, transfer_steps = fund_transfer_compatibility(fund_transfer)
+    account_read_model = build_account_read_model(account)
 
     def order_summary(orders, cash_key: str) -> dict | None:
         if not orders or not account:
@@ -140,6 +143,7 @@ def build_current_plan(refresh_temperature: bool = False) -> dict:
         "plan_date": plan_date,
         "market_temperature": market_temperature.to_dict(),
         "account": account,
+        "account_read_model": account_read_model,
         "warnings": warnings,
         "trade_errors": trade_errors,
         "targets": targets,
@@ -349,11 +353,13 @@ def build_generated_plan_response(
     targets, deltas, transfer_steps = fund_transfer_compatibility(fund_transfer)
     cb_orders = (cb_result or {}).get("orders", [])
     stock_orders = (stock_result or {}).get("orders", [])
+    account_read_model = build_account_read_model(account)
     return {
         "generated_at": datetime.now().isoformat(),
         "plan_date": plan_date,
         "market_temperature": market_temperature.to_dict(),
         "account": account,
+        "account_read_model": account_read_model,
         "warnings": plan_input_warnings(plan_date, account),
         "trade_errors": [],
         "targets": targets,

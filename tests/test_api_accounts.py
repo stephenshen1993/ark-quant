@@ -118,6 +118,12 @@ class TestAccountsApi(unittest.TestCase):
         self.assertEqual(read_accounts["stock"]["kind"], "account")
         self.assertEqual(read_accounts["stock"]["role"], "A 组合小市值股票策略承载账户")
         self.assertEqual(read_accounts["stock"]["strategy_ids"], ["smallcap_stock"])
+        self.assertEqual(read_accounts["cash"]["strategy_ids"], [])
+        self.assertEqual(read_accounts["cash"]["carrier_strategy_ids"], ["cash_management"])
+        self.assertEqual(
+            {item["id"] for item in read_model["strategies"]},
+            {"smallcap_stock", "multifactor_convertible_bond"},
+        )
         portfolios = {item["id"]: item for item in read_model["portfolios"]}
         self.assertEqual(portfolios["A"]["account_ids"], ["stock", "cb", "cash"])
         self.assertEqual(portfolios["A"]["current_amount"], 436738)

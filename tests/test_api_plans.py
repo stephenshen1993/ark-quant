@@ -88,6 +88,13 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(data["stock"]["data_date"], "2026-06-29")
         self.assertEqual(data["stock"]["trade_date"], "2026-06-30")
         self.assertEqual([phase["phase"] for phase in data["execution_sequence"]], ["sell", "transfer", "buy"])
+        read_model = data["account_read_model"]
+        portfolios = {item["id"]: item for item in read_model["portfolios"]}
+        self.assertEqual(portfolios["A"]["account_ids"], ["stock", "cb", "cash"])
+        self.assertEqual(
+            {item["id"] for item in read_model["strategies"]},
+            {"smallcap_stock", "multifactor_convertible_bond"},
+        )
 
     def test_plan_service_builds_current_plan_without_http_route(self):
         from app.plan_service import build_current_plan
@@ -99,6 +106,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual([phase["phase"] for phase in data["execution_sequence"]], ["sell", "transfer", "buy"])
         self.assertGreater(len(data["cb"]["orders"]), 0)
         self.assertGreater(len(data["stock"]["orders"]), 0)
+        self.assertIn("account_read_model", data)
 
     def test_full_plan_uses_the_same_structured_fund_transfer_result(self):
         r = self.client.get("/api/plan")
@@ -255,6 +263,10 @@ class TestPlansApi(unittest.TestCase):
         self.assertIn("transfer_deltas", data)
         self.assertEqual(data["fund_transfer"]["top_level"]["status"], "ready")
         self.assertEqual(data["fund_transfer"]["a_internal"]["status"], "not_requested")
+        self.assertEqual(
+            data["account_read_model"]["portfolios"][0]["account_ids"],
+            ["stock", "cb", "cash"],
+        )
         self.assertNotIn("cb", data)
         self.assertNotIn("stock", data)
 

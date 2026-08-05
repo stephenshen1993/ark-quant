@@ -69,21 +69,21 @@ ACCOUNT_FACT_FIELDS = {
 PORTFOLIO_DEFINITIONS = {
     ACTIVE_PORTFOLIO: {
         "id": ACTIVE_PORTFOLIO,
-        "name": "A：自主管理组合",
+        "name": "主动组合",
         "kind": "top_portfolio",
         "description": "核心进攻与主动超额来源。",
         "child_node_ids": ("a_smallcap_stock", "a_convertible_bond", "a_cash_pool"),
     },
     OVERSEAS_LONG_TERM_PORTFOLIO: {
         "id": OVERSEAS_LONG_TERM_PORTFOLIO,
-        "name": "B：海外长钱组合",
+        "name": "海外长钱",
         "kind": "top_portfolio",
         "description": "海外长期收益、国别与货币分散、第二收益来源。",
         "child_node_ids": ("b_overseas_long_term",),
     },
     DOMESTIC_LONG_TERM_PORTFOLIO: {
         "id": DOMESTIC_LONG_TERM_PORTFOLIO,
-        "name": "C：国内长钱组合",
+        "name": "国内长钱",
         "kind": "top_portfolio",
         "description": "国内长钱底仓、偏大盘风格补充、可信投顾托管。",
         "child_node_ids": ("c_domestic_long_term",),
@@ -124,7 +124,9 @@ def _context(summary: dict) -> dict:
 def _account_fact(account_id: str, summary: dict) -> dict:
     fields = ACCOUNT_FACT_FIELDS[account_id]
     definition = ACCOUNT_DEFINITIONS[account_id]
-    strategy_ids = list(definition["strategy_ids"])
+    model_ids = list(definition["strategy_ids"])
+    strategy_ids = _account_internal_strategy_ids(model_ids)
+    carrier_ids = [item for item in model_ids if item not in strategy_ids]
     return {
         "id": account_id,
         "kind": "account",
@@ -135,6 +137,10 @@ def _account_fact(account_id: str, summary: dict) -> dict:
         "portfolio_node_name": fields["portfolio_node_name"],
         "strategy_ids": strategy_ids,
         "strategy_names": [STRATEGY_DEFINITIONS[item]["name"] for item in strategy_ids],
+        "carrier_strategy_ids": carrier_ids,
+        "carrier_strategy_names": [
+            STRATEGY_DEFINITIONS[item]["name"] for item in carrier_ids
+        ],
         "asset_classes": list(definition["asset_classes"]),
         "country_exposure": definition["country_exposure"],
         "total": _amount(summary.get(fields["total"])),
@@ -176,6 +182,14 @@ def _strategy_facts(account_facts: list[dict]) -> list[dict]:
             "portfolio_node_ids": [account["portfolio_node_id"] for account in accounts],
         }
         for strategy_id, accounts in strategy_accounts.items()
+    ]
+
+
+def _account_internal_strategy_ids(strategy_ids: list[str]) -> list[str]:
+    return [
+        strategy_id
+        for strategy_id in strategy_ids
+        if STRATEGY_DEFINITIONS[strategy_id]["scope"] == "账户内"
     ]
 
 

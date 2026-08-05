@@ -40,11 +40,10 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("事实日 ", self.html)
         self.assertIn("accountRole(acc)", self.html)
         self.assertIn("summary.read_model?.accounts", self.html)
-        self.assertIn("A 组合小市值股票策略承载账户", self.html)
-        self.assertIn("A 组合多因子可转债策略承载账户", self.html)
-        self.assertIn("A 组合现金池承载账户", self.html)
-        self.assertIn("B 组合当前承载通道", self.html)
-        self.assertIn("C 组合当前承载通道", self.html)
+        self.assertIn("acc.readModel?.role || ''", self.html)
+        self.assertNotIn("role: 'A 组合", self.html)
+        self.assertNotIn("role: 'B 组合", self.html)
+        self.assertNotIn("role: 'C 组合", self.html)
         self.assertNotIn(
             "this.form.snapshot_date = context.snapshot_date || this.form.snapshot_date",
             self.html,
@@ -134,6 +133,12 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("fundingActionReason(action)", self.html)
         self.assertIn("action.sourceLabel", self.html)
         self.assertIn("action.targetLabel", self.html)
+        self.assertIn("accountReadModel: null", self.html)
+        self.assertIn("this.accountReadModel = summary.read_model || this.accountReadModel", self.html)
+        self.assertIn("this.transferPlan?.account_read_model || this.accountReadModel", self.html)
+        self.assertIn("this.plan?.account_read_model || this.accountReadModel", self.html)
+        self.assertIn("readModelAccountById(id)", self.html)
+        self.assertIn("readModelPortfolioById(id)", self.html)
         self.assertIn("action.source !== 'A' && action.target !== 'A'", self.html)
         self.assertNotIn("决策链路", self.html)
         self.assertNotIn("转出到", self.html)

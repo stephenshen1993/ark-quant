@@ -42,8 +42,19 @@ class TestAccountReadModel(unittest.TestCase):
         self.assertEqual(accounts["stock"]["strategy_ids"], ["smallcap_stock"])
         self.assertEqual(accounts["stock"]["portfolio_id"], "A")
         self.assertEqual(accounts["cash"]["role"], "A 组合现金池承载账户")
+        self.assertEqual(accounts["cash"]["strategy_ids"], [])
+        self.assertEqual(accounts["cash"]["carrier_strategy_ids"], ["cash_management"])
+        self.assertEqual(accounts["overseas"]["strategy_ids"], [])
+        self.assertEqual(
+            accounts["overseas"]["carrier_strategy_ids"],
+            ["overseas_long_term_advisory"],
+        )
 
         strategies = {item["id"]: item for item in read_model["strategies"]}
+        self.assertEqual(
+            set(strategies),
+            {"smallcap_stock", "multifactor_convertible_bond"},
+        )
         self.assertEqual(strategies["smallcap_stock"]["account_ids"], ["stock"])
         self.assertEqual(
             strategies["multifactor_convertible_bond"]["account_names"],
@@ -60,6 +71,9 @@ class TestAccountReadModel(unittest.TestCase):
         self.assertEqual(nodes["a_smallcap_stock"]["account_ids"], ["stock"])
         self.assertEqual(nodes["a_convertible_bond"]["account_ids"], ["cb"])
         self.assertEqual(nodes["a_cash_pool"]["account_ids"], ["cash"])
+        self.assertEqual(nodes["a_cash_pool"]["strategy_ids"], [])
+        self.assertEqual(nodes["b_overseas_long_term"]["strategy_ids"], [])
+        self.assertEqual(nodes["c_domestic_long_term"]["strategy_ids"], [])
 
         self.assertEqual(
             read_model["legacy_adapter"]["strategy_to_account_id"]["stock"],
