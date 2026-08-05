@@ -6,6 +6,7 @@ __pycache__/
 .env
 *.cookie
 secrets/
+.playwright-cli/
 .playwright-mcp/
 
 logs/*.log
@@ -13,6 +14,7 @@ logs/*.pid
 outputs/*.csv
 outputs/*.xlsx
 outputs/*.md
+outputs/ui-smoke/
 data/*.db
 data/*.lock
 data/cache/*
