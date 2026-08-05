@@ -404,6 +404,30 @@ def browser_check_code(
               '含 3 个账户',
             ];
             for (const text of planRequired) await assertVisibleText(text);
+            const planMetrics = await page.evaluate(() => {{
+              const appMain = document.querySelector('.app-main');
+              const shell = document.querySelector('.plan-workbench')?.getBoundingClientRect();
+              const hero = document.querySelector('.plan-hero-panel')?.getBoundingClientRect();
+              const transfer = document.querySelector('.plan-transfer-panel')?.getBoundingClientRect();
+              return {{
+                shellWidth: shell?.width || 0,
+                heroWidth: hero?.width || 0,
+                transferWidth: transfer?.width || 0,
+                appClientWidth: appMain?.clientWidth || 0,
+                appScrollWidth: appMain?.scrollWidth || 0,
+              }};
+            }});
+            if ({json.dumps(viewport_name)} !== 'narrow') {{
+              if (planMetrics.shellWidth < 1000 || planMetrics.shellWidth > 1100) {{
+                throw new Error('计划工作台容器宽度偏离: ' + JSON.stringify(planMetrics));
+              }}
+              if (Math.abs(planMetrics.heroWidth - planMetrics.transferWidth) > 2) {{
+                throw new Error('计划操作面板和资金调拨面板宽度不一致: ' + JSON.stringify(planMetrics));
+              }}
+            }}
+            if (planMetrics.appScrollWidth > planMetrics.appClientWidth + 2) {{
+              throw new Error('计划页出现横向溢出: ' + JSON.stringify(planMetrics));
+            }}
             const hierarchy = await page.evaluate(() => {{
               const host = document.querySelector('[x-data="tradingPage()"]');
               const data = window.Alpine.$data(host);

@@ -558,15 +558,23 @@
 
 <!-- 计划 -->
   <template x-if="$store.page === 'trading'">
-  <div x-data="tradingPage()" class="workspace-shell workspace-shell-wide">
-    <!-- 计划基准与唯一主操作 -->
-    <div class="ark-panel flex flex-col xl:flex-row xl:items-center gap-4 mb-5 p-5">
+  <div x-data="tradingPage()" class="workspace-shell workspace-shell-workbench plan-workbench">
+    <div class="workspace-title-row flex justify-between gap-5">
       <div>
-        <h1 class="workspace-title text-[34px]">生成计划</h1>
+        <div class="workspace-kicker">WORKBENCH</div>
+        <h1 class="workspace-title tracking-normal">计划</h1>
         <div class="workspace-meta mt-2" x-text="tDate ? '基于 ' + tDate + ' 收盘数据' : '等待计划基准日'"></div>
       </div>
-      <span x-show="executionDate()" class="text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full"
+      <span x-show="executionDate()" class="text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full self-start"
         x-text="'适用 ' + executionDate() + ' 开盘执行'"></span>
+    </div>
+
+    <!-- 计划基准与唯一主操作 -->
+    <div class="ark-panel plan-hero-panel flex flex-col xl:flex-row xl:items-center gap-4 mb-5 p-5">
+      <div>
+        <div class="text-sm font-semibold text-gray-900">生成计划</div>
+        <div class="workspace-meta mt-2">按账户事实、计划条件和策略榜单生成当日可执行安排。</div>
+      </div>
       <div class="flex flex-wrap items-center gap-2 xl:ml-auto">
         <span class="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">
           温度 <span class="text-gray-700 font-medium tabular-nums" x-text="temperatureText()"></span>
@@ -582,7 +590,7 @@
     </div>
 
     <!-- 本次计划条件 -->
-    <details class="ark-panel px-5 py-3 mb-4" :open="!plan">
+    <details class="ark-panel plan-conditions-panel px-5 py-3 mb-4" :open="!plan">
       <summary class="cursor-pointer select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">
         <div class="inline-flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span class="text-sm font-semibold">本次计划条件</span>
@@ -622,7 +630,7 @@
     <div x-show="planError" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-sm text-red-700 whitespace-pre-line" x-text="planError"></div>
 
     <!-- 就绪状态 -->
-    <section class="ark-panel p-4 mb-4">
+    <section class="ark-panel plan-readiness-panel p-4 mb-4">
       <div class="flex items-center justify-between mb-3">
         <div class="text-sm font-semibold">计划就绪状态</div>
         <div class="text-xs text-gray-400">榜单生成受盘中保护；盘中可查看已有计划。</div>
@@ -651,7 +659,7 @@
     </details>
 
     <!-- 资金调拨结果始终可见 -->
-    <div class="ark-panel p-5 mb-4">
+    <div class="ark-panel plan-transfer-panel p-5 mb-4">
       <div class="flex items-center justify-between mb-3">
         <div class="text-sm font-semibold">账户间资金调拨</div>
         <span class="text-xs rounded-full px-2.5 py-1" :class="statusClass(plan?.fund_transfer ? 'ready' : 'waiting')" x-text="transferStatusText()"></span>
@@ -738,7 +746,7 @@
     </div>
 
     <!-- 转债计划 -->
-    <div class="ark-panel p-5 mb-4">
+    <div class="ark-panel plan-order-panel plan-cb-panel p-5 mb-4">
       <div class="flex items-center justify-between mb-3">
         <div class="text-sm font-semibold">转债计划
           <span class="text-xs text-gray-400 font-normal ml-2" x-text="plan?.cb?.data_date ? '基于 ' + plan?.cb?.data_date + ' 收盘' : ''"></span>
@@ -825,7 +833,7 @@
     </div>
 
     <!-- 股票计划 -->
-    <div class="ark-panel p-5">
+    <div class="ark-panel plan-order-panel plan-stock-panel p-5">
       <div class="flex items-center justify-between mb-3">
         <div class="text-sm font-semibold">股票计划
           <span class="text-xs text-gray-400 font-normal ml-2" x-text="plan?.stock?.data_date ? '基于 ' + plan?.stock?.data_date + ' 收盘' : ''"></span>

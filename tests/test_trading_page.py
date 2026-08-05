@@ -330,6 +330,19 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("saveSimpleAccount(acc.id)", self.html)
         self.assertNotIn("账户页旧后台", self.html)
 
+    def test_plan_page_uses_aihot_workbench_container(self):
+        self.assertIn('x-data="tradingPage()" class="workspace-shell workspace-shell-workbench plan-workbench"', self.html)
+        self.assertIn("plan-hero-panel", self.html)
+        self.assertIn("plan-conditions-panel", self.html)
+        self.assertIn("plan-readiness-panel", self.html)
+        self.assertIn("plan-transfer-panel", self.html)
+        self.assertIn("WORKBENCH", self.html)
+        self.assertIn("计划", self.html)
+        self.assertIn("账户间资金调拨", self.html)
+        self.assertIn("转债计划", self.html)
+        self.assertIn("股票计划", self.html)
+        self.assertNotIn("计划页旧后台", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
