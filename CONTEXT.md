@@ -61,3 +61,17 @@
 订单批次属于计划生命周期事实。订单内容由外部资金调拨 module 或策略 sizing module 产出，计划生命周期 module 只登记、保存和读取。
 
 第一阶段治理先收敛入口和 interface，不改数据库表结构。
+
+## 4. 订单 sizing 编排 module
+
+订单 sizing 编排 module 的边界已经确认：
+
+- 负责从计划现金、策略榜单、持仓事实和报价生成订单草案。
+- 负责调用账户内策略 sizing implementation。
+- 负责订单后的现金约束校验和策略订单落库。
+- 不负责资金调拨算法。
+- 不负责计划生命周期状态。
+- 不负责定义股票或转债 sizing 算法。
+- 不负责记录成交事实。
+
+HTTP 路由是订单 sizing 编排 module 的 adapter，不承载 sizing implementation。

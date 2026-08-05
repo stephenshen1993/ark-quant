@@ -114,7 +114,7 @@ class TestPlansApi(unittest.TestCase):
 
     def test_generate_plan_runs_complete_plan_on_server_once(self):
         with patch(
-            "app.routers.plans._size_cb_orders",
+            "app.order_sizing.size_cb_orders",
             return_value={
                 "orders": [{
                     "action": "BUY", "bond_code": "113062", "bond_name": "常银转债",
@@ -128,7 +128,7 @@ class TestPlansApi(unittest.TestCase):
                 },
             },
         ) as cb_size, patch(
-            "app.routers.plans._size_stock_orders",
+            "app.order_sizing.size_stock_orders",
             return_value={
                 "orders": [{
                     "action": "SELL", "stock_code": "600051", "stock_name": "宁波联合",
@@ -173,7 +173,7 @@ class TestPlansApi(unittest.TestCase):
             "price": 126.80, "delta_shares": 10, "amount": 1268.0,
         }]
         with patch(
-            "app.routers.plans._size_cb_orders",
+            "app.order_sizing.size_cb_orders",
             return_value={
                 "orders": cb_orders,
                 "summary": {
@@ -184,7 +184,7 @@ class TestPlansApi(unittest.TestCase):
                 },
             },
         ), patch(
-            "app.routers.plans._size_stock_orders",
+            "app.order_sizing.size_stock_orders",
             side_effect=HTTPException(
                 status_code=409,
                 detail={"code": "STOCK_SIZING_FAILED", "message": "stock sizing failed"},
@@ -203,13 +203,13 @@ class TestPlansApi(unittest.TestCase):
 
     def test_account_changes_mark_generated_plans_stale(self):
         with patch(
-            "app.routers.plans._size_cb_orders",
+            "app.order_sizing.size_cb_orders",
             return_value={"orders": [], "summary": {
                 "starting_cash": 110.0, "transfer_delta": 0.0,
                 "order_delta": 0.0, "cash_left": 110.0,
             }},
         ), patch(
-            "app.routers.plans._size_stock_orders",
+            "app.order_sizing.size_stock_orders",
             return_value={"orders": [], "summary": {
                 "starting_cash": 274.0, "transfer_delta": 0.0,
                 "order_delta": 0.0, "cash_left": 274.0,
@@ -405,7 +405,7 @@ class TestPlansApi(unittest.TestCase):
         ]))
 
         with patch(
-            "app.routers.plans._strategy_cash_after_transfer",
+            "app.plan_service.strategy_cash_after_transfer",
             return_value=30000,
         ), patch(
             "datasource.market.fetch_cb_prices_tencent",
@@ -424,7 +424,7 @@ class TestPlansApi(unittest.TestCase):
         db._TEST_CONN.commit()
 
         with patch(
-            "app.routers.plans._strategy_cash_after_transfer",
+            "app.plan_service.strategy_cash_after_transfer",
             return_value=-5000,
         ), patch(
             "datasource.market.fetch_cb_prices_tencent",
@@ -439,10 +439,10 @@ class TestPlansApi(unittest.TestCase):
     def test_order_cash_uses_available_cash_not_cash_balance(self):
         db.insert_account_value_snapshot("cb", "2026-06-29", 227183, 1110, 1000)
         account = db.get_current_account_summary()
-        from app.routers.plans import _strategy_cash_after_transfer
+        from app.plan_service import strategy_cash_after_transfer
         self.assertEqual(account["bond_cash"], 1110)
         self.assertEqual(account["bond_available_cash"], 110)
-        self.assertEqual(_strategy_cash_after_transfer("cb", account, {"bond": 0}), 110)
+        self.assertEqual(strategy_cash_after_transfer("cb", account, {"bond": 0}), 110)
 
     def test_size_cb_orders_reports_partial_quote_gaps(self):
         db._TEST_CONN.execute("DELETE FROM cb_orders")
@@ -460,7 +460,7 @@ class TestPlansApi(unittest.TestCase):
         ]))
 
         with patch(
-            "app.routers.plans._strategy_cash_after_transfer",
+            "app.plan_service.strategy_cash_after_transfer",
             return_value=10000,
         ), patch(
             "datasource.market.fetch_cb_prices_tencent",
@@ -479,7 +479,7 @@ class TestPlansApi(unittest.TestCase):
         db.insert_positions("cb", "2026-06-29", [])
 
         with patch(
-            "app.routers.plans._strategy_cash_after_transfer",
+            "app.plan_service.strategy_cash_after_transfer",
             return_value=10000,
         ), patch(
             "datasource.market.fetch_cb_prices_tencent",
@@ -546,10 +546,10 @@ class TestPlansApi(unittest.TestCase):
         )
         db._TEST_CONN.commit()
 
-        from app.routers.plans import _position_snapshot_for_plan
+        from app.plan_service import position_snapshot_for_plan
 
         self.assertIsNone(
-            _position_snapshot_for_plan("cb", "2026-06-29", "2026-06-30")
+            position_snapshot_for_plan("cb", "2026-06-29", "2026-06-30")
         )
 
     def test_monday_preopen_account_updates_are_valid_for_friday_plan(self):
