@@ -44,6 +44,8 @@ class TestUiSmokeScript(unittest.TestCase):
         self.assertIn("accountMetrics", text)
         self.assertIn("账户工作台容器宽度偏离", text)
         self.assertIn("账户页出现横向溢出", text)
+        self.assertIn("assertNoClippedWideTables", text)
+        self.assertIn("表格被外层裁切且没有横向滚动容器", text)
         self.assertIn("planScreenshot", text)
         self.assertIn("planMetrics", text)
         self.assertIn("计划工作台容器宽度偏离", text)

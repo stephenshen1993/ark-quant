@@ -190,6 +190,12 @@
     border-spacing: 0;
     overflow: hidden;
   }
+  .responsive-table-scroll {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
   .changelog-shell {
     width: 100%;
     max-width: var(--ark-reading-width);
@@ -353,6 +359,65 @@
     .workspace-title {
       font-size: 30px;
     }
+    .account-total-card .text-4xl {
+      font-size: 30px;
+      line-height: 1.2;
+    }
+    .account-ledger {
+      display: block;
+    }
+    .account-ledger tbody {
+      display: block;
+    }
+    .account-ledger-row {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr) auto;
+      column-gap: 10px;
+      row-gap: 8px;
+      align-items: center;
+      padding: 16px;
+    }
+    .account-ledger-row > td {
+      display: block;
+      width: auto !important;
+      padding: 0 !important;
+    }
+    .account-ledger-row > td:nth-child(2) {
+      min-width: 0;
+    }
+    .account-ledger-row > td:nth-child(2) span {
+      overflow-wrap: anywhere;
+    }
+    .account-ledger-row > td:nth-child(3) {
+      grid-column: 3;
+      grid-row: 1;
+      white-space: nowrap;
+    }
+    .account-ledger-row > td:nth-child(4) {
+      grid-column: 3;
+      grid-row: 2;
+      white-space: nowrap;
+    }
+    .account-ledger-row > td:nth-child(5) {
+      grid-column: 2;
+      grid-row: 2;
+      text-align: left !important;
+    }
+    .account-ledger-row > td:nth-child(6) {
+      display: none;
+    }
+    .account-position-row {
+      display: block;
+    }
+    .account-position-row > td {
+      display: block;
+      width: 100% !important;
+      padding: 16px !important;
+    }
+    .account-position-row .flex.items-center.gap-3 {
+      align-items: start;
+      flex-direction: column;
+    }
     .changelog-shell {
       padding: 48px 24px 64px;
     }
@@ -509,7 +574,7 @@
           <tbody>
             <tr @click="acc.posType ? toggleExpand(acc.id) : null"
               :class="acc.posType ? 'cursor-pointer hover:bg-gray-50' : ''"
-              class="border-b border-gray-50 last:border-b-0">
+              class="account-ledger-row border-b border-gray-50 last:border-b-0">
               <td class="pl-5 py-3.5" style="width:32px"><div :style="'background:' + acc.color" class="w-2.5 h-2.5 rounded-full"></div></td>
               <td class="py-3.5 pr-4">
                 <div><span class="text-sm font-medium" x-text="acc.label"></span><span class="text-xs text-gray-400 ml-2" x-text="acc.sub"></span></div>
@@ -520,7 +585,7 @@
               <td class="py-3.5 pr-4 text-right text-xs text-gray-400"><span x-text="accUpdateDate(acc)"></span></td>
               <td class="py-3.5 pr-5 text-center" style="width:28px"><span x-show="acc.posType" class="text-gray-300 text-sm" x-text="expanded === acc.id ? '▾' : '▸'"></span></td>
             </tr>
-            <tr x-show="expanded === 'stock' && acc.id === 'stock'" class="border-b border-gray-50">
+            <tr x-show="expanded === 'stock' && acc.id === 'stock'" class="account-position-row border-b border-gray-50">
               <td colspan="6" class="bg-gray-50/30 px-5 py-4">
               <div class="flex items-center gap-3 mb-3">
                 <span class="text-xs text-gray-400">可用 ¥</span>
@@ -529,13 +594,15 @@
                 <input type="text" inputmode="decimal" x-model="form.stock_frozen_cash" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
                 <span class="text-xs text-gray-400">现金总额 <span x-text="fmtMoney(accountCash('stock'))"></span></span>
               </div>
-              <table class="w-full table-fixed text-sm"><thead><tr class="text-xs text-gray-400 border-b border-gray-200"><th class="text-left font-normal py-1.5">代码</th><th class="text-left font-normal py-1.5">名称</th><th class="text-right font-normal py-1.5">股数</th><th class="text-right font-normal py-1.5">现价</th><th class="text-right font-normal py-1.5">市值</th><th class="text-right font-normal py-1.5">占比</th><th style="width:24px"></th></tr></thead>
+              <div class="responsive-table-scroll account-position-table-scroll">
+              <table class="w-full min-w-[640px] table-fixed text-sm"><thead><tr class="text-xs text-gray-400 border-b border-gray-200"><th class="text-left font-normal py-1.5">代码</th><th class="text-left font-normal py-1.5">名称</th><th class="text-right font-normal py-1.5">股数</th><th class="text-right font-normal py-1.5">现价</th><th class="text-right font-normal py-1.5">市值</th><th class="text-right font-normal py-1.5">占比</th><th style="width:24px"></th></tr></thead>
               <tbody><template x-for="row in stockRows" :key="row._id"><tr class="border-b border-gray-100"><td class="py-1.5"><template x-if="row.isNew"><input type="text" x-model="row.code" @change="autofill('stock', row)" placeholder="代码" style="border:none;border-bottom:1px solid #d1d5db;background:transparent;outline:none;padding:1px 0;font-size:12px;width:5em;"></template><span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span></td><td class="py-1.5 text-gray-700 font-medium text-xs" x-text="row.name || '—'"></td><td class="py-1.5 text-right"><input type="number" min="0" step="100" x-model.number="row.shares" @input.debounce.600ms="scheduleSortRows('stock')" style="border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0 1px 0;text-align:right;font-size:12px;width:5em;padding-right:0;"></td><td class="py-1.5 text-right text-xs text-gray-500" x-text="rowPrice('stock', row.code)?.toFixed(2) ?? '-'"></td><td class="py-1.5 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('stock', row) != null ? fmtMoney(rowValue('stock', row)) : '-'"></td><td class="py-1.5 text-right text-xs text-gray-400" x-text="rowWeight('stock', row) != null ? (rowWeight('stock', row)*100).toFixed(1)+'%' : '-'"></td><td class="py-1.5 text-center"><button @click="removeRow('stock', row)" class="text-gray-300 hover:text-red-400 text-xs">✕</button></td></tr></template></tbody></table>
+              </div>
               <div x-show="stockRows.length === 0" class="text-xs text-gray-400 py-2">暂无持仓</div>
               <div class="flex items-center gap-3 mt-3"><button @click="addRow('stock')" class="text-xs text-gray-400 hover:text-gray-600">＋ 添加行</button><button @click="saveAccount('stock')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-700">保存</button><span x-show="stockSaved" class="text-xs text-green-600">已保存</span></div>
               </td>
             </tr>
-            <tr x-show="expanded === 'cb' && acc.id === 'cb'" class="border-b border-gray-50">
+            <tr x-show="expanded === 'cb' && acc.id === 'cb'" class="account-position-row border-b border-gray-50">
               <td colspan="6" class="bg-gray-50/30 px-5 py-4">
               <div class="flex items-center gap-3 mb-3">
                 <span class="text-xs text-gray-400">可用 ¥</span>
@@ -544,8 +611,10 @@
                 <input type="text" inputmode="decimal" x-model="form.bond_frozen_cash" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
                 <span class="text-xs text-gray-400">现金总额 <span x-text="fmtMoney(accountCash('cb'))"></span></span>
               </div>
-              <table class="w-full table-fixed text-sm"><thead><tr class="text-xs text-gray-400 border-b border-gray-200"><th class="text-left font-normal py-1.5">代码</th><th class="text-left font-normal py-1.5">名称</th><th class="text-right font-normal py-1.5">张数</th><th class="text-right font-normal py-1.5">现价</th><th class="text-right font-normal py-1.5">市值</th><th class="text-right font-normal py-1.5">占比</th><th style="width:24px"></th></tr></thead>
+              <div class="responsive-table-scroll account-position-table-scroll">
+              <table class="w-full min-w-[640px] table-fixed text-sm"><thead><tr class="text-xs text-gray-400 border-b border-gray-200"><th class="text-left font-normal py-1.5">代码</th><th class="text-left font-normal py-1.5">名称</th><th class="text-right font-normal py-1.5">张数</th><th class="text-right font-normal py-1.5">现价</th><th class="text-right font-normal py-1.5">市值</th><th class="text-right font-normal py-1.5">占比</th><th style="width:24px"></th></tr></thead>
               <tbody><template x-for="row in cbRows" :key="row._id"><tr class="border-b border-gray-100"><td class="py-1.5"><template x-if="row.isNew"><input type="text" x-model="row.code" @change="autofill('cb', row)" placeholder="代码" style="border:none;border-bottom:1px solid #d1d5db;background:transparent;outline:none;padding:1px 0;font-size:12px;width:5em;"></template><span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span></td><td class="py-1.5 text-gray-700 font-medium text-xs" x-text="row.name || '—'"></td><td class="py-1.5 text-right"><input type="number" min="0" step="10" x-model.number="row.shares" @input.debounce.600ms="scheduleSortRows('cb')" style="border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0 1px 0;text-align:right;font-size:12px;width:5em;padding-right:0;"></td><td class="py-1.5 text-right text-xs text-gray-500" x-text="rowPrice('cb', row.code)?.toFixed(2) ?? '-'"></td><td class="py-1.5 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('cb', row) != null ? fmtMoney(rowValue('cb', row)) : '-'"></td><td class="py-1.5 text-right text-xs text-gray-400" x-text="rowWeight('cb', row) != null ? (rowWeight('cb', row)*100).toFixed(1)+'%' : '-'"></td><td class="py-1.5 text-center"><button @click="removeRow('cb', row)" class="text-gray-300 hover:text-red-400 text-xs">✕</button></td></tr></template></tbody></table>
+              </div>
               <div x-show="cbRows.length === 0" class="text-xs text-gray-400 py-2">暂无持仓</div>
               <div class="flex items-center gap-3 mt-3"><button @click="addRow('cb')" class="text-xs text-gray-400 hover:text-gray-600">＋ 添加行</button><button @click="saveAccount('cb')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-700">保存</button><span x-show="cbSaved" class="text-xs text-green-600">已保存</span></div>
               </td>
@@ -758,9 +827,9 @@
       </div>
       <div x-show="componentErrors.cb" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-3 text-sm text-red-700" x-text="componentErrors.cb"></div>
       <!-- 排名表 -->
-      <div x-show="cbItems.length && !plan?.cb?.orders?.length" class="mb-4">
+      <div x-show="cbItems.length && !plan?.cb?.orders?.length" class="responsive-table-scroll plan-ranking-table-scroll mb-4">
         <div class="text-xs text-gray-400 mb-2" x-text="cbTradeDate ? '基于 ' + cbDate + ' 收盘 · 适用 ' + cbTradeDate + ' 开盘执行' : ''"></div>
-        <table class="w-full text-sm">
+        <table class="plan-ranking-table w-full min-w-[720px] text-sm">
           <thead class="bg-gray-50 text-xs text-gray-400"><tr>
             <th class="text-center px-3 py-2 w-10 font-normal">#</th><th class="text-left px-2 py-2 font-normal">代码</th><th class="text-left px-2 py-2 font-normal">名称</th><th class="text-right px-2 py-2 font-normal">价格</th><th class="text-right px-2 py-2 font-normal">溢价率</th><th class="text-right px-2 py-2 font-normal">双低值</th><th class="text-right px-3 py-2 font-normal">评分</th>
           </tr></thead>
@@ -782,8 +851,8 @@
       <template x-if="plan?.cb?.orders?.length">
         <div>
           <button @click="showCbRank = !showCbRank" class="text-xs text-gray-500 hover:text-gray-700 mb-2 underline decoration-gray-200 underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900" x-text="showCbRank ? '收起排名' : '查看排名'"></button>
-          <div x-show="showCbRank" class="mb-4">
-            <table class="w-full text-sm">
+          <div x-show="showCbRank" class="responsive-table-scroll plan-ranking-table-scroll mb-4">
+            <table class="plan-ranking-table w-full min-w-[720px] text-sm">
               <thead class="bg-gray-50 text-xs text-gray-400"><tr><th class="text-center px-3 py-2 w-10 font-normal">#</th><th class="text-left px-2 py-2 font-normal">代码</th><th class="text-left px-2 py-2 font-normal">名称</th><th class="text-right px-2 py-2 font-normal">价格</th><th class="text-right px-2 py-2 font-normal">溢价率</th><th class="text-right px-2 py-2 font-normal">双低值</th><th class="text-right px-3 py-2 font-normal">评分</th></tr></thead>
               <tbody><template x-for="r in cbItems" :key="r.bond_code"><tr class="border-t border-gray-50"><td class="text-center px-3 py-1.5 text-gray-400 text-xs" x-text="r.rank"></td><td class="px-2 py-1.5 text-gray-500 tabular-nums" x-text="r.bond_code"></td><td class="px-2 py-1.5 font-medium" x-text="r.bond_name"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.cb_price?.toFixed(2)"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.premium_rate?.toFixed(2) + '%'"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.double_low?.toFixed(2)"></td><td class="px-3 py-1.5 text-right tabular-nums text-gray-800" x-text="r.score?.toFixed(3)"></td></tr></template></tbody>
             </table>
@@ -794,7 +863,8 @@
                 <template x-for="group in column" :key="group.label">
                   <div class="bg-gray-50 rounded-lg px-3 py-2.5">
                     <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
-                    <table class="order-plan-table text-sm">
+                    <div class="responsive-table-scroll plan-order-table-scroll">
+                    <table class="order-plan-table min-w-[520px] text-sm">
                       <colgroup>
                         <col class="order-code-col">
                         <col class="order-name-col">
@@ -809,6 +879,7 @@
                         <tr class="border-b border-gray-50 last:border-0"><td class="text-gray-400 tabular-nums" x-text="r.bond_code"></td><td class="order-name-cell pr-3 font-medium" x-text="r.bond_name"></td><td class="text-right whitespace-nowrap tabular-nums" :class="orderQuantityClass(r)" x-text="orderQuantityText(r, '张')"></td><td class="text-right text-gray-500 whitespace-nowrap tabular-nums" x-text="orderReferencePrice(r)"></td><td class="text-right text-gray-800 whitespace-nowrap tabular-nums" x-text="fmtMoney(Math.abs(r.amount || 0))"></td></tr>
                       </template>
                     </table>
+                    </div>
                   </div>
                 </template>
               </div>
@@ -845,9 +916,9 @@
       </div>
       <div x-show="componentErrors.stock" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-3 text-sm text-red-700" x-text="componentErrors.stock"></div>
       <!-- 排名表（有排名但无订单时展开） -->
-      <div x-show="stockItems.length && !plan?.stock?.orders?.length" class="mb-4">
+      <div x-show="stockItems.length && !plan?.stock?.orders?.length" class="responsive-table-scroll plan-ranking-table-scroll mb-4">
         <div class="text-xs text-gray-400 mb-2" x-text="stockTradeDate ? '基于 ' + stockDate + ' 收盘 · 适用 ' + stockTradeDate + ' 开盘执行' : ''"></div>
-        <table class="w-full text-sm">
+        <table class="plan-ranking-table w-full min-w-[720px] text-sm">
           <thead class="bg-gray-50 text-xs text-gray-400"><tr>
             <th class="text-center px-3 py-2 w-10 font-normal">#</th><th class="text-left px-2 py-2 font-normal">代码</th><th class="text-left px-2 py-2 font-normal">名称</th><th class="text-right px-2 py-2 font-normal">总市值(亿)</th><th class="text-right px-2 py-2 font-normal">PE</th><th class="text-right px-3 py-2 font-normal">扣非ROE</th>
           </tr></thead>
@@ -869,8 +940,8 @@
       <template x-if="plan?.stock?.orders?.length">
         <div>
           <button @click="showStockRank = !showStockRank" class="text-xs text-gray-500 hover:text-gray-700 mb-2 underline decoration-gray-200 underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900" x-text="showStockRank ? '收起排名' : '查看排名'"></button>
-          <div x-show="showStockRank" class="mb-4">
-            <table class="w-full text-sm">
+          <div x-show="showStockRank" class="responsive-table-scroll plan-ranking-table-scroll mb-4">
+            <table class="plan-ranking-table w-full min-w-[720px] text-sm">
               <thead class="bg-gray-50 text-xs text-gray-400"><tr><th class="text-center px-3 py-2 w-10 font-normal">#</th><th class="text-left px-2 py-2 font-normal">代码</th><th class="text-left px-2 py-2 font-normal">名称</th><th class="text-right px-2 py-2 font-normal">总市值(亿)</th><th class="text-right px-2 py-2 font-normal">PE</th><th class="text-right px-3 py-2 font-normal">扣非ROE</th></tr></thead>
               <tbody><template x-for="r in stockItems" :key="r.stock_code"><tr class="border-t border-gray-50"><td class="text-center px-3 py-1.5 text-gray-400 text-xs" x-text="r.rank"></td><td class="px-2 py-1.5 text-gray-500 tabular-nums" x-text="r.stock_code"></td><td class="px-2 py-1.5 font-medium" x-text="r.stock_name"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.market_cap?.toFixed(2)"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.pe_ttm?.toFixed(2)"></td><td class="px-3 py-1.5 text-right tabular-nums text-gray-800" x-text="r.roe_ex?.toFixed(2) + '%'"></td></tr></template></tbody>
             </table>
@@ -881,7 +952,8 @@
                 <template x-for="group in column" :key="group.label">
                   <div class="bg-gray-50 rounded-lg px-3 py-2.5">
                     <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
-                    <table class="order-plan-table text-sm">
+                    <div class="responsive-table-scroll plan-order-table-scroll">
+                    <table class="order-plan-table min-w-[520px] text-sm">
                       <colgroup>
                         <col class="order-code-col">
                         <col class="order-name-col">
@@ -896,6 +968,7 @@
                         <tr class="border-b border-gray-50 last:border-0"><td class="text-gray-400 tabular-nums" x-text="r.stock_code"></td><td class="order-name-cell pr-3 font-medium" x-text="r.stock_name"></td><td class="text-right whitespace-nowrap tabular-nums" :class="orderQuantityClass(r)" x-text="orderQuantityText(r, '股')"></td><td class="text-right text-gray-500 whitespace-nowrap tabular-nums" x-text="orderReferencePrice(r)"></td><td class="text-right text-gray-800 whitespace-nowrap tabular-nums" x-text="r.amount ? fmtMoney(Math.abs(r.amount)) : ''"></td></tr>
                       </template>
                     </table>
+                    </div>
                   </div>
                 </template>
               </div>

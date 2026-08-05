@@ -23,6 +23,13 @@ sys.path.insert(0, str(ROOT))
 PYTHON = ROOT / ".venv" / "bin" / "python"
 DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "ui-smoke"
 VISUAL_GATE_NAME = "AIHOT 视觉回归闸门"
+WORKBENCH_WIDTH_RANGE = (1000, 1100)
+AIHOT_WIDE_READING_METRICS = {
+    "nav_width": 240,
+    "shell_width": (1100, 1140),
+    "shell_left": (560, 600),
+    "title_top": (140, 170),
+}
 VIEWPORTS = {
     "wide": {"width": 2048, "height": 1178},
     "desktop": {"width": 1440, "height": 1000},
@@ -309,6 +316,41 @@ def browser_check_code(
             }}, text);
             if (!ok) throw new Error('不可见: ' + text);
           }};
+          const assertNoClippedWideTables = async scopeLabel => {{
+            const clipped = await page.evaluate(() => {{
+              const app = document.querySelector('.app-main')?.getBoundingClientRect();
+              if (!app) return [];
+              const isVisible = element => {{
+                const rect = element.getBoundingClientRect();
+                const style = window.getComputedStyle(element);
+                return style.display !== 'none'
+                  && style.visibility !== 'hidden'
+                  && rect.width > 0
+                  && rect.height > 0;
+              }};
+              return Array.from(document.querySelectorAll('table'))
+                .filter(table => isVisible(table))
+                .map(table => {{
+                  const rect = table.getBoundingClientRect();
+                  const scroller = table.closest('.responsive-table-scroll, .overflow-x-auto');
+                  const scrollerRect = scroller?.getBoundingClientRect();
+                  const tableBeyondApp = rect.left < app.left - 2 || rect.right > app.right + 2;
+                  const scrollerBeyondApp = scrollerRect
+                    ? scrollerRect.left < app.left - 2 || scrollerRect.right > app.right + 2
+                    : false;
+                  return {{
+                    className: table.className,
+                    tableBeyondApp,
+                    hasScroller: Boolean(scroller),
+                    scrollerBeyondApp,
+                  }};
+                }})
+                .filter(item => item.tableBeyondApp && (!item.hasScroller || item.scrollerBeyondApp));
+            }});
+            if (clipped.length) {{
+              throw new Error('表格被外层裁切且没有横向滚动容器: ' + scopeLabel + ' ' + JSON.stringify(clipped));
+            }}
+          }};
           try {{
             await page.route('**/favicon.ico', route => route.fulfill({{ status: 204, body: '' }}));
             await page.setViewportSize({json.dumps(viewport)});
@@ -363,7 +405,7 @@ def browser_check_code(
               }};
             }});
             if ({json.dumps(viewport_name)} !== 'narrow') {{
-              if (accountMetrics.shellWidth < 1000 || accountMetrics.shellWidth > 1100) {{
+              if (accountMetrics.shellWidth < {WORKBENCH_WIDTH_RANGE[0]} || accountMetrics.shellWidth > {WORKBENCH_WIDTH_RANGE[1]}) {{
                 throw new Error('账户工作台容器宽度偏离: ' + JSON.stringify(accountMetrics));
               }}
               if (Math.abs(accountMetrics.totalWidth - accountMetrics.ledgerWidth) > 2) {{
@@ -373,6 +415,7 @@ def browser_check_code(
             if (accountMetrics.appScrollWidth > accountMetrics.appClientWidth + 2) {{
               throw new Error('账户页出现横向溢出: ' + JSON.stringify(accountMetrics));
             }}
+            await assertNoClippedWideTables('account');
             await page.screenshot({{ path: {json.dumps(account_screenshot)}, fullPage: true }});
             await page.goto({json.dumps(base_url + '#changelog')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
             await page.waitForFunction(
@@ -427,7 +470,7 @@ def browser_check_code(
               }};
             }});
             if ({json.dumps(viewport_name)} !== 'narrow') {{
-              if (planMetrics.shellWidth < 1000 || planMetrics.shellWidth > 1100) {{
+              if (planMetrics.shellWidth < {WORKBENCH_WIDTH_RANGE[0]} || planMetrics.shellWidth > {WORKBENCH_WIDTH_RANGE[1]}) {{
                 throw new Error('计划工作台容器宽度偏离: ' + JSON.stringify(planMetrics));
               }}
               if (Math.abs(planMetrics.heroWidth - planMetrics.transferWidth) > 2) {{
@@ -437,6 +480,7 @@ def browser_check_code(
             if (planMetrics.appScrollWidth > planMetrics.appClientWidth + 2) {{
               throw new Error('计划页出现横向溢出: ' + JSON.stringify(planMetrics));
             }}
+            await assertNoClippedWideTables('plan');
             const hierarchy = await page.evaluate(() => {{
               const host = document.querySelector('[x-data="tradingPage()"]');
               const data = window.Alpine.$data(host);
@@ -556,16 +600,16 @@ def browser_check_code(
               }};
             }});
             if ({json.dumps(viewport_name)} === 'wide') {{
-              if (Math.abs(readingMetrics.navWidth - 240) > 2) {{
+              if (Math.abs(readingMetrics.navWidth - {AIHOT_WIDE_READING_METRICS["nav_width"]}) > 2) {{
                 throw new Error('AIHOT 侧栏宽度偏离: ' + JSON.stringify(readingMetrics));
               }}
-              if (readingMetrics.shellWidth < 1100 || readingMetrics.shellWidth > 1140) {{
+              if (readingMetrics.shellWidth < {AIHOT_WIDE_READING_METRICS["shell_width"][0]} || readingMetrics.shellWidth > {AIHOT_WIDE_READING_METRICS["shell_width"][1]}) {{
                 throw new Error('更新日志阅读容器宽度偏离: ' + JSON.stringify(readingMetrics));
               }}
-              if (readingMetrics.shellLeft < 560 || readingMetrics.shellLeft > 600) {{
+              if (readingMetrics.shellLeft < {AIHOT_WIDE_READING_METRICS["shell_left"][0]} || readingMetrics.shellLeft > {AIHOT_WIDE_READING_METRICS["shell_left"][1]}) {{
                 throw new Error('更新日志阅读容器起点偏离 AIHOT 坐标: ' + JSON.stringify(readingMetrics));
               }}
-              if (readingMetrics.titleTop < 140 || readingMetrics.titleTop > 170) {{
+              if (readingMetrics.titleTop < {AIHOT_WIDE_READING_METRICS["title_top"][0]} || readingMetrics.titleTop > {AIHOT_WIDE_READING_METRICS["title_top"][1]}) {{
                 throw new Error('更新日志标题首屏位置偏离: ' + JSON.stringify(readingMetrics));
               }}
             }}
