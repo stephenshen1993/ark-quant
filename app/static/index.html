@@ -42,13 +42,17 @@
     --ark-line: #e5e7eb;
     --ark-faint: #eef2f7;
     --ark-accent: #0f766e;
+    --ark-nav-width: 240px;
+    --ark-reading-width: 1128px;
+    --ark-reading-top: 108px;
+    --ark-reading-time-column: 150px;
   }
   body {
     background: var(--ark-bg);
     -webkit-tap-highlight-color: transparent;
   }
   .app-nav {
-    width: 240px;
+    width: var(--ark-nav-width);
     padding: 48px 18px 24px;
     background: var(--ark-panel);
     border-right: 1px solid var(--ark-line);
@@ -170,9 +174,9 @@
   }
   .changelog-shell {
     width: 100%;
-    max-width: 1128px;
+    max-width: var(--ark-reading-width);
     margin: 0 auto;
-    padding: 108px 0 96px;
+    padding: var(--ark-reading-top) 0 96px;
   }
   .changelog-kicker {
     margin-bottom: 26px;
@@ -224,7 +228,7 @@
   }
   .changelog-entry-grid {
     display: grid;
-    grid-template-columns: 150px minmax(0, 1fr);
+    grid-template-columns: var(--ark-reading-time-column) minmax(0, 1fr);
     gap: 36px;
     border-bottom: 1px solid var(--ark-faint);
     padding: 34px 0;

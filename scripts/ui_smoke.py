@@ -476,16 +476,42 @@ def browser_check_code(
               throw new Error('更新日志泄露了编号或哈希');
             }}
 
-            await page.locator('[x-data="changelogPage()"]').scrollIntoViewIfNeeded();
-            const changelogBox = await page.locator('[x-data="changelogPage()"]').boundingBox();
-            if (!changelogBox || changelogBox.width <= 0 || changelogBox.height <= 0) {{
-              throw new Error('更新日志区域不可见');
-            }}
             await page.evaluate(() => {{
               document.querySelector('.app-main')?.scrollTo({{ top: 0, left: 0 }});
               window.scrollTo({{ top: 0, left: 0 }});
             }});
             await page.waitForTimeout(100);
+            await page.locator('[x-data="changelogPage()"]').scrollIntoViewIfNeeded();
+            const changelogBox = await page.locator('[x-data="changelogPage()"]').boundingBox();
+            if (!changelogBox || changelogBox.width <= 0 || changelogBox.height <= 0) {{
+              throw new Error('更新日志区域不可见');
+            }}
+            const readingMetrics = await page.evaluate(() => {{
+              const nav = document.querySelector('.app-nav')?.getBoundingClientRect();
+              const shell = document.querySelector('[x-data="changelogPage()"]')?.getBoundingClientRect();
+              const title = document.querySelector('.changelog-title')?.getBoundingClientRect();
+              return {{
+                navWidth: nav?.width || 0,
+                shellLeft: shell?.left || 0,
+                shellTop: shell?.top || 0,
+                shellWidth: shell?.width || 0,
+                titleTop: title?.top || 0,
+              }};
+            }});
+            if ({json.dumps(viewport_name)} === 'wide') {{
+              if (Math.abs(readingMetrics.navWidth - 240) > 2) {{
+                throw new Error('AIHOT 侧栏宽度偏离: ' + JSON.stringify(readingMetrics));
+              }}
+              if (readingMetrics.shellWidth < 1100 || readingMetrics.shellWidth > 1140) {{
+                throw new Error('更新日志阅读容器宽度偏离: ' + JSON.stringify(readingMetrics));
+              }}
+              if (readingMetrics.shellLeft < 560 || readingMetrics.shellLeft > 600) {{
+                throw new Error('更新日志阅读容器起点偏离 AIHOT 坐标: ' + JSON.stringify(readingMetrics));
+              }}
+              if (readingMetrics.titleTop < 140 || readingMetrics.titleTop > 170) {{
+                throw new Error('更新日志标题首屏位置偏离: ' + JSON.stringify(readingMetrics));
+              }}
+            }}
             await page.screenshot({{ path: {json.dumps(screenshot)}, fullPage: true }});
             return {{
               ok: true,
