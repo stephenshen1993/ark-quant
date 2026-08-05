@@ -75,3 +75,17 @@
 - 不负责记录成交事实。
 
 HTTP 路由是订单 sizing 编排 module 的 adapter，不承载 sizing implementation。
+
+## 5. 账户事实 read-model
+
+账户事实 read-model 的边界已经确认：
+
+- 负责表达账户事实、账户内策略承载关系和 A/B/C 组合层级。
+- 账户是资金与持仓所在的托管和执行位置。
+- 策略是账户内的选取、持有、退出和调仓逻辑。
+- 组合是投资体系层级。
+- 当前一一承载只是实现事实，不是长期架构约束。
+
+新调用方需要账户事实、账户角色、承载关系或组合层级时，应使用 `app/account_read_model.py` 的 read-model interface。
+
+legacy `strategy` 命名只保留在旧 DB/API、策略运行语义和 read-model 的 `legacy_adapter` 中。它不是账户事实的新概念真源。

@@ -65,6 +65,7 @@ class TestAccountReadModel(unittest.TestCase):
             read_model["legacy_adapter"]["strategy_to_account_id"]["stock"],
             "stock",
         )
+        self.assertIn("新调用方应使用 account/strategy/portfolio", read_model["legacy_adapter"]["note"])
         self.assertIn("legacy", accounts["stock"])
 
     def test_returns_none_when_account_summary_is_missing(self):

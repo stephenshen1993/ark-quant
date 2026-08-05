@@ -14,7 +14,7 @@
 | [当前实现状态](当前实现状态.md) | 已实现能力、限制和体系差距 |
 | `实现状态/` | 单项策略或模块的具体实现差距；当前真源 v2026-08 对照见 [实现差距清单](实现状态/当前真源-v2026-08-实现差距清单.md) |
 | [口径台账](口径台账/README.md) | 当前真源重置、口径分类和阶段语言盘点 |
-| `决策记录/` | 已发生的工程选择及背景；当前计划生命周期 module 见 [计划生命周期 module 决策记录](决策记录/2026-08-05-plan-lifecycle-module.md)，订单 sizing 编排见 [订单 sizing 编排 module 决策记录](决策记录/2026-08-05-order-sizing-module.md)，数据源仓储 seam 见 [数据源仓储 seam 决策记录](决策记录/2026-08-04-datasource-store-seams.md)，文档整理原则见 [文档信息架构整理记录](决策记录/2026-08-04-docs-information-architecture.md) |
+| `决策记录/` | 已发生的工程选择及背景；当前账户事实 read-model 与 legacy 命名见 [账户事实 read-model 与 legacy strategy 命名决策记录](决策记录/2026-08-05-account-read-model-legacy-strategy.md)，计划生命周期 module 见 [计划生命周期 module 决策记录](决策记录/2026-08-05-plan-lifecycle-module.md)，订单 sizing 编排见 [订单 sizing 编排 module 决策记录](决策记录/2026-08-05-order-sizing-module.md)，数据源仓储 seam 见 [数据源仓储 seam 决策记录](决策记录/2026-08-04-datasource-store-seams.md)，文档整理原则见 [文档信息架构整理记录](决策记录/2026-08-04-docs-information-architecture.md) |
 | `历史设计/` | 不再作为当前待办的方案、规格和 agent 执行过程材料 |
 
 工程文档可以引用规则，但不能复制并改写规则参数。
