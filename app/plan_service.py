@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Callable
-from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+from app import plan_lifecycle
 from datasource import db
 from datasource.youzhiyouxing import TemperatureFetchError, get_or_fetch_market_temperature
 from portfolio_rebalance import PlanValidationError, build_fund_transfer_plan
@@ -169,10 +169,10 @@ def generate_complete_plan(
     size_stock_orders: Callable[..., dict],
 ) -> dict:
     plan_date, account, market_temperature, fund_transfer = prepare_complete_plan_generation()
-    plan_id = f"plan-{plan_date}-{uuid4().hex[:8]}"
+    plan_id = plan_lifecycle.new_plan_id(plan_date)
     plan = build_generated_plan_response(
         plan_id=plan_id,
-        status="running",
+        status=plan_lifecycle.RUNNING,
         plan_date=plan_date,
         market_temperature=market_temperature,
         account=account,
@@ -180,7 +180,7 @@ def generate_complete_plan(
         cb_result=None,
         stock_result=None,
     )
-    db.insert_generated_plan(plan_id, plan_date, "running", plan)
+    plan_lifecycle.start(plan_id, plan_date, plan)
 
     try:
         _, deltas, _ = fund_transfer_compatibility(fund_transfer)
@@ -188,10 +188,12 @@ def generate_complete_plan(
             strategy_cash_after_transfer("cb", account, deltas),
             plan_date=plan_date,
         )
-        db.insert_plan_order_batch(plan_id, "cb", cb_result["orders"], cb_result["summary"])
+        plan_lifecycle.record_order_batch(
+            plan_id, "cb", cb_result["orders"], cb_result["summary"]
+        )
         plan = build_generated_plan_response(
             plan_id=plan_id,
-            status="running",
+            status=plan_lifecycle.RUNNING,
             plan_date=plan_date,
             market_temperature=market_temperature,
             account=account,
@@ -204,12 +206,12 @@ def generate_complete_plan(
             strategy_cash_after_transfer("stock", account, deltas),
             plan_date=plan_date,
         )
-        db.insert_plan_order_batch(
+        plan_lifecycle.record_order_batch(
             plan_id, "stock", stock_result["orders"], stock_result["summary"]
         )
         plan = build_generated_plan_response(
             plan_id=plan_id,
-            status="complete",
+            status=plan_lifecycle.COMPLETE,
             plan_date=plan_date,
             market_temperature=market_temperature,
             account=account,
@@ -217,14 +219,13 @@ def generate_complete_plan(
             cb_result=cb_result,
             stock_result=stock_result,
         )
-        db.update_generated_plan(plan_id, status="complete", plan=plan)
+        plan_lifecycle.complete(plan_id, plan)
         return plan
     except Exception as exc:
         status_code = getattr(exc, "status_code", 500)
         detail = getattr(exc, "detail", str(exc))
         error = generation_error("stock_orders" if plan["cb"]["orders"] else "cb_orders", detail)
-        failed_plan = {**plan, "generation": {**plan["generation"], "status": "failed"}}
-        db.update_generated_plan(plan_id, status="failed", plan=failed_plan, error=error)
+        plan_lifecycle.fail(plan_id, plan, error)
         raise PlanServiceError(status_code, {**error, "plan_id": plan_id}) from exc
 
 
@@ -363,7 +364,7 @@ def build_generated_plan_response(
             "plan_id": plan_id,
             "plan_date": plan_date,
             "status": status,
-            "stages": ["account", "rankings", "fund_transfer", "orders", "summary"],
+            "stages": plan_lifecycle.generation_stages(),
         },
         "cb": {
             "data_date": plan_date,
