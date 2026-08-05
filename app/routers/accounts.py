@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Annotated, Literal, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from app.account_read_model import build_account_read_model
 from app import plan_lifecycle
 from datasource import db
 from investment_model import public_investment_model
@@ -85,6 +86,7 @@ def public_account_summary(summary: dict | None) -> dict | None:
         "total_assets": summary.get("total_assets", 0) or 0,
         "context": context,
         "accounts": summary.get("accounts", []),
+        "read_model": build_account_read_model(summary),
     }
 
 
