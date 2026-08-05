@@ -22,3 +22,13 @@ scripts/stop_app.sh
 - [日常运行手册](docs/使用/日常运行手册.md)
 - [系统架构](docs/工程/系统架构.md)
 - [当前实现状态](docs/工程/当前实现状态.md)
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context domain documentation applies across the repo. See `docs/agents/domain.md`.
