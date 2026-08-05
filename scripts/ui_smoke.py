@@ -446,7 +446,10 @@ def browser_check_code(
             if (!changelogBox || changelogBox.width <= 0 || changelogBox.height <= 0) {{
               throw new Error('更新日志区域不可见');
             }}
-            await page.evaluate(() => document.querySelector('[x-data="changelogPage()"]')?.scrollIntoView({{ block: 'start' }}));
+            await page.evaluate(() => {{
+              document.querySelector('.app-main')?.scrollTo({{ top: 0, left: 0 }});
+              window.scrollTo({{ top: 0, left: 0 }});
+            }});
             await page.waitForTimeout(100);
             await page.screenshot({{ path: {json.dumps(screenshot)}, fullPage: true }});
             return {{

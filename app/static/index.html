@@ -4,9 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ark-quant</title>
+<link rel="preconnect" href="https://cdn.tailwindcss.com">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="preconnect" href="https://unpkg.com">
 <script src="https://cdn.tailwindcss.com"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
-<script defer src="https://unpkg.com/lucide@latest"></script>
+<script defer src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 <style>
   .order-plan-table {
     table-layout: fixed;
@@ -42,44 +45,46 @@
   }
   body {
     background: var(--ark-bg);
+    -webkit-tap-highlight-color: transparent;
   }
   .app-nav {
-    width: 180px;
-    padding: 38px 14px 22px;
+    width: 240px;
+    padding: 48px 18px 24px;
     background: var(--ark-panel);
     border-right: 1px solid var(--ark-line);
+    touch-action: manipulation;
   }
   .changelog-brand {
-    padding: 0 2px 28px;
+    padding: 0 6px 36px;
     border-bottom: 1px solid var(--ark-line);
-    margin-bottom: 28px;
+    margin-bottom: 34px;
   }
   .changelog-brand-name {
     color: var(--ark-text);
-    font-size: 26px;
+    font-size: 34px;
     font-weight: 700;
     letter-spacing: 0.2em;
     line-height: 1;
   }
   .changelog-brand-subtitle {
-    margin-top: 10px;
+    margin-top: 14px;
     color: var(--ark-soft);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
   }
   .app-nav-section {
-    margin: 0 0 14px 12px;
+    margin: 0 0 16px 18px;
     color: var(--ark-soft);
     font-size: 12px;
     font-weight: 600;
   }
   .nav-item {
-    min-height: 36px;
+    min-height: 42px;
     border-radius: 8px;
     color: var(--ark-muted);
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
     line-height: 1;
   }
@@ -92,16 +97,16 @@
     outline-offset: 2px;
   }
   .nav-icon {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     text-align: center;
     color: #748092;
     font-size: 16px;
     line-height: 1;
   }
   .nav-item svg {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     stroke-width: 2;
   }
   .app-nav-footer {
@@ -115,6 +120,7 @@
   .app-main {
     background: var(--ark-bg);
     padding: 0 0 96px;
+    overflow-x: hidden;
   }
   .workspace-shell {
     width: 100%;
@@ -153,12 +159,12 @@
   }
   .changelog-shell {
     width: 100%;
-    max-width: 840px;
+    max-width: 1128px;
     margin: 0 auto;
-    padding: 82px 0 80px;
+    padding: 108px 0 96px;
   }
   .changelog-kicker {
-    margin-bottom: 22px;
+    margin-bottom: 26px;
     color: var(--ark-accent);
     font-size: 12px;
     font-weight: 700;
@@ -166,37 +172,39 @@
   }
   .changelog-title {
     color: var(--ark-text);
-    font-size: 36px;
-    font-weight: 650;
+    font-size: 48px;
+    font-weight: 680;
     line-height: 1.12;
+    text-wrap: balance;
   }
   .changelog-subtitle {
-    margin-top: 16px;
+    margin-top: 18px;
     color: var(--ark-muted);
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 600;
     line-height: 1.7;
   }
   .changelog-header {
-    margin-bottom: 70px;
+    margin-bottom: 88px;
   }
   .changelog-groups {
     display: flex;
     flex-direction: column;
-    gap: 72px;
+    gap: 86px;
   }
   .changelog-date-header {
     display: flex;
     align-items: baseline;
     gap: 24px;
     border-bottom: 1px solid var(--ark-line);
-    padding-bottom: 18px;
+    padding-bottom: 24px;
   }
   .changelog-date-title {
     color: var(--ark-text);
-    font-size: 26px;
-    font-weight: 650;
+    font-size: 34px;
+    font-weight: 680;
     line-height: 1.2;
+    text-wrap: balance;
   }
   .changelog-weekday {
     color: var(--ark-soft);
@@ -205,10 +213,10 @@
   }
   .changelog-entry-grid {
     display: grid;
-    grid-template-columns: 110px minmax(0, 1fr);
-    gap: 26px;
+    grid-template-columns: 150px minmax(0, 1fr);
+    gap: 36px;
     border-bottom: 1px solid var(--ark-faint);
-    padding: 24px 0;
+    padding: 34px 0;
   }
   .changelog-entry-grid:last-child {
     border-bottom: 0;
@@ -219,7 +227,7 @@
   .changelog-entry-time {
     display: block;
     color: var(--ark-text);
-    font-size: 17px;
+    font-size: 18px;
     font-weight: 700;
     line-height: 1.2;
     font-variant-numeric: tabular-nums;
@@ -228,8 +236,8 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-top: 13px;
-    font-size: 14px;
+    margin-top: 16px;
+    font-size: 15px;
     font-weight: 700;
   }
   .changelog-dot {
@@ -239,44 +247,69 @@
   }
   .changelog-entry-main {
     border-left: 1px solid var(--ark-line);
-    padding-left: 30px;
+    padding-left: 38px;
+    min-width: 0;
   }
   .changelog-entry-title {
     color: var(--ark-text);
-    font-size: 18px;
-    font-weight: 650;
+    font-size: 24px;
+    font-weight: 680;
     line-height: 1.35;
+    overflow-wrap: anywhere;
+    text-wrap: balance;
   }
   .changelog-entry-body {
-    margin-top: 14px;
+    margin-top: 16px;
     color: var(--ark-muted);
-    font-size: 15px;
+    font-size: 17px;
     line-height: 1.8;
+    overflow-wrap: anywhere;
+    text-wrap: pretty;
   }
   @media (max-width: 720px) {
+    body {
+      flex-direction: column;
+      height: auto;
+      min-height: 100vh;
+    }
     .app-nav {
-      width: 88px;
-      padding: 24px 8px;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      width: 100%;
+      flex-direction: row;
+      align-items: center;
+      padding: 16px 20px;
+      border-right: 0;
+      border-bottom: 1px solid var(--ark-line);
     }
     .changelog-brand {
-      padding: 0 0 20px;
-      margin-bottom: 20px;
-      text-align: center;
+      flex: 1;
+      padding: 0;
+      margin: 0;
+      border-bottom: 0;
     }
     .changelog-brand-name {
-      font-size: 20px;
+      font-size: 22px;
       letter-spacing: 0.12em;
     }
     .changelog-brand-subtitle,
-    .nav-label,
     .app-nav-section,
     .app-nav-footer {
       display: none;
     }
+    .nav-label {
+      display: none;
+    }
     .nav-item {
       justify-content: center;
+      width: 42px;
+      min-height: 42px;
       padding-left: 0;
       padding-right: 0;
+    }
+    .app-main {
+      min-height: calc(100vh - 75px);
     }
     .workspace-shell {
       padding: 54px 20px 72px;
@@ -288,19 +321,19 @@
       font-size: 30px;
     }
     .changelog-shell {
-      padding: 54px 24px 64px;
+      padding: 48px 24px 64px;
     }
     .changelog-title {
-      font-size: 34px;
+      font-size: 40px;
     }
     .changelog-subtitle {
       font-size: 16px;
     }
     .changelog-header {
-      margin-bottom: 72px;
+      margin-bottom: 64px;
     }
     .changelog-groups {
-      gap: 72px;
+      gap: 70px;
     }
     .changelog-date-header {
       display: block;
@@ -329,7 +362,7 @@
       padding-left: 22px;
     }
     .changelog-entry-title {
-      font-size: 20px;
+      font-size: 22px;
     }
     .changelog-entry-body {
       font-size: 16px;
@@ -390,7 +423,7 @@
 <main
   class="app-main flex-1 overflow-auto"
   x-data
-  @nav.window="$store.page = $event.detail">
+  @nav.window="setActivePage($event.detail)">
 
   <!-- 账户总览 -->
   <div x-show="$store.page === 'account'" x-data="accountPage()" x-init="ensureLoaded($store.page)" x-effect="ensureLoaded($store.page)">
@@ -840,16 +873,21 @@
 
     <div x-show="!loadError" class="changelog-groups">
       <template x-for="group in groupedEntries()" :key="group.date">
-        <section>
+        <section :aria-label="formatGroupDate(group.date)">
           <div class="changelog-date-header">
-            <h2 class="changelog-date-title" x-text="formatGroupDate(group.date)"></h2>
+            <h2 class="changelog-date-title">
+              <time :datetime="group.date" x-text="formatGroupDate(group.date)"></time>
+            </h2>
             <span class="changelog-weekday" x-text="weekdayText(group.date)"></span>
           </div>
           <div>
             <template x-for="entry in group.entries" :key="entry.date + entry.time + entry.title">
               <article class="changelog-entry-grid">
                 <div class="changelog-entry-meta">
-                  <time class="changelog-entry-time" x-text="entry.time"></time>
+                  <time
+                    class="changelog-entry-time"
+                    :datetime="entry.date + 'T' + entry.time"
+                    x-text="entry.time"></time>
                   <div class="changelog-entry-type" :class="typeTextClass(entry.type)">
                     <span class="changelog-dot" :class="typeDotClass(entry.type)"></span>
                     <span x-text="entry.type"></span>
@@ -879,8 +917,31 @@
 
   // Alpine store for active page
   document.addEventListener('alpine:init', () => {
-    Alpine.store('page', 'account')
+    Alpine.store('page', pageFromLocation())
   })
+
+  window.addEventListener('hashchange', () => {
+    if (window.Alpine) Alpine.store('page', pageFromLocation())
+  })
+
+  function pageFromLocation() {
+    const page = window.location.hash.replace(/^#/, '')
+    return ['account', 'trading', 'changelog'].includes(page) ? page : 'account'
+  }
+
+  function setActivePage(page) {
+    if (!['account', 'trading', 'changelog'].includes(page)) return
+    Alpine.store('page', page)
+    const nextHash = page === 'account' ? '' : `#${page}`
+    if (window.location.hash !== nextHash) {
+      history.pushState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`)
+    }
+    requestAnimationFrame(() => {
+      const main = document.querySelector('.app-main')
+      if (main) main.scrollTo({ top: 0, left: 0 })
+      window.scrollTo({ top: 0, left: 0 })
+    })
+  }
 
   function localDate() {
     const now = new Date()
@@ -919,12 +980,18 @@
       formatGroupDate(dateText) {
         const [year, month, day] = String(dateText).split('-').map(Number)
         if (!year || !month || !day) return dateText
-        return `${year} 年 ${month} 月 ${day} 日`
+        const parts = new Intl.DateTimeFormat('zh-CN', {
+          year: 'numeric',
+          month: 'numeric',
+          day: 'numeric',
+        }).formatToParts(new Date(year, month - 1, day))
+        const values = Object.fromEntries(parts.map(part => [part.type, part.value]))
+        return `${values.year} 年 ${values.month} 月 ${values.day} 日`
       },
       weekdayText(dateText) {
-        const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-        const date = new Date(`${dateText}T00:00:00`)
-        return Number.isNaN(date.getTime()) ? '' : weekdays[date.getDay()]
+        const [year, month, day] = String(dateText).split('-').map(Number)
+        if (!year || !month || !day) return ''
+        return new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(new Date(year, month - 1, day))
       },
       typeTextClass(type) {
         const classes = {
