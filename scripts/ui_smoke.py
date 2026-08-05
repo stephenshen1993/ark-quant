@@ -340,6 +340,30 @@ def browser_check_code(
               'A 组合现金池承载账户',
             ];
             for (const text of accountRequired) await assertVisibleText(text);
+            const accountMetrics = await page.evaluate(() => {{
+              const appMain = document.querySelector('.app-main');
+              const shell = document.querySelector('.workspace-shell-workbench')?.getBoundingClientRect();
+              const total = document.querySelector('.account-total-card')?.getBoundingClientRect();
+              const ledger = document.querySelector('.account-ledger')?.getBoundingClientRect();
+              return {{
+                shellWidth: shell?.width || 0,
+                totalWidth: total?.width || 0,
+                ledgerWidth: ledger?.width || 0,
+                appClientWidth: appMain?.clientWidth || 0,
+                appScrollWidth: appMain?.scrollWidth || 0,
+              }};
+            }});
+            if ({json.dumps(viewport_name)} !== 'narrow') {{
+              if (accountMetrics.shellWidth < 1000 || accountMetrics.shellWidth > 1100) {{
+                throw new Error('账户工作台容器宽度偏离: ' + JSON.stringify(accountMetrics));
+              }}
+              if (Math.abs(accountMetrics.totalWidth - accountMetrics.ledgerWidth) > 2) {{
+                throw new Error('账户资产卡和明细表宽度不一致: ' + JSON.stringify(accountMetrics));
+              }}
+            }}
+            if (accountMetrics.appScrollWidth > accountMetrics.appClientWidth + 2) {{
+              throw new Error('账户页出现横向溢出: ' + JSON.stringify(accountMetrics));
+            }}
             await page.screenshot({{ path: {json.dumps(account_screenshot)}, fullPage: true }});
             await page.goto({json.dumps(base_url + '#changelog')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
             await page.waitForFunction(

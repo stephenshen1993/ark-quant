@@ -143,8 +143,18 @@
     margin: 0 auto;
     padding: 76px 0 96px;
   }
+  .workspace-shell-workbench {
+    max-width: 1080px;
+  }
   .workspace-shell-wide {
     max-width: 1120px;
+  }
+  .workspace-kicker {
+    margin-bottom: 14px;
+    color: var(--ark-accent);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.24em;
   }
   .workspace-title-row {
     align-items: end;
@@ -171,6 +181,14 @@
   }
   .ark-panel + .ark-panel {
     margin-top: 16px;
+  }
+  .account-total-card {
+    border-color: var(--ark-line);
+  }
+  .account-ledger {
+    border-collapse: separate;
+    border-spacing: 0;
+    overflow: hidden;
   }
   .changelog-shell {
     width: 100%;
@@ -463,10 +481,11 @@
   <!-- 账户总览 -->
   <div x-show="$store.page === 'account'" x-data="accountPage()" x-init="ensureLoaded($store.page)" x-effect="ensureLoaded($store.page)">
 
-    <div class="workspace-shell">
+    <div class="workspace-shell workspace-shell-workbench">
       <!-- 标题栏 -->
       <div class="workspace-title-row flex justify-between gap-5">
         <div>
+          <div class="workspace-kicker">WORKBENCH</div>
           <h1 class="workspace-title tracking-normal">账户</h1>
         </div>
         <label class="workspace-meta flex items-center gap-2">
@@ -476,7 +495,7 @@
       </div>
 
       <!-- 总资产 -->
-      <section class="ark-panel p-6 mb-5">
+      <section class="ark-panel account-total-card p-6 mb-5">
         <div class="flex items-baseline gap-3">
           <span class="text-sm text-gray-400">总资产</span>
           <span class="text-4xl font-semibold tracking-normal tabular-nums" x-text="fmtMoney(totalAssets())"></span>
@@ -485,7 +504,7 @@
       </section>
 
       <!-- 账户列表 -->
-      <table class="ark-panel w-full table-fixed">
+      <table class="ark-panel account-ledger w-full table-fixed">
         <template x-for="acc in accounts" :key="acc.id">
           <tbody>
             <tr @click="acc.posType ? toggleExpand(acc.id) : null"

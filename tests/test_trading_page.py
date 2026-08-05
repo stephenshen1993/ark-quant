@@ -318,6 +318,18 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn("entry.commit", self.html)
         self.assertNotIn("entry.hash", self.html)
 
+    def test_account_page_uses_aihot_workbench_container(self):
+        self.assertIn("workspace-shell workspace-shell-workbench", self.html)
+        self.assertIn("workspace-kicker", self.html)
+        self.assertIn("WORKBENCH", self.html)
+        self.assertIn("account-total-card", self.html)
+        self.assertIn("account-ledger", self.html)
+        self.assertIn("账户事实日", self.html)
+        self.assertIn("总资产", self.html)
+        self.assertIn("accountRole(acc)", self.html)
+        self.assertIn("saveSimpleAccount(acc.id)", self.html)
+        self.assertNotIn("账户页旧后台", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
