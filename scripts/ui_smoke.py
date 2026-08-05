@@ -306,6 +306,28 @@ def browser_check_code(
             await page.goto({json.dumps(base_url)}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
             await page.waitForFunction(() => window.Alpine, {{ timeout: 10000 }});
             await page.waitForFunction(() => document.body.innerText.includes('总资产'), {{ timeout: 10000 }});
+            const navItems = await page.evaluate(() => Array.from(document.querySelectorAll('.app-nav button')).map(button => ({{
+              label: button.innerText.trim(),
+              ariaLabel: button.getAttribute('aria-label'),
+              disabled: button.disabled,
+              ariaDisabled: button.getAttribute('aria-disabled'),
+            }})));
+            const navLabels = navItems.map(item => item.label || item.ariaLabel).join('>');
+            ['账户', '计划', '关于', '更新日志', '反馈'].forEach(label => {{
+              if (!navLabels.includes(label)) throw new Error('侧栏缺少入口: ' + label + '; actual=' + navLabels);
+            }});
+            if (navLabels.indexOf('账户') > navLabels.indexOf('计划')
+                || navLabels.indexOf('计划') > navLabels.indexOf('关于')
+                || navLabels.indexOf('关于') > navLabels.indexOf('更新日志')
+                || navLabels.indexOf('更新日志') > navLabels.indexOf('反馈')) {{
+              throw new Error('侧栏入口顺序不符: ' + navLabels);
+            }}
+            const aboutItem = navItems.find(item => (item.label || item.ariaLabel).includes('关于'));
+            const feedbackItem = navItems.find(item => (item.label || item.ariaLabel).includes('反馈'));
+            if (!aboutItem?.disabled || aboutItem.ariaDisabled !== 'true') throw new Error('关于入口不是明确禁用态');
+            if (!feedbackItem?.disabled || feedbackItem.ariaDisabled !== 'true') throw new Error('反馈入口不是明确禁用态');
+            if (!aboutItem.ariaLabel.includes('暂未开放')) throw new Error('关于入口缺少禁用说明');
+            if (!feedbackItem.ariaLabel.includes('暂未开放')) throw new Error('反馈入口缺少禁用说明');
 
             const accountRequired = [
               '账户事实日',
@@ -319,6 +341,19 @@ def browser_check_code(
             ];
             for (const text of accountRequired) await assertVisibleText(text);
             await page.screenshot({{ path: {json.dumps(account_screenshot)}, fullPage: true }});
+            await page.goto({json.dumps(base_url + '#changelog')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
+            await page.waitForFunction(
+              () => window.Alpine
+                && window.Alpine.store('page') === 'changelog'
+                && document.body.innerText.includes('更新日志'),
+              {{ timeout: 10000 }}
+            );
+            await page.getByRole('button', {{ name: /账户/ }}).click();
+            await page.waitForFunction(() => window.Alpine.store('page') === 'account', {{ timeout: 10000 }});
+            await page.goBack();
+            await page.waitForFunction(() => window.Alpine.store('page') === 'changelog', {{ timeout: 10000 }});
+            await page.getByRole('button', {{ name: /账户/ }}).click();
+            await page.waitForFunction(() => window.Alpine.store('page') === 'account', {{ timeout: 10000 }});
 
             await page.getByRole('button', {{ name: /计划/ }}).click();
             await page.waitForFunction(
