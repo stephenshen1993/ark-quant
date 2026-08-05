@@ -1,6 +1,9 @@
 """tests/test_db.py — datasource/db.py 单元测试"""
 import unittest
 import sqlite3
+import os
+import subprocess
+import sys
 from datetime import date
 import math
 from pathlib import Path
@@ -32,6 +35,23 @@ class TestDb(unittest.TestCase):
         self.assertEqual(summary["snapshot_date"], "2026-06-29")
         self.assertAlmostEqual(summary["temperature"], 45.0)
         self.assertAlmostEqual(summary["total_assets"], 699387)
+
+    def test_database_path_can_be_overridden_for_browser_smoke_harness(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "ui-smoke.db"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    "from datasource import db; print(db.DB_PATH)",
+                ],
+                check=True,
+                capture_output=True,
+                env={**os.environ, "ARK_QUANT_DB_PATH": str(database)},
+                text=True,
+            )
+
+        self.assertEqual(result.stdout.strip(), str(database))
 
     def test_account_context_preserves_b_purchase_status(self):
         db.insert_account_context(

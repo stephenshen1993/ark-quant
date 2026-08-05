@@ -47,6 +47,9 @@ scripts/stop_app.sh
 # 静态检查
 .venv/bin/ruff check .
 
+# 真实浏览器 smoke test（单独运行，会启动隔离数据库和临时端口）
+scripts/ui_smoke.py
+
 # 两条账户内策略
 .venv/bin/python -m strategies.cb_rotation.run
 .venv/bin/python -m strategies.stock_smallcap.run
@@ -54,6 +57,11 @@ scripts/stop_app.sh
 # 当前体系级目标金额与调拨计划
 .venv/bin/python rebalance.py
 ```
+
+`scripts/ui_smoke.py` 默认用临时 SQLite 和随机本地端口启动 app，不读取人工维护的
+`data/ark_quant.db`。测试会覆盖桌面与窄屏视口，失败时截图和诊断产物写入
+`outputs/ui-smoke/`。如需连接已经启动的看板，可运行
+`scripts/ui_smoke.py --base-url http://127.0.0.1:8000`。
 
 ## 目录
 

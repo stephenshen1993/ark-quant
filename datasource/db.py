@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import date, datetime
@@ -18,7 +19,12 @@ from datasource import account_store
 from datasource import position_store
 from datasource import strategy_store
 
-DB_PATH = Path(__file__).resolve().parents[1] / "data" / "ark_quant.db"
+DB_PATH = Path(
+    os.environ.get(
+        "ARK_QUANT_DB_PATH",
+        Path(__file__).resolve().parents[1] / "data" / "ark_quant.db",
+    )
+)
 
 _TEST_CONN: sqlite3.Connection | None = None  # 测试注入点
 
