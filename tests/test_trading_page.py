@@ -17,12 +17,20 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn('@click="generateCompletePlan()"', self.html)
 
     def test_plan_scenarios_use_plain_language_and_hide_exceptions(self):
-        self.assertIn("日常计划（主动组合内部）", self.html)
-        self.assertIn("新增资金分配", self.html)
-        self.assertIn("季度组合再平衡", self.html)
-        self.assertIn("海外长钱恢复申购", self.html)
-        self.assertIn("临时专项检查", self.html)
-        self.assertIn("特殊情况", self.html)
+        self.assertIn("日常轮动", self.html)
+        self.assertIn("组合再平衡", self.html)
+        self.assertIn("海外长钱申购额度", self.html)
+        self.assertIn("不能正常申购", self.html)
+        self.assertIn("可以正常申购", self.html)
+        self.assertNotIn("新增资金分配", self.html)
+        self.assertNotIn("海外长钱恢复申购", self.html)
+        self.assertNotIn("临时专项检查", self.html)
+        self.assertNotIn("本次新增本金", self.html)
+        self.assertNotIn("海外长钱额度核验时间", self.html)
+        self.assertNotIn("海外长钱额度核验来源", self.html)
+        self.assertNotIn("b_purchase_checked_at", self.html)
+        self.assertNotIn("b_purchase_source", self.html)
+        self.assertNotIn("needsContribution()", self.html)
         self.assertNotIn(">A 内部检查<", self.html)
         self.assertNotIn(">B 申购恢复<", self.html)
 
@@ -30,6 +38,12 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("账户事实日", self.html)
         self.assertIn('x-model="form.snapshot_date"', self.html)
         self.assertIn("事实日 ", self.html)
+        self.assertIn("accountRole(acc)", self.html)
+        self.assertIn("summary.read_model?.accounts", self.html)
+        self.assertIn("acc.readModel?.role || ''", self.html)
+        self.assertNotIn("role: 'A 组合", self.html)
+        self.assertNotIn("role: 'B 组合", self.html)
+        self.assertNotIn("role: 'C 组合", self.html)
         self.assertNotIn(
             "this.form.snapshot_date = context.snapshot_date || this.form.snapshot_date",
             self.html,
@@ -41,24 +55,39 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("tDate: localDate()", self.html)
 
     def test_inputs_use_progressive_disclosure_and_explicit_b_status(self):
-        self.assertIn('x-show="needsContribution()"', self.html)
         self.assertIn('x-show="needsBCheck()"', self.html)
         self.assertIn('x-model="funding.b_purchase_status"', self.html)
         self.assertIn('value="unchecked"', self.html)
         self.assertIn('value="unavailable"', self.html)
         self.assertIn('value="available"', self.html)
         self.assertIn('x-show="funding.b_purchase_status === \'available\'"', self.html)
+        start = self.html.index("needsBCheck()")
+        end = self.html.index("async loadTransferPlan", start)
+        self.assertIn("this.funding.check_type === 'quarterly'", self.html[start:end])
+        self.assertNotIn("monthly_contribution", self.html[start:end])
+        self.assertNotIn("b_recovery", self.html[start:end])
+        self.assertNotIn("ad_hoc", self.html[start:end])
 
-    def test_complete_plan_is_generated_by_one_server_endpoint(self):
+    def test_complete_plan_prefers_server_endpoint_and_falls_back_for_legacy_backend(self):
         self.assertIn("async generateCompletePlan()", self.html)
         start = self.html.index("async generateCompletePlan()")
         end = self.html.index("async loadPlan(", start)
         body = self.html[start:end]
         self.assertIn("await this.saveFundingContext()", body)
         self.assertIn("fetch('/api/plan/generate', { method: 'POST' })", body)
-        self.assertNotIn("await this.ensureRanking(strategy)", body)
-        self.assertNotIn("await this.generateOrders(strategy)", body)
+        self.assertIn("response.status === 404", body)
+        self.assertIn("await this.generateCompletePlanLegacy()", body)
         self.assertIn("componentErrors: { cb: '', stock: '' }", self.html)
+        self.assertIn("async generateCompletePlanLegacy()", self.html)
+        self.assertIn("await this.ensureRanking(strategy)", self.html)
+        self.assertIn("await this.generateOrders(strategy)", self.html)
+
+    def test_context_save_handles_legacy_backend_and_validation_details(self):
+        self.assertIn("async postFundingContext(payload)", self.html)
+        self.assertIn("delete legacyPayload.b_purchase_status", self.html)
+        self.assertIn("extra_forbidden", self.html)
+        self.assertIn("formatApiError(body, '保存本次计划条件失败')", self.html)
+        self.assertIn("item.loc?.join('.')", self.html)
 
     def test_missing_trade_errors_trigger_strategy_run(self):
         self.assertIn("async ensureRanking(strategy)", self.html)
@@ -84,6 +113,9 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn("③ 股票调仓", self.html)
 
     def test_funding_card_prioritizes_lightweight_execution_cards(self):
+        start = self.html.index("账户间资金调拨")
+        end = self.html.index("转债计划", start)
+        funding_card = self.html[start:end]
         self.assertIn("本次请执行", self.html)
         self.assertIn("fundingActionSentence(action)", self.html)
         self.assertIn("转入后仍差", self.html)
@@ -101,6 +133,13 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("fundingActionReason(action)", self.html)
         self.assertIn("action.sourceLabel", self.html)
         self.assertIn("action.targetLabel", self.html)
+        self.assertIn("accountReadModel: null", self.html)
+        self.assertIn("this.accountReadModel = summary.read_model || this.accountReadModel", self.html)
+        self.assertIn("this.transferPlan?.account_read_model || this.accountReadModel", self.html)
+        self.assertIn("this.plan?.account_read_model || this.accountReadModel", self.html)
+        self.assertIn("readModelAccountById(id)", self.html)
+        self.assertIn("readModelPortfolioById(id)", self.html)
+        self.assertIn("action.source !== 'A' && action.target !== 'A'", self.html)
         self.assertNotIn("决策链路", self.html)
         self.assertNotIn("转出到", self.html)
         self.assertNotIn("账户目标占比", self.html)
@@ -109,10 +148,33 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn("账户结果摘要", self.html)
         self.assertNotIn("fundingActionReasons(action)", self.html)
         self.assertNotIn("fundingDecisionSteps()", self.html)
-        self.assertNotIn("现金池", self.html)
+        self.assertNotIn("现金池", funding_card)
         self.assertNotIn("转债账户", self.html)
         self.assertNotIn("股票账户", self.html)
         self.assertNotIn('<template x-for="(step, i) in transferSteps()">', self.html)
+
+    def test_funding_card_surfaces_top_level_rebalance_check_for_long_money(self):
+        self.assertIn("组合再平衡检查", self.html)
+        self.assertIn("topLevelSummaryRows()", self.html)
+        self.assertIn("主动组合", self.html)
+        self.assertIn("海外长钱", self.html)
+        self.assertIn("国内长钱", self.html)
+        self.assertIn("topLevelRowStatus(row)", self.html)
+
+    def test_funding_basis_nests_accounts_under_active_portfolio(self):
+        self.assertIn("basisExpanded: { A: true }", self.html)
+        self.assertIn("fundingBasisRows()", self.html)
+        self.assertIn("item.kind === 'child'", self.html)
+        self.assertIn("toggleFundingBasis(item.row.key)", self.html)
+        self.assertIn("主动组合可展开查看其下属账户", self.html)
+        self.assertIn("含 3 个账户", self.html)
+        self.assertIn("展开主动组合下属账户", self.html)
+        self.assertIn("收起主动组合下属账户", self.html)
+        self.assertNotIn('colspan="7"', self.html)
+        self.assertNotIn("item.kind === 'children'", self.html)
+        self.assertNotIn("fundingBasisSections()", self.html)
+        self.assertNotIn("主动组合内部账户计算依据", self.html)
+        self.assertNotIn('x-for="row in fundingRows()"', self.html)
 
     def test_order_cash_summary_labels_show_transfer_sequence(self):
         self.assertIn("下单后现金", self.html)
@@ -122,6 +184,37 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("cashSummary(strategy)", self.html)
         self.assertNotIn("sell_proceeds", self.html)
         self.assertNotIn("buy_cost", self.html)
+
+    def test_order_quantity_display_uses_backend_delta_shares_field(self):
+        self.assertIn("orderShares(order)", self.html)
+        self.assertIn("orderQuantityText(r, '张')", self.html)
+        self.assertIn("orderQuantityText(r, '股')", self.html)
+        self.assertIn("orderQuantityClass(r)", self.html)
+        self.assertIn("orders.filter(r => r.action === action && this.orderShares(r) !== 0)", self.html)
+
+    def test_order_cards_show_reference_price_and_estimated_amount_without_fee_column(self):
+        self.assertIn(">估算金额<", self.html)
+        self.assertIn(">参考价<", self.html)
+        self.assertIn("orderReferencePrice(r)", self.html)
+        self.assertIn(".order-plan-table", self.html)
+        self.assertIn("table-layout: fixed", self.html)
+        self.assertIn(".order-group-grid", self.html)
+        self.assertIn("align-items: start", self.html)
+        self.assertIn("orderGroupColumns(groups)", self.html)
+        self.assertIn("orderGroupColumns(cbGroups())", self.html)
+        self.assertIn("orderGroupColumns(stockGroups())", self.html)
+        self.assertIn("['SELL', 'BUY']", self.html)
+        self.assertIn("['TRIM', 'ADD']", self.html)
+        self.assertEqual(self.html.count('class="order-group-grid'), 2)
+        self.assertEqual(self.html.count('class="order-plan-table'), 2)
+        self.assertEqual(self.html.count('class="order-code-col"'), 2)
+        self.assertEqual(self.html.count('class="order-name-col"'), 2)
+        self.assertEqual(self.html.count('class="order-quantity-col"'), 2)
+        self.assertEqual(self.html.count('class="order-price-col"'), 2)
+        self.assertEqual(self.html.count('class="order-amount-col"'), 2)
+        self.assertNotIn(">费用<", self.html)
+        self.assertNotIn(">下单价<", self.html)
+        self.assertNotIn(">委托价<", self.html)
         self.assertNotIn(">卖出回款<", self.html)
         self.assertNotIn(">买入占用<", self.html)
         self.assertNotIn(">下单现金口径<", self.html)

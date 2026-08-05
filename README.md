@@ -9,28 +9,26 @@
 ## 先读什么
 
 - [文档地图](docs/README.md)：所有正式文档的职责、状态和阅读顺序。
-- [投资体系总纲](docs/体系/投资体系总纲.md)：战略真源。
-- [仓位与再平衡规则](docs/体系/仓位与再平衡规则.md)：正在盘点的资金调拨战术。
-- [日常运行手册](docs/使用/日常运行手册.md)：当前工具的操作流程。
-- [当前实现状态](docs/工程/当前实现状态.md)：工具已经做到什么、还有什么差距。
+- 当前真源 v2026-08 包：[投资体系总纲](docs/体系/投资体系总纲.md)、[仓位与再平衡规则](docs/体系/仓位与再平衡规则.md)、[交易执行规则](docs/体系/交易执行规则.md)、[小市值股票策略规则](docs/策略/小市值股票策略规则.md)、[多因子可转债策略规则](docs/策略/多因子可转债策略规则.md)。
+- [日常运行手册](docs/使用/日常运行手册.md)：当前工具的操作流程，不定义投资规则。
+- [当前实现状态](docs/工程/当前实现状态.md)：工具已经做到什么、还有什么差距，不覆盖当前真源。
 
 ## 当前能力
 
 - 运行小市值股票与多因子可转债策略，保存榜单和订单结果。
 - 记录账户、持仓、市场温度及其时间口径。
-- 计算当前国内目标金额和账户间调拨方向。
+- 计算 A/B/C 顶层目标、A 组合内部目标和账户间调拨方向。
 - 通过本地 Web 看板录入事实、查看榜单和检查本期计划。
 - 在关键输入缺失或日期不一致时停止生成计划。
 
-这里的“当前目标金额”只代表现行战术快照。仓位公式、比例、频率或阈值即使已经写进代码，也不因此成为正式共识。
+当前投资规则以 `docs/体系/` 和 `docs/策略/` 中标注 `当前真源 v2026-08` 的文档为准。代码、页面和配置只是实现事实；若与当前真源冲突，应登记实现差距并修正工具。
 
 ## 快速开始
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -r requirements.txt
-python3 run_app.py
+.venv/bin/python -m pip install -r requirements.txt
+scripts/start_app.sh
 ```
 
 打开 `http://127.0.0.1:8000`。完整操作顺序见 [日常运行手册](docs/使用/日常运行手册.md)。
@@ -38,15 +36,23 @@ python3 run_app.py
 常用本地命令：
 
 ```bash
+# 启动 / 查看 / 停止本地看板
+scripts/start_app.sh
+scripts/status_app.sh
+scripts/stop_app.sh
+
 # 自动化测试
-python3 -m unittest discover -s tests -v
+.venv/bin/python -m unittest discover -s tests -v
+
+# 静态检查
+.venv/bin/ruff check .
 
 # 两条账户内策略
-python3 -m strategies.cb_rotation.run
-python3 -m strategies.stock_smallcap.run
+.venv/bin/python -m strategies.cb_rotation.run
+.venv/bin/python -m strategies.stock_smallcap.run
 
 # 当前体系级目标金额与调拨计划
-python3 rebalance.py
+.venv/bin/python rebalance.py
 ```
 
 ## 目录

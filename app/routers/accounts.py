@@ -2,6 +2,8 @@ from __future__ import annotations
 from typing import Annotated, Literal, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from app.account_read_model import build_account_read_model
+from app import plan_lifecycle
 from datasource import db
 from investment_model import public_investment_model
 
@@ -21,6 +23,7 @@ class AccountContextIn(StrictRequest):
     temperature: FiniteFloat
     check_type: Literal["monthly_contribution", "quarterly", "a_internal", "b_recovery", "ad_hoc"] = "a_internal"
     new_contribution: NonnegativeFinite = 0
+    b_purchase_status: Literal["unchecked", "unavailable", "available"] = "unchecked"
     b_purchase_limit: NonnegativeFinite = 0
     b_purchase_checked_at: Optional[str] = None
     b_purchase_source: Optional[str] = None
@@ -76,14 +79,14 @@ def public_account_summary(summary: dict | None) -> dict | None:
             "temperature": summary.get("temperature"),
             "check_type": summary.get("check_type", "a_internal"),
             "new_contribution": summary.get("new_contribution", 0) or 0,
+            "b_purchase_status": summary.get("b_purchase_status", "unchecked"),
             "b_purchase_limit": summary.get("b_purchase_limit", 0) or 0,
-            "b_purchase_checked_at": summary.get("b_purchase_checked_at"),
-            "b_purchase_source": summary.get("b_purchase_source"),
         }
     return {
         "total_assets": summary.get("total_assets", 0) or 0,
         "context": context,
         "accounts": summary.get("accounts", []),
+        "read_model": build_account_read_model(summary),
     }
 
 
@@ -116,12 +119,13 @@ def post_context(body: AccountContextIn):
             body.temperature,
             check_type=body.check_type,
             new_contribution=body.new_contribution,
+            b_purchase_status=body.b_purchase_status,
             b_purchase_limit=body.b_purchase_limit,
             b_purchase_checked_at=body.b_purchase_checked_at,
             b_purchase_source=body.b_purchase_source,
         )
         db.clear_latest_orders()
-        db.mark_generated_plans_stale()
+        plan_lifecycle.mark_stale()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return public_account_summary(db.get_current_account_summary())
@@ -137,7 +141,7 @@ def post_account_snapshot(account_id: str, body: AccountValueSnapshotIn):
             account_id, body.snapshot_date, body.total, cash, body.frozen_cash
         )
         db.clear_latest_orders()
-        db.mark_generated_plans_stale()
+        plan_lifecycle.mark_stale()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return public_account_summary(db.get_current_account_summary())
@@ -160,7 +164,7 @@ def post_account_state(account_id: str, body: AccountStateIn):
             body.frozen_cash,
         )
         db.clear_latest_orders()
-        db.mark_generated_plans_stale()
+        plan_lifecycle.mark_stale()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     response = public_account_summary(db.get_current_account_summary())

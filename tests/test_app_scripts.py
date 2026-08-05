@@ -18,8 +18,8 @@ class TestAppScripts(unittest.TestCase):
         text = (SCRIPTS / "start_app.sh").read_text(encoding="utf-8")
         self.assertIn("ark_quant_server", text)
         self.assertIn("launchctl submit", text)
-        self.assertIn(".venv/lib/python3.9/site-packages", text)
-        self.assertIn("-m uvicorn app.main:app", text)
+        self.assertIn('.venv/bin/python"', text)
+        self.assertIn("run_app.py", text)
         self.assertIn('HOST="127.0.0.1"', text)
         self.assertIn('PORT="8000"', text)
         self.assertIn("logs/ark_quant_server.log", text)
@@ -29,6 +29,7 @@ class TestAppScripts(unittest.TestCase):
         for name in ["stop_app.sh", "status_app.sh"]:
             text = (SCRIPTS / name).read_text(encoding="utf-8")
             self.assertIn("ark_quant_server", text)
+            self.assertIn("codex.arkquant", text)
             self.assertIn("8000", text)
 
 

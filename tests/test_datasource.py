@@ -43,6 +43,25 @@ class ParseTencentCapsTests(unittest.TestCase):
         self.assertEqual(market._parse_tencent_quote_caps("", "2026-06-05"), [])
 
 
+class StockPriceAdjustmentTests(unittest.TestCase):
+    def test_chuhuan_technology_ex_rights_price_adjusts_stale_pre_action_close(self) -> None:
+        row = {"stock_code": "001336", "price": 20.25}
+
+        adjusted = market.apply_stock_price_adjustments(row)
+
+        self.assertEqual(adjusted["price"], 15.48)
+        self.assertEqual(round(adjusted["price"] * 910, 2), 14086.8)
+        self.assertEqual(adjusted["price_adjustment"], "2025_profit_distribution")
+
+    def test_chuhuan_technology_keeps_already_adjusted_price(self) -> None:
+        row = {"stock_code": "001336", "price": 15.49}
+
+        adjusted = market.apply_stock_price_adjustments(row)
+
+        self.assertEqual(adjusted["price"], 15.49)
+        self.assertNotIn("price_adjustment", adjusted)
+
+
 class StoreTests(unittest.TestCase):
     def test_accounts_state_round_trip(self) -> None:
         state = {"temperature": 57.0, "stock": {"total": 1.5, "cash": 2.0}, "label": "测试中文"}

@@ -1,0 +1,83 @@
+{
+  "protocol_version": "CB-SHADOW-20260720-v1",
+  "snapshot_id": "CB-SHADOW-SNAPSHOT-20260724",
+  "signal_date": "2026-07-24",
+  "generated_at": "2026-07-24T22:15:00+08:00",
+  "data_status": "dry_run_invalid_for_forward_sample",
+  "valid_observation_no": 0,
+  "candidate_ids": [
+    "B0_BASE",
+    "C_BAL",
+    "C_OFF"
+  ],
+  "source_checks": [
+    {
+      "source_id": "akshare_sina_cb_spot",
+      "purpose": "convertible bond close snapshot",
+      "status": "available",
+      "blocking_if_unavailable": true,
+      "rows": 329,
+      "columns": "symbol|name|trade|pricechange|changepercent|buy|sell|settlement|open|high|low|volume",
+      "probe_source": "",
+      "elapsed_seconds": 0.885,
+      "error": ""
+    },
+    {
+      "source_id": "akshare_jsl_redeem",
+      "purpose": "call notice and current status cross-check",
+      "status": "available",
+      "blocking_if_unavailable": false,
+      "rows": 318,
+      "columns": "代码|名称|现价|正股代码|正股名称|规模|剩余规模|转股起始日|最后交易日|到期日|转股价|强赎触发比",
+      "probe_source": "",
+      "elapsed_seconds": 0.163,
+      "error": ""
+    },
+    {
+      "source_id": "akshare_stock_single_daily",
+      "purpose": "underlying stock close for conversion value",
+      "status": "available",
+      "blocking_if_unavailable": true,
+      "rows": 4,
+      "columns": "date|open|high|low|close|volume|amount|outstanding_share|turnover",
+      "probe_source": "stock_zh_a_daily",
+      "elapsed_seconds": 0.656,
+      "error": ""
+    },
+    {
+      "source_id": "manual_risk_queue",
+      "purpose": "ST, suspension, call, credit and issuer-risk exceptions",
+      "status": "not_run",
+      "blocking_if_unavailable": true
+    }
+  ],
+  "source_summary": {
+    "available": 3,
+    "failed": 0,
+    "not_run": 1
+  },
+  "universe_collection": {
+    "status": "blocked_by_source_checks",
+    "blocking_sources": [
+      "manual_risk_queue"
+    ]
+  },
+  "generates_orders": false,
+  "writes_database": false,
+  "modifies_v0": false,
+  "dry_run_reason": "rehearsal before the valid signal window; validates command entry and source checklist only",
+  "next_required_outputs": [
+    "manifest",
+    "universe",
+    "execution",
+    "portfolio",
+    "review"
+  ],
+  "not_validation_scope": [
+    "candidate performance",
+    "V0 replacement",
+    "real trading order generation",
+    "parameter tuning",
+    "paid data procurement"
+  ]
+}

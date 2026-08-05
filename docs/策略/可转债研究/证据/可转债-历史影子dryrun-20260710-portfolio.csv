@@ -1,0 +1,4 @@
+candidate_id,date,dry_run_nav,cash_weight,locked_weight,holdings_count,target_rows,unfilled_cash_rows,target_weight_sum,bought_weight_sum,risk_events,data_status
+B0_BASE,2026-07-13,,-2.220446049250313e-16,0.0,20,20,0,1.0000000000000002,1.0000000000000002,,dry_run_invalid_for_forward_sample
+C_BAL,2026-07-13,,-2.220446049250313e-16,0.0,20,20,0,1.0000000000000002,1.0000000000000002,,dry_run_invalid_for_forward_sample
+C_OFF,2026-07-13,,-2.220446049250313e-16,0.0,20,20,0,1.0000000000000002,1.0000000000000002,,dry_run_invalid_for_forward_sample

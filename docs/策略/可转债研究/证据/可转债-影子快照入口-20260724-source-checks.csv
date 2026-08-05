@@ -1,0 +1,5 @@
+source_id,purpose,status,blocking_if_unavailable,rows,columns,probe_source,elapsed_seconds,error
+akshare_sina_cb_spot,convertible bond close snapshot,available,True,329,symbol|name|trade|pricechange|changepercent|buy|sell|settlement|open|high|low|volume,,0.885,
+akshare_jsl_redeem,call notice and current status cross-check,available,False,318,代码|名称|现价|正股代码|正股名称|规模|剩余规模|转股起始日|最后交易日|到期日|转股价|强赎触发比,,0.163,
+akshare_stock_single_daily,underlying stock close for conversion value,available,True,4,date|open|high|low|close|volume|amount|outstanding_share|turnover,stock_zh_a_daily,0.656,
+manual_risk_queue,"ST, suspension, call, credit and issuer-risk exceptions",not_run,True,,,,,

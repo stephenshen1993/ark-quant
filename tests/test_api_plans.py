@@ -88,6 +88,25 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(data["stock"]["data_date"], "2026-06-29")
         self.assertEqual(data["stock"]["trade_date"], "2026-06-30")
         self.assertEqual([phase["phase"] for phase in data["execution_sequence"]], ["sell", "transfer", "buy"])
+        read_model = data["account_read_model"]
+        portfolios = {item["id"]: item for item in read_model["portfolios"]}
+        self.assertEqual(portfolios["A"]["account_ids"], ["stock", "cb", "cash"])
+        self.assertEqual(
+            {item["id"] for item in read_model["strategies"]},
+            {"smallcap_stock", "multifactor_convertible_bond"},
+        )
+
+    def test_plan_service_builds_current_plan_without_http_route(self):
+        from app.plan_service import build_current_plan
+
+        data = build_current_plan()
+
+        self.assertEqual(data["plan_date"], "2026-06-29")
+        self.assertIn("fund_transfer", data)
+        self.assertEqual([phase["phase"] for phase in data["execution_sequence"]], ["sell", "transfer", "buy"])
+        self.assertGreater(len(data["cb"]["orders"]), 0)
+        self.assertGreater(len(data["stock"]["orders"]), 0)
+        self.assertIn("account_read_model", data)
 
     def test_full_plan_uses_the_same_structured_fund_transfer_result(self):
         r = self.client.get("/api/plan")
@@ -99,10 +118,11 @@ class TestPlansApi(unittest.TestCase):
         self.assertNotEqual(data["transfer_deltas"]["stock"], 0)
         self.assertNotEqual(data["transfer_deltas"]["bond"], 0)
         self.assertTrue(data["transfer_steps"])
+        self.assertFalse(any(step.startswith("A ") for step in data["transfer_steps"]))
 
     def test_generate_plan_runs_complete_plan_on_server_once(self):
         with patch(
-            "app.routers.plans._size_cb_orders",
+            "app.order_sizing.size_cb_orders",
             return_value={
                 "orders": [{
                     "action": "BUY", "bond_code": "113062", "bond_name": "常银转债",
@@ -116,7 +136,7 @@ class TestPlansApi(unittest.TestCase):
                 },
             },
         ) as cb_size, patch(
-            "app.routers.plans._size_stock_orders",
+            "app.order_sizing.size_stock_orders",
             return_value={
                 "orders": [{
                     "action": "SELL", "stock_code": "600051", "stock_name": "宁波联合",
@@ -161,7 +181,7 @@ class TestPlansApi(unittest.TestCase):
             "price": 126.80, "delta_shares": 10, "amount": 1268.0,
         }]
         with patch(
-            "app.routers.plans._size_cb_orders",
+            "app.order_sizing.size_cb_orders",
             return_value={
                 "orders": cb_orders,
                 "summary": {
@@ -172,7 +192,7 @@ class TestPlansApi(unittest.TestCase):
                 },
             },
         ), patch(
-            "app.routers.plans._size_stock_orders",
+            "app.order_sizing.size_stock_orders",
             side_effect=HTTPException(
                 status_code=409,
                 detail={"code": "STOCK_SIZING_FAILED", "message": "stock sizing failed"},
@@ -191,13 +211,13 @@ class TestPlansApi(unittest.TestCase):
 
     def test_account_changes_mark_generated_plans_stale(self):
         with patch(
-            "app.routers.plans._size_cb_orders",
+            "app.order_sizing.size_cb_orders",
             return_value={"orders": [], "summary": {
                 "starting_cash": 110.0, "transfer_delta": 0.0,
                 "order_delta": 0.0, "cash_left": 110.0,
             }},
         ), patch(
-            "app.routers.plans._size_stock_orders",
+            "app.order_sizing.size_stock_orders",
             return_value={"orders": [], "summary": {
                 "starting_cash": 274.0, "transfer_delta": 0.0,
                 "order_delta": 0.0, "cash_left": 274.0,
@@ -243,6 +263,10 @@ class TestPlansApi(unittest.TestCase):
         self.assertIn("transfer_deltas", data)
         self.assertEqual(data["fund_transfer"]["top_level"]["status"], "ready")
         self.assertEqual(data["fund_transfer"]["a_internal"]["status"], "not_requested")
+        self.assertEqual(
+            data["account_read_model"]["portfolios"][0]["account_ids"],
+            ["stock", "cb", "cash"],
+        )
         self.assertNotIn("cb", data)
         self.assertNotIn("stock", data)
 
@@ -261,7 +285,13 @@ class TestPlansApi(unittest.TestCase):
         r = self.client.get("/api/plan/transfer")
 
         self.assertEqual(r.status_code, 409)
-        self.assertIn("account.overseas", {e["input"] for e in r.json()["detail"]["errors"]})
+        overseas_error = next(
+            item for item in r.json()["detail"]["errors"]
+            if item["input"] == "account.overseas"
+        )
+        self.assertEqual(overseas_error["kind"], "account")
+        self.assertEqual(overseas_error["account_name"], "海外长钱投顾组合")
+        self.assertEqual(overseas_error["portfolio_id"], "B")
 
     def test_order_sizing_stops_when_complete_funding_inputs_are_missing(self):
         db._TEST_CONN.execute(
@@ -393,7 +423,7 @@ class TestPlansApi(unittest.TestCase):
         ]))
 
         with patch(
-            "app.routers.plans._strategy_cash_after_transfer",
+            "app.plan_service.strategy_cash_after_transfer",
             return_value=30000,
         ), patch(
             "datasource.market.fetch_cb_prices_tencent",
@@ -412,7 +442,7 @@ class TestPlansApi(unittest.TestCase):
         db._TEST_CONN.commit()
 
         with patch(
-            "app.routers.plans._strategy_cash_after_transfer",
+            "app.plan_service.strategy_cash_after_transfer",
             return_value=-5000,
         ), patch(
             "datasource.market.fetch_cb_prices_tencent",
@@ -427,10 +457,10 @@ class TestPlansApi(unittest.TestCase):
     def test_order_cash_uses_available_cash_not_cash_balance(self):
         db.insert_account_value_snapshot("cb", "2026-06-29", 227183, 1110, 1000)
         account = db.get_current_account_summary()
-        from app.routers.plans import _strategy_cash_after_transfer
+        from app.plan_service import strategy_cash_after_transfer
         self.assertEqual(account["bond_cash"], 1110)
         self.assertEqual(account["bond_available_cash"], 110)
-        self.assertEqual(_strategy_cash_after_transfer("cb", account, {"bond": 0}), 110)
+        self.assertEqual(strategy_cash_after_transfer("cb", account, {"bond": 0}), 110)
 
     def test_size_cb_orders_reports_partial_quote_gaps(self):
         db._TEST_CONN.execute("DELETE FROM cb_orders")
@@ -448,7 +478,7 @@ class TestPlansApi(unittest.TestCase):
         ]))
 
         with patch(
-            "app.routers.plans._strategy_cash_after_transfer",
+            "app.plan_service.strategy_cash_after_transfer",
             return_value=10000,
         ), patch(
             "datasource.market.fetch_cb_prices_tencent",
@@ -467,7 +497,7 @@ class TestPlansApi(unittest.TestCase):
         db.insert_positions("cb", "2026-06-29", [])
 
         with patch(
-            "app.routers.plans._strategy_cash_after_transfer",
+            "app.plan_service.strategy_cash_after_transfer",
             return_value=10000,
         ), patch(
             "datasource.market.fetch_cb_prices_tencent",
@@ -521,6 +551,12 @@ class TestPlansApi(unittest.TestCase):
             if item["input"] == "account.stock"
         )
         self.assertEqual(stock_error["date"], "2026-06-01")
+        self.assertEqual(stock_error["kind"], "account")
+        self.assertEqual(stock_error["account_id"], "stock")
+        self.assertEqual(stock_error["account_name"], "广发账户")
+        self.assertEqual(stock_error["account_role"], "A 组合小市值股票策略承载账户")
+        self.assertEqual(stock_error["portfolio_id"], "A")
+        self.assertNotIn("股票账户", stock_error["message"])
 
     def test_position_fact_date_cannot_be_hidden_by_recent_entry_time(self):
         db._TEST_CONN.execute("DELETE FROM position_snapshot_items")
@@ -534,10 +570,10 @@ class TestPlansApi(unittest.TestCase):
         )
         db._TEST_CONN.commit()
 
-        from app.routers.plans import _position_snapshot_for_plan
+        from app.plan_service import position_snapshot_for_plan
 
         self.assertIsNone(
-            _position_snapshot_for_plan("cb", "2026-06-29", "2026-06-30")
+            position_snapshot_for_plan("cb", "2026-06-29", "2026-06-30")
         )
 
     def test_monday_preopen_account_updates_are_valid_for_friday_plan(self):

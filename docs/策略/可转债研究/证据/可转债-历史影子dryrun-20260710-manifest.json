@@ -1,0 +1,131 @@
+{
+  "protocol_version": "CB-SHADOW-20260720-v1",
+  "dry_run_id": "CB-SHADOW-HIST-DRYRUN-20260710",
+  "data_status": "dry_run_invalid_for_forward_sample",
+  "invalid_for_forward_reason": "historical frozen input was already known before this dry run; use only for format and ranking-tool validation",
+  "signal_date": "2026-07-10",
+  "execution_date": "2026-07-13",
+  "candidate_ids": [
+    "B0_BASE",
+    "C_BAL",
+    "C_OFF"
+  ],
+  "input_package": "/Users/Admin/Workspace/personal/repos/ark-quant/data/processed/cb_research_20260720",
+  "source_manifest": {
+    "frozen_panel.pkl.gz": {
+      "sha256": "ac97d7aea51bae9d322aa4371a91a315b4efbe5b473c09a288b3a13a9884d6e6",
+      "bytes": 19397585
+    },
+    "manifest.json": {
+      "sha256": "0d2f063a9f1328b0e7ea4323f76fa988478f457f9a076534608f1f718063270b",
+      "bytes": 4615
+    },
+    "risk_events.csv": {
+      "sha256": "6cb722de144643057f85e470077f3de0ba2e50443ee328b7c522c34f08198d2a",
+      "bytes": 18995
+    },
+    "standard_exits.csv": {
+      "sha256": "2776406606d936a1f15b415511ddd9bb3ad9f98842bd1fc521a4e53cf4ac8772",
+      "bytes": 82776
+    },
+    "coupon_events.csv": {
+      "sha256": "e870ab9d34dd78330f9505e71b8835e4b562b6a6797b651a3cbf42a3484a4898",
+      "bytes": 182422
+    }
+  },
+  "panel_range": {
+    "start": "2018-01-02",
+    "end": "2026-07-17",
+    "rows": 715800,
+    "bonds": 947
+  },
+  "eligible_common_count": 240,
+  "rankable_counts": {
+    "B0_BASE": 240,
+    "C_BAL": 187,
+    "C_OFF": 187
+  },
+  "top20_codes": {
+    "B0_BASE": [
+      "113052",
+      "113056",
+      "113058",
+      "113062",
+      "113631",
+      "113658",
+      "113681",
+      "123149",
+      "123171",
+      "123178",
+      "123183",
+      "123188",
+      "123216",
+      "127045",
+      "127061",
+      "127067",
+      "127084",
+      "127089",
+      "127103",
+      "127110"
+    ],
+    "C_BAL": [
+      "111012",
+      "113636",
+      "113650",
+      "113658",
+      "113681",
+      "123122",
+      "123124",
+      "123150",
+      "123165",
+      "123171",
+      "123178",
+      "123188",
+      "123209",
+      "123216",
+      "123222",
+      "123235",
+      "127046",
+      "127053",
+      "127067",
+      "127084"
+    ],
+    "C_OFF": [
+      "111002",
+      "113631",
+      "113658",
+      "113681",
+      "118007",
+      "118016",
+      "118039",
+      "123124",
+      "123157",
+      "123160",
+      "123171",
+      "123173",
+      "123178",
+      "123183",
+      "123188",
+      "123209",
+      "123211",
+      "123222",
+      "123235",
+      "127053"
+    ]
+  },
+  "validation_scope": [
+    "manifest schema",
+    "universe schema",
+    "initial execution schema",
+    "same-day ranking reproducibility",
+    "candidate top20 coexistence",
+    "missing/exclusion reason visibility"
+  ],
+  "not_validation_scope": [
+    "forward sample performance",
+    "candidate adoption",
+    "V0 replacement",
+    "parameter tuning",
+    "real trading order generation"
+  ]
+}

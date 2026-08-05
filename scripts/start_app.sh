@@ -8,8 +8,7 @@ HOST="127.0.0.1"
 PORT="8000"
 LOG_FILE="$ROOT_DIR/logs/ark_quant_server.log"
 PID_FILE="$ROOT_DIR/logs/ark_quant_server.pid"
-PYTHON="/usr/bin/python3"
-PYTHONPATH_VALUE=".venv/lib/python3.9/site-packages"
+PYTHON="$ROOT_DIR/.venv/bin/python"
 
 mkdir -p "$ROOT_DIR/logs"
 
@@ -24,8 +23,8 @@ touch "$LOG_FILE"
 
 launchctl remove "$LABEL" >/dev/null 2>&1 || true
 launchctl submit -l "$LABEL" -- /bin/zsh -lc \
-  'cd "$1" && echo $$ > "$2" && PYTHONPATH="$3" exec "$4" -m uvicorn app.main:app --host "$5" --port "$6" >> "$7" 2>&1' \
-  "$LABEL" "$ROOT_DIR" "$PID_FILE" "$PYTHONPATH_VALUE" "$PYTHON" "$HOST" "$PORT" "$LOG_FILE"
+  'cd "$1" && echo $$ > "$2" && exec "$3" run_app.py >> "$4" 2>&1' \
+  "$LABEL" "$ROOT_DIR" "$PID_FILE" "$PYTHON" "$LOG_FILE"
 
 for _ in {1..20}; do
   if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then

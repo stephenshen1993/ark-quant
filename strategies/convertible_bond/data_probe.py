@@ -260,7 +260,9 @@ def _redact(text: str, secrets: Iterable[str]) -> str:
 
 
 def _feasibility(field_support: dict[str, dict[str, object]]) -> list[str]:
-    available = lambda field: bool(field_support.get(field, {}).get("available"))
+    def available(field: str) -> bool:
+        return bool(field_support.get(field, {}).get("available"))
+
     pure_double_low = available("转债现价") and available("转股溢价率")
     premium_momentum = available("转股溢价率") and available("正股 20 日动量")
     safety_fields = ["剩余规模", "信用评级", "强赎状态", "到期日"]

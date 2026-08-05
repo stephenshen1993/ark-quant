@@ -1,0 +1,12 @@
+检查项,字段职责,主路径,备路径,2026-07-23预检状态,预检证据,2026-07-30失效条件,当前处理
+转债当前全市场快照,信号日转债收盘价/名称/基础行情,AKShare bond_zh_hs_cov_spot 上游新浪,集思录当前页或东方财富当前快照,available,"只读联网预检返回 329 行，含 symbol/name/trade/changepercent/buy/sell/settlement 等列",信号日收盘后无法取得全市场转债价格或来源哈希,保留为主路径
+集思录强赎与当前状态交叉,已公告强赎/剩余规模/评级/转股起始日/风险状态交叉,AKShare bond_cb_redeem_jsl 上游集思录,已登录页面人工导出或发行人公告逐券核验,available,"只读联网预检返回 318 行，含 代码/名称/现价/正股代码/规模/剩余规模/转股起始日 等列",强赎或风险状态无法确认且不能逐券公告裁决,保留为状态交叉来源
+转债历史日线,252 日双低 Z 与执行日开盘回查,AKShare bond_zh_hs_cov_daily 上游新浪,交易所逐券日 K 或东方财富日线,sample_available,"样本 sh113570 返回 716 行，含 date/open/high/low/close/volume",候选入选券缺少足够历史开盘/收盘且无法用交易所路径补齐,保留为历史行情主路径但成交额不用其近似承诺容量
+转债分钟行情,下一开盘首分钟成交与可成交深度,AKShare bond_zh_hs_cov_min 上游新浪,交易所/行情页面人工记录或逐券开盘成交明细,sample_failed,"样本 sh113570 的 min 接口 TypeError: NoneType object is not subscriptable",执行日无法取得首分钟金额时不得承诺精确开盘深度,列入 2026-07-31 开盘后人工/备份重点
+正股历史日线与成交额,转股价值/溢价复算与正股停牌诊断,AKShare stock_zh_a_hist 上游东方财富,AKShare stock_zh_a_daily 上游新浪/腾讯口径,sample_available,"样本 000001 在 2026-07-20 至 2026-07-23 返回 4 行，含开盘/收盘/成交额",正股价格缺失导致转股价值不可复算,保留双路径
+正股历史股本,正股流通股本/流通市值交叉,AKShare stock_zh_a_daily 的 outstanding_share,东方财富 stock_value_em 或公告裁决,sample_available,"样本 sz000001 返回 outstanding_share/turnover 等列",候选正股股本冲突且无公告裁决,只作暴露诊断与市占比复核
+正股全市场当前快照,当前正股状态与价格备份,AKShare stock_zh_a_spot,东方财富 stock_zh_a_spot_em 或单券日线,available_slow,"stock_zh_a_spot 返回 5529 行但耗时约 31.5 秒；stock_zh_a_spot_em 失败",信号日无法在开盘前完成全市场正股状态交叉,以候选入选券单券日线优先补齐
+东方财富全市场 A 股现货,正股全市场快速备份,AKShare stock_zh_a_spot_em 上游东方财富,AKShare stock_zh_a_spot 或 stock_zh_a_hist 单券路径,unstable,"只读联网预检 ProxyError/RemoteDisconnected",不得单独依赖该接口封存快照,降为备路径
+东方财富 ST 专用列表,ST/风险警示状态,AKShare stock_zh_a_st_em 上游东方财富,转债名称/正股名称状态、交易所状态、巨潮公告和集思录当前状态,unstable,"只读联网预检 ProxyError/RemoteDisconnected",风险警示状态无法确认时相关券排除并进人工队列,必须准备候选级交叉检查
+本地历史冻结包,字段合同与历史状态模板,CB-REPRO-20260720-v1 frozen_panel,无,template_only,"715800 行、947 只，覆盖 2018-01-02 至 2026-07-17，字段含 double_low_z252/balance_bil/call_notice_date/tail_risk_date/st_risk_active",不得用 2026-07-17 历史包冒充 2026-07-30 当前快照,仅复用字段定义和历史计算模板
+Python 环境,运行预检与快照脚本的本地依赖,.venv Python + akshare/pandas/requests/bs4/lxml,requirements.txt,available,"akshare/pandas/requests/bs4/lxml 均可 import",核心依赖不可 import,环境不构成当前阻塞

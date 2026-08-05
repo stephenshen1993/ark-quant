@@ -65,6 +65,20 @@ class TargetStateSizingTests(unittest.TestCase):
         self.assertLess(summary["cash_left"], 1_000)
         self.assertEqual(sheet["target_shares"].sum(), 2_100)
 
+    def test_negative_budget_releases_cash_by_trimming_existing_positions(self):
+        target = rankings(3)
+        held = positions([
+            {"stock_code": "600000", "stock_name": "股票0", "shares": 1_000},
+            {"stock_code": "600001", "stock_name": "股票1", "shares": 1_000},
+            {"stock_code": "600002", "stock_name": "股票2", "shares": 1_000},
+        ])
+
+        sheet, summary = size_target_state(target, held, -9_000, prices(target))
+
+        self.assertGreaterEqual(summary["cash_left"], 0)
+        self.assertLess(sheet["target_shares"].sum(), 3_000)
+        self.assertTrue((sheet["delta_shares"] < 0).any())
+
     def test_sizes_the_strategy_target_set_without_forcing_twenty_names(self):
         target = rankings(3)
 

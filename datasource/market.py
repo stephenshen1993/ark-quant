@@ -34,6 +34,44 @@ def _to_num(value) -> float:
     return pd.to_numeric(value, errors="coerce")
 
 
+_STOCK_PRICE_ADJUSTMENTS = {
+    "001336": {
+        "id": "2025_profit_distribution",
+        "pre_action_close": 20.25,
+        "cash_dividend_per_share": 0.12,
+        "share_factor": 1.3,
+    },
+}
+
+
+def apply_stock_price_adjustments(row: dict) -> dict:
+    """Patch known stale quote snapshots around corporate-action cutovers.
+
+    Some free quote feeds can keep returning the pre-rights close while brokers
+    have already moved holdings to the ex-rights quantity/price basis. Keep this
+    narrow and explicit so a stale feed cannot silently distort sizing.
+    """
+    code = normalize_stock_code(row.get("stock_code", ""))
+    adjustment = _STOCK_PRICE_ADJUSTMENTS.get(code)
+    if not adjustment:
+        return row
+    try:
+        price = float(row.get("price"))
+    except (TypeError, ValueError):
+        return row
+    pre_close = adjustment["pre_action_close"]
+    if abs(price - pre_close) >= 0.01:
+        return row
+    adjusted = dict(row)
+    adjusted["price"] = round(
+        (pre_close - adjustment["cash_dividend_per_share"]) / adjustment["share_factor"],
+        2,
+    )
+    adjusted["price_adjustment"] = adjustment["id"]
+    adjusted["raw_price"] = price
+    return adjusted
+
+
 def _parse_tencent_quote_caps(text: str, as_of_date: str) -> list[dict]:
     """Parse 总市值 from Tencent quote strings (`v_sh600519="1~贵州茅台~600519~...";`).
 
@@ -126,7 +164,7 @@ def fetch_tencent_snapshot(codes: Iterable[str], batch_size: int = 60) -> pd.Dat
             if len(f) <= 48:
                 continue
             rows.append(
-                {
+                apply_stock_price_adjustments({
                     "stock_code": normalize_stock_code(f[2]),
                     "stock_name_q": f[1],
                     "price": _to_num(f[3]),
@@ -137,7 +175,7 @@ def fetch_tencent_snapshot(codes: Iterable[str], batch_size: int = 60) -> pd.Dat
                     "total_mv_yuan": _to_num(f[45]) * 100_000_000,  # 亿元 -> 元
                     "limit_up": _to_num(f[47]),
                     "limit_down": _to_num(f[48]),
-                }
+                })
             )
     snap = pd.DataFrame(rows)
     if not snap.empty:

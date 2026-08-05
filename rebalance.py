@@ -260,13 +260,20 @@ def main() -> None:
     state = load_state()
 
     # Apply CLI overrides (only update fields explicitly provided)
-    if args.stock      is not None: state["stock"]["total"]      = args.stock
-    if args.stock_cash is not None: state["stock"]["cash"]       = args.stock_cash
-    if args.bond       is not None: state["bond"]["total"]       = args.bond
-    if args.bond_cash  is not None: state["bond"]["cash"]        = args.bond_cash
-    if args.changqian  is not None: state["changqian"]["total"]  = args.changqian
-    if args.cash_pool  is not None: state["cash_pool"]["total"]  = args.cash_pool
-    if args.overseas   is not None: state["overseas"]["total"]   = args.overseas
+    if args.stock is not None:
+        state["stock"]["total"] = args.stock
+    if args.stock_cash is not None:
+        state["stock"]["cash"] = args.stock_cash
+    if args.bond is not None:
+        state["bond"]["total"] = args.bond
+    if args.bond_cash is not None:
+        state["bond"]["cash"] = args.bond_cash
+    if args.changqian is not None:
+        state["changqian"]["total"] = args.changqian
+    if args.cash_pool is not None:
+        state["cash_pool"]["total"] = args.cash_pool
+    if args.overseas is not None:
+        state["overseas"]["total"] = args.overseas
 
     state["temperature"] = T_raw
     state["updated_at"]  = str(date.today())

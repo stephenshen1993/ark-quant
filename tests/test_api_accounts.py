@@ -49,33 +49,37 @@ class TestAccountsApi(unittest.TestCase):
         self.assertNotIn("account_updated_at", r.json())
         self.assertEqual(r.json()["total_assets"], 0)
         self.assertEqual(len(r.json()["accounts"]), 5)
+        self.assertEqual(r.json()["read_model"]["context"]["snapshot_date"], "2026-06-29")
 
-    def test_context_accepts_auditable_funding_check_facts(self):
+    def test_context_accepts_b_purchase_status_without_audit_fields(self):
         r = self.client.post("/api/account/context", json={
             "snapshot_date": "2026-07-21",
             "temperature": 50.0,
             "check_type": "quarterly",
             "new_contribution": 5_000,
+            "b_purchase_status": "available",
             "b_purchase_limit": 2_000,
-            "b_purchase_checked_at": "2026-07-21T15:30:00",
-            "b_purchase_source": "manual",
         })
 
         self.assertEqual(r.status_code, 200)
         context = r.json()["context"]
         self.assertEqual(context["check_type"], "quarterly")
+        self.assertEqual(context["b_purchase_status"], "available")
         self.assertEqual(context["b_purchase_limit"], 2_000)
-        self.assertEqual(context["b_purchase_source"], "manual")
+        self.assertNotIn("b_purchase_source", context)
 
-    def test_b_purchase_limit_requires_auditable_check_facts(self):
+    def test_unavailable_b_purchase_status_does_not_require_a_limit(self):
         r = self.client.post("/api/account/context", json={
             "snapshot_date": "2026-07-21",
             "temperature": 50.0,
-            "b_purchase_limit": 1_000,
+            "check_type": "quarterly",
+            "b_purchase_status": "unavailable",
         })
 
-        self.assertEqual(r.status_code, 400)
-        self.assertIn("checked_at", r.json()["detail"])
+        self.assertEqual(r.status_code, 200)
+        context = r.json()["context"]
+        self.assertEqual(context["b_purchase_status"], "unavailable")
+        self.assertEqual(context["b_purchase_limit"], 0)
 
     def test_context_and_account_snapshots_are_aggregated(self):
         self.client.post("/api/account/context", json={
@@ -109,6 +113,26 @@ class TestAccountsApi(unittest.TestCase):
         self.assertEqual(accounts["cb"]["label"], "华泰账户")
         self.assertEqual(accounts["cb"]["total"], 227183)
         self.assertEqual(accounts["cb"]["cash"], 110)
+        read_model = r.json()["read_model"]
+        read_accounts = {item["id"]: item for item in read_model["accounts"]}
+        self.assertEqual(read_accounts["stock"]["kind"], "account")
+        self.assertEqual(read_accounts["stock"]["role"], "A 组合小市值股票策略承载账户")
+        self.assertEqual(read_accounts["stock"]["strategy_ids"], ["smallcap_stock"])
+        self.assertEqual(read_accounts["cash"]["strategy_ids"], [])
+        self.assertEqual(read_accounts["cash"]["carrier_strategy_ids"], ["cash_management"])
+        self.assertEqual(
+            {item["id"] for item in read_model["strategies"]},
+            {"smallcap_stock", "multifactor_convertible_bond"},
+        )
+        portfolios = {item["id"]: item for item in read_model["portfolios"]}
+        self.assertEqual(portfolios["A"]["account_ids"], ["stock", "cb", "cash"])
+        self.assertEqual(portfolios["A"]["current_amount"], 436738)
+        self.assertEqual(portfolios["B"]["account_ids"], ["overseas"])
+        self.assertEqual(portfolios["C"]["account_ids"], ["changqian"])
+        self.assertEqual(
+            read_model["legacy_adapter"]["strategy_to_account_id"]["cb"],
+            "cb",
+        )
 
     def test_account_updates_are_per_account(self):
         r = self.client.post("/api/account/cash/snapshot", json={

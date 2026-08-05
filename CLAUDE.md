@@ -7,12 +7,14 @@
 常用命令：
 
 ```bash
-source .venv/bin/activate
-python3 -m unittest discover -s tests -v
-python3 run_app.py
-python3 -m strategies.cb_rotation.run
-python3 -m strategies.stock_smallcap.run
-python3 rebalance.py
+scripts/start_app.sh
+scripts/status_app.sh
+scripts/stop_app.sh
+.venv/bin/python -m unittest discover -s tests -v
+.venv/bin/ruff check .
+.venv/bin/python -m strategies.cb_rotation.run
+.venv/bin/python -m strategies.stock_smallcap.run
+.venv/bin/python rebalance.py
 ```
 
 具体操作和工程现状分别见：
@@ -20,3 +22,13 @@ python3 rebalance.py
 - [日常运行手册](docs/使用/日常运行手册.md)
 - [系统架构](docs/工程/系统架构.md)
 - [当前实现状态](docs/工程/当前实现状态.md)
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context domain documentation applies across the repo. See `docs/agents/domain.md`.
