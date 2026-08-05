@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 PYTHON = ROOT / ".venv" / "bin" / "python"
 DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "ui-smoke"
+VISUAL_GATE_NAME = "AIHOT 视觉回归闸门"
 VIEWPORTS = {
     "wide": {"width": 2048, "height": 1178},
     "desktop": {"width": 1440, "height": 1000},
@@ -56,7 +57,13 @@ def main() -> int:
         for name in selected_viewports(args.viewport):
             results.append(run_viewport(session, name, base_url, output_dir, expected_plan_date))
 
-        print(json.dumps({"base_url": base_url, "results": results}, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {"visualGate": VISUAL_GATE_NAME, "base_url": base_url, "results": results},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 0
     except SmokeFailure as exc:
         print(f"UI smoke failed: {exc}", file=sys.stderr)
@@ -73,7 +80,9 @@ def main() -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run real-browser smoke checks for ark-quant account, plan and changelog pages.",
+        description=(
+            "Run the AIHOT 视觉回归闸门 for ark-quant account, plan and changelog pages."
+        ),
     )
     parser.add_argument(
         "--viewport",
@@ -563,6 +572,7 @@ def browser_check_code(
             await page.screenshot({{ path: {json.dumps(screenshot)}, fullPage: true }});
             return {{
               ok: true,
+              visualGate: {json.dumps(VISUAL_GATE_NAME)},
               viewport: {json.dumps(viewport_name)},
               size: {json.dumps(viewport)},
               accountScreenshot: {json.dumps(account_screenshot)},
@@ -580,6 +590,7 @@ def browser_check_code(
             await page.screenshot({{ path: {json.dumps(failure_screenshot)}, fullPage: true }}).catch(() => null);
             return {{
               ok: false,
+              visualGate: {json.dumps(VISUAL_GATE_NAME)},
               viewport: {json.dumps(viewport_name)},
               error: String(error),
               failureScreenshot: {json.dumps(failure_screenshot)},

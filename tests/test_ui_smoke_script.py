@@ -24,6 +24,7 @@ class TestUiSmokeScript(unittest.TestCase):
         self.assertIn("--viewport", result.stdout)
         self.assertIn("--base-url", result.stdout)
         self.assertIn("--output-dir", result.stdout)
+        self.assertIn("AIHOT", result.stdout)
 
     def test_script_contract_keeps_smoke_isolated_and_diagnostic(self):
         text = SCRIPT.read_text(encoding="utf-8")
@@ -32,6 +33,8 @@ class TestUiSmokeScript(unittest.TestCase):
         self.assertIn("playwright-cli", text)
         self.assertIn("outputs", text)
         self.assertIn("ui-smoke", text)
+        self.assertIn("AIHOT 视觉回归闸门", text)
+        self.assertIn("visualGate", text)
         self.assertIn("wide", text)
         self.assertIn("desktop", text)
         self.assertIn("narrow", text)
