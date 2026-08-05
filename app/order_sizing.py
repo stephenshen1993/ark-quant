@@ -8,21 +8,12 @@ from datasource import db
 
 
 def size_strategy_orders(strategy: str) -> dict:
-    if strategy not in {"cb", "stock"}:
-        raise PlanServiceError(
-            400,
-            {"code": "INVALID_STRATEGY", "message": f"未知策略: {strategy}"},
-        )
+    from app import plan_generation
 
-    plan_date, account, deltas = plan_service.ensure_plan_inputs_consistent()
-    if strategy == "cb":
-        return size_cb_orders(
-            plan_service.strategy_cash_after_transfer("cb", account, deltas),
-            plan_date=plan_date,
-        )
-    return size_stock_orders(
-        plan_service.strategy_cash_after_transfer("stock", account, deltas),
-        plan_date=plan_date,
+    return plan_generation.size_strategy_orders(
+        strategy,
+        size_cb_orders=size_cb_orders,
+        size_stock_orders=size_stock_orders,
     )
 
 

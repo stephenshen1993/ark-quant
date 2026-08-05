@@ -1,0 +1,152 @@
+import sqlite3
+import unittest
+from datetime import date
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import pandas as pd
+
+from datasource import db
+
+
+class TestStrategyRunner(unittest.TestCase):
+    def setUp(self):
+        db._TEST_CONN = sqlite3.connect(":memory:", check_same_thread=False)
+        db._TEST_CONN.row_factory = sqlite3.Row
+        db.init_db()
+
+    def tearDown(self):
+        db._TEST_CONN.close()
+        db._TEST_CONN = None
+
+    def test_ensure_rankings_reuses_existing_complete_run(self):
+        from app import strategy_runner
+
+        run_id = db.create_complete_strategy_run(
+            "cb",
+            date(2026, 6, 29),
+            date(2026, 6, 30),
+            pd.DataFrame([{"bond_code": "113062", "bond_name": "常银转债", "score": 0.9}]),
+        )
+
+        with patch("app.strategy_runner._run_strategy_impl") as run_impl:
+            result = strategy_runner.ensure_rankings("cb", "2026-06-29")
+
+        run_impl.assert_not_called()
+        self.assertFalse(result.generated)
+        self.assertEqual(result.strategy, "cb")
+        self.assertEqual(result.data_date, "2026-06-29")
+        self.assertEqual(result.trade_date, "2026-06-30")
+        self.assertEqual(result.run_id, run_id)
+        self.assertEqual(result.item_count, 1)
+
+    def test_ensure_rankings_generates_missing_rankings(self):
+        from app import strategy_runner
+
+        def generate_rankings(strategy: str):
+            self.assertEqual(strategy, "stock")
+            generated_id = db.create_complete_strategy_run(
+                "stock",
+                date(2026, 6, 29),
+                date(2026, 6, 30),
+                pd.DataFrame([{
+                    "rank": 1,
+                    "stock_code": "600051",
+                    "stock_name": "宁波联合",
+                    "total_mv_yuan": 1000000000,
+                }]),
+            )
+            return SimpleNamespace(run_id=generated_id)
+
+        with patch(
+            "app.strategy_runner._run_strategy_impl",
+            side_effect=generate_rankings,
+        ):
+            result = strategy_runner.ensure_rankings("stock", "2026-06-29")
+
+        self.assertTrue(result.generated)
+        self.assertEqual(result.item_count, 1)
+
+    def test_ensure_rankings_rejects_generated_date_mismatch(self):
+        from app import strategy_runner
+
+        generated_id = db.create_complete_strategy_run(
+            "cb",
+            date(2026, 6, 28),
+            date(2026, 6, 29),
+            pd.DataFrame([{"bond_code": "113062", "bond_name": "常银转债", "score": 0.9}]),
+        )
+
+        with patch(
+            "app.strategy_runner._run_strategy_impl",
+            return_value=SimpleNamespace(run_id=generated_id),
+        ):
+            with self.assertRaises(strategy_runner.StrategyRunnerError) as caught:
+                strategy_runner.ensure_rankings("cb", "2026-06-29")
+
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertEqual(caught.exception.detail["code"], "STRATEGY_RANKING_DATE_MISMATCH")
+        self.assertEqual(caught.exception.detail["data_date"], "2026-06-28")
+
+    def test_running_strategy_has_structured_error(self):
+        from app import strategy_runner
+
+        lock = strategy_runner._RUN_LOCKS["cb"]
+        self.assertTrue(lock.acquire(blocking=False))
+        self.addCleanup(lock.release)
+
+        with self.assertRaises(strategy_runner.StrategyRunnerError) as caught:
+            strategy_runner.run_strategy("cb")
+
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertEqual(caught.exception.detail["code"], "STRATEGY_RUNNING")
+
+    def test_missing_persisted_run_is_classified(self):
+        from app import strategy_runner
+
+        with patch(
+            "app.strategy_runner._run_strategy_impl",
+            return_value=SimpleNamespace(run_id=999),
+        ):
+            with self.assertRaises(strategy_runner.StrategyRunnerError) as caught:
+                strategy_runner.run_strategy("cb")
+
+        self.assertEqual(caught.exception.status_code, 500)
+        self.assertEqual(caught.exception.detail["code"], "STRATEGY_PERSISTENCE_ERROR")
+
+    def test_empty_persisted_run_is_classified(self):
+        from app import strategy_runner
+
+        empty_run_id = db.insert_strategy_run("cb", date(2026, 6, 29))
+        db._TEST_CONN.execute(
+            "UPDATE strategy_runs SET status='complete' WHERE id=?",
+            (empty_run_id,),
+        )
+        db._TEST_CONN.commit()
+
+        with patch(
+            "app.strategy_runner._run_strategy_impl",
+            return_value=SimpleNamespace(run_id=empty_run_id),
+        ):
+            with self.assertRaises(strategy_runner.StrategyRunnerError) as caught:
+                strategy_runner.run_strategy("cb")
+
+        self.assertEqual(caught.exception.status_code, 500)
+        self.assertEqual(caught.exception.detail["code"], "STRATEGY_PERSISTENCE_ERROR")
+
+    def test_data_source_failure_is_classified(self):
+        from app import strategy_runner
+
+        with patch(
+            "app.strategy_runner._run_strategy_impl",
+            side_effect=RuntimeError("数据源获取失败"),
+        ):
+            with self.assertRaises(strategy_runner.StrategyRunnerError) as caught:
+                strategy_runner.run_strategy("stock")
+
+        self.assertEqual(caught.exception.status_code, 500)
+        self.assertEqual(caught.exception.detail["code"], "DATA_SOURCE_UNAVAILABLE")
+
+
+if __name__ == "__main__":
+    unittest.main()

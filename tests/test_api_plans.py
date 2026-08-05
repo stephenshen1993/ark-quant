@@ -209,6 +209,64 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(saved["error"]["code"], "STOCK_SIZING_FAILED")
         self.assertEqual(saved["plan"]["cb"]["orders"], cb_orders)
 
+    def test_generate_plan_reports_stock_stage_after_empty_cb_order_batch(self):
+        with patch(
+            "app.order_sizing.size_cb_orders",
+            return_value={
+                "orders": [],
+                "summary": {
+                    "starting_cash": 110.0,
+                    "transfer_delta": 0.0,
+                    "order_delta": 0.0,
+                    "cash_left": 110.0,
+                },
+            },
+        ), patch(
+            "app.order_sizing.size_stock_orders",
+            side_effect=HTTPException(
+                status_code=409,
+                detail={"code": "STOCK_SIZING_FAILED", "message": "stock sizing failed"},
+            ),
+        ):
+            r = self.client.post("/api/plan/generate")
+
+        self.assertEqual(r.status_code, 409)
+        detail = r.json()["detail"]
+        self.assertEqual(detail["stage"], "stock_orders")
+        saved = db.get_generated_plan(detail["plan_id"])
+        self.assertEqual(saved["error"]["stage"], "stock_orders")
+
+    def test_get_generated_plan_reads_saved_plan(self):
+        with patch(
+            "app.order_sizing.size_cb_orders",
+            return_value={"orders": [], "summary": {
+                "starting_cash": 110.0,
+                "transfer_delta": 0.0,
+                "order_delta": 0.0,
+                "cash_left": 110.0,
+            }},
+        ), patch(
+            "app.order_sizing.size_stock_orders",
+            return_value={"orders": [], "summary": {
+                "starting_cash": 274.0,
+                "transfer_delta": 0.0,
+                "order_delta": 0.0,
+                "cash_left": 274.0,
+            }},
+        ):
+            generated = self.client.post("/api/plan/generate").json()
+        plan_id = generated["generation"]["plan_id"]
+
+        r = self.client.get(f"/api/plan/generated/{plan_id}")
+
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["plan"]["generation"]["plan_id"], plan_id)
+
+    def test_get_generated_plan_returns_404_for_missing_plan(self):
+        r = self.client.get("/api/plan/generated/plan-2026-06-29-missing")
+
+        self.assertEqual(r.status_code, 404)
+
     def test_account_changes_mark_generated_plans_stale(self):
         with patch(
             "app.order_sizing.size_cb_orders",

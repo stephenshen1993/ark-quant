@@ -12,9 +12,10 @@ import tempfile
 import textwrap
 import time
 import uuid
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from urllib.request import urlopen
+from zoneinfo import ZoneInfo
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +33,7 @@ def main() -> int:
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     session = f"ark-ui-smoke-{uuid.uuid4().hex[:8]}"
+    expected_plan_date = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
     server = None
     server_log = None
     temp_dir = None
@@ -42,7 +44,7 @@ def main() -> int:
         else:
             temp_dir = tempfile.TemporaryDirectory(prefix="ark-ui-smoke-")
             db_path = Path(temp_dir.name) / "ark_quant_ui_smoke.db"
-            seed_database(db_path)
+            seed_database(db_path, expected_plan_date)
             port = find_free_port()
             base_url = f"http://127.0.0.1:{port}"
             server_log = (output_dir / "server.log").open("w", encoding="utf-8")
@@ -51,7 +53,7 @@ def main() -> int:
 
         results = []
         for name in selected_viewports(args.viewport):
-            results.append(run_viewport(session, name, base_url, output_dir))
+            results.append(run_viewport(session, name, base_url, output_dir, expected_plan_date))
 
         print(json.dumps({"base_url": base_url, "results": results}, ensure_ascii=False, indent=2))
         return 0
@@ -97,7 +99,7 @@ def selected_viewports(value: str) -> list[str]:
     return [value]
 
 
-def seed_database(db_path: Path) -> None:
+def seed_database(db_path: Path, plan_date: str) -> None:
     os.environ["ARK_QUANT_DB_PATH"] = str(db_path)
 
     import pandas as pd
@@ -105,14 +107,14 @@ def seed_database(db_path: Path) -> None:
     from datasource import db
     from datasource.youzhiyouxing import DATA_URL
 
-    plan_date = "2026-08-04"
+    data_date = date.fromisoformat(plan_date)
     db.init_db()
     with db._conn() as conn:
         conn.execute(
             """INSERT INTO market_temperatures
                (temperature,label,source_updated_at,source,fetched_at)
-               VALUES (45.0,'正常','2026-08-04T15:00',?,'2026-08-04T15:30:00')""",
-            (DATA_URL,),
+               VALUES (45.0,'正常',?,?,?)""",
+            (f"{plan_date}T15:00", DATA_URL, f"{plan_date}T15:30:00"),
         )
     db.insert_account_context(
         plan_date,
@@ -128,7 +130,7 @@ def seed_database(db_path: Path) -> None:
     db.append_position_snapshot("stock", plan_date, [])
     db.append_position_snapshot("cb", plan_date, [])
 
-    cb_run_id = db.insert_strategy_run("cb", date(2026, 8, 4))
+    cb_run_id = db.insert_strategy_run("cb", data_date)
     db.insert_cb_rankings(
         cb_run_id,
         pd.DataFrame([
@@ -142,7 +144,7 @@ def seed_database(db_path: Path) -> None:
             }
         ]),
     )
-    stock_run_id = db.insert_strategy_run("stock", date(2026, 8, 4))
+    stock_run_id = db.insert_strategy_run("stock", data_date)
     db.insert_stock_rankings(
         stock_run_id,
         pd.DataFrame([
@@ -199,7 +201,13 @@ def wait_for_health(base_url: str, log_path: Path) -> None:
     raise SmokeFailure(f"app did not become healthy at {base_url}/health; log={log_path}")
 
 
-def run_viewport(session: str, viewport_name: str, base_url: str, output_dir: Path) -> dict:
+def run_viewport(
+    session: str,
+    viewport_name: str,
+    base_url: str,
+    output_dir: Path,
+    expected_plan_date: str,
+) -> dict:
     if shutil.which("playwright-cli") is None:
         raise SmokeFailure("playwright-cli not found; install it before running browser smoke checks")
 
@@ -214,6 +222,7 @@ def run_viewport(session: str, viewport_name: str, base_url: str, output_dir: Pa
         screenshot_path,
         failure_screenshot_path,
         failure_text_path,
+        expected_plan_date,
     )
     run_cli(session, ["open", "about:blank"])
     raw = run_cli(session, ["--raw", "run-code", code])
@@ -240,6 +249,7 @@ def browser_check_code(
     screenshot_path: Path,
     failure_screenshot_path: Path,
     failure_text_path: Path,
+    expected_plan_date: str,
 ) -> str:
     screenshot = str(screenshot_path)
     failure_screenshot = str(failure_screenshot_path)
@@ -290,7 +300,7 @@ def browser_check_code(
 
             const accountRequired = [
               '账户事实日',
-              '事实日 2026-08-04',
+              '事实日 {expected_plan_date}',
               '广发账户',
               '华泰账户',
               '浦发现金账户',

@@ -173,65 +173,12 @@ def generate_complete_plan(
     size_cb_orders: Callable[..., dict],
     size_stock_orders: Callable[..., dict],
 ) -> dict:
-    plan_date, account, market_temperature, fund_transfer = prepare_complete_plan_generation()
-    plan_id = plan_lifecycle.new_plan_id(plan_date)
-    plan = build_generated_plan_response(
-        plan_id=plan_id,
-        status=plan_lifecycle.RUNNING,
-        plan_date=plan_date,
-        market_temperature=market_temperature,
-        account=account,
-        fund_transfer=fund_transfer,
-        cb_result=None,
-        stock_result=None,
+    from app import plan_generation
+
+    return plan_generation.generate_complete_plan(
+        size_cb_orders=size_cb_orders,
+        size_stock_orders=size_stock_orders,
     )
-    plan_lifecycle.start(plan_id, plan_date, plan)
-
-    try:
-        _, deltas, _ = fund_transfer_compatibility(fund_transfer)
-        cb_result = size_cb_orders(
-            strategy_cash_after_transfer("cb", account, deltas),
-            plan_date=plan_date,
-        )
-        plan_lifecycle.record_order_batch(
-            plan_id, "cb", cb_result["orders"], cb_result["summary"]
-        )
-        plan = build_generated_plan_response(
-            plan_id=plan_id,
-            status=plan_lifecycle.RUNNING,
-            plan_date=plan_date,
-            market_temperature=market_temperature,
-            account=account,
-            fund_transfer=fund_transfer,
-            cb_result=cb_result,
-            stock_result=None,
-        )
-
-        stock_result = size_stock_orders(
-            strategy_cash_after_transfer("stock", account, deltas),
-            plan_date=plan_date,
-        )
-        plan_lifecycle.record_order_batch(
-            plan_id, "stock", stock_result["orders"], stock_result["summary"]
-        )
-        plan = build_generated_plan_response(
-            plan_id=plan_id,
-            status=plan_lifecycle.COMPLETE,
-            plan_date=plan_date,
-            market_temperature=market_temperature,
-            account=account,
-            fund_transfer=fund_transfer,
-            cb_result=cb_result,
-            stock_result=stock_result,
-        )
-        plan_lifecycle.complete(plan_id, plan)
-        return plan
-    except Exception as exc:
-        status_code = getattr(exc, "status_code", 500)
-        detail = getattr(exc, "detail", str(exc))
-        error = generation_error("stock_orders" if plan["cb"]["orders"] else "cb_orders", detail)
-        plan_lifecycle.fail(plan_id, plan, error)
-        raise PlanServiceError(status_code, {**error, "plan_id": plan_id}) from exc
 
 
 def trade_date_for(strategy: str, data_date: str | None) -> str | None:
@@ -254,85 +201,15 @@ def validate_plan_inputs(plan_date: str, account: dict | None) -> list[dict]:
 
 
 def prepare_complete_plan_generation() -> tuple[str, dict, object, dict]:
-    plan_date = current_plan_date()
-    account = db.get_current_account_summary()
-    account_errors = validate_account_inputs(
-        plan_date,
-        account,
-        account_transfer_window_end(plan_date),
-        include_overseas=True,
-    )
-    if account_errors:
-        raise PlanServiceError(
-            409,
-            {
-                "code": "PLAN_INPUT_DATE_MISMATCH",
-                "message": "账户输入日期不一致，请按下方逐项更新到计划输入窗口内。",
-                "plan_date": plan_date,
-                "errors": account_errors,
-            },
-        )
+    from app import plan_generation
 
-    ensure_rankings_for_plan_date(plan_date)
-
-    strategy_errors = validate_strategy_inputs(plan_date)
-    if strategy_errors:
-        raise PlanServiceError(
-            409,
-            {
-                "code": "PLAN_INPUT_DATE_MISMATCH",
-                "message": "交易计划输入日期不一致，请按下方逐项更新到同一个计划日。",
-                "plan_date": plan_date,
-                "errors": strategy_errors,
-            },
-        )
-
-    market_temperature = _market_temperature()
-    account = dict(account)
-    account["temperature"] = market_temperature.temperature
-    cb_rankings = db.get_rankings("cb", plan_date)
-    fund_transfer = build_fund_transfer(
-        account,
-        qualified_cb_count=len(cb_rankings) if cb_rankings else None,
-        qualified_cb_lot_costs=cb_lot_costs(cb_rankings) if cb_rankings else None,
-        include_a_internal=True,
-    )
-    return plan_date, account, market_temperature, fund_transfer
+    return plan_generation.prepare_complete_plan_generation()
 
 
 def ensure_rankings_for_plan_date(plan_date: str) -> None:
-    from app.routers.rankings import run_strategy
+    from app import plan_generation
 
-    for strategy in ("cb", "stock"):
-        if plan_date in db.get_ranking_dates(strategy):
-            continue
-        try:
-            result = run_strategy(strategy)
-        except Exception as exc:
-            raise PlanServiceError(
-                getattr(exc, "status_code", 500),
-                getattr(exc, "detail", str(exc)),
-            ) from exc
-        if result.get("data_date") != plan_date:
-            raise PlanServiceError(
-                409,
-                {
-                    "code": "PLAN_INPUT_DATE_MISMATCH",
-                    "message": (
-                        f"生成的{strategy_label(strategy)}榜单日期为 "
-                        f"{result.get('data_date')}，与计划基准日 {plan_date} 不一致。"
-                    ),
-                    "plan_date": plan_date,
-                    "errors": [
-                        {
-                            "input": strategy,
-                            "date": result.get("data_date"),
-                            "expected": plan_date,
-                            "message": "榜单日期与计划基准日不一致",
-                        }
-                    ],
-                },
-            )
+    return plan_generation.ensure_rankings_for_plan_date(plan_date)
 
 
 def strategy_label(strategy: str) -> str:
@@ -574,8 +451,12 @@ def is_fact_date_acceptable(fact_date: str | None, plan_date: str, window_end: s
 
 
 def current_plan_date() -> str:
-    market_temperature = _market_temperature()
+    market_temperature = get_market_temperature()
     return market_temperature.updated_at[:10]
+
+
+def get_market_temperature(*, refresh: bool = False):
+    return _market_temperature(refresh=refresh)
 
 
 def resolve_plan_date(market_date: str) -> str:
@@ -671,31 +552,9 @@ def positions_for_plan(strategy: str, plan_date: str, input_end: str) -> list[di
 
 
 def ensure_plan_inputs_consistent() -> tuple[str, dict, dict]:
-    plan_date = current_plan_date()
-    account = db.get_current_account_summary()
-    errors = validate_plan_inputs(plan_date, account)
-    if errors:
-        raise PlanServiceError(
-            409,
-            {
-                "code": "PLAN_INPUT_DATE_MISMATCH",
-                "message": "交易计划输入日期不一致，请按下方逐项更新到同一个计划日。",
-                "plan_date": plan_date,
-                "errors": errors,
-            },
-        )
-    account = dict(account)
-    market_temperature = _market_temperature()
-    account["temperature"] = market_temperature.temperature
-    cb_rankings = db.get_rankings("cb", plan_date)
-    fund_transfer = build_fund_transfer(
-        account,
-        qualified_cb_count=len(cb_rankings) if cb_rankings else None,
-        qualified_cb_lot_costs=cb_lot_costs(cb_rankings) if cb_rankings else None,
-        include_a_internal=True,
-    )
-    _, deltas, _ = fund_transfer_compatibility(fund_transfer)
-    return plan_date, account, deltas
+    from app import plan_generation
+
+    return plan_generation.prepare_strategy_order_context()
 
 
 def _market_temperature(*, refresh: bool = False):

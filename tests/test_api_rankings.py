@@ -68,7 +68,7 @@ class TestRankingsApi(unittest.TestCase):
         )
 
         with patch(
-            "app.routers.rankings._run_strategy_impl",
+            "app.strategy_runner._run_strategy_impl",
             return_value=SimpleNamespace(run_id=generated_id, data_date=date(2026, 6, 27)),
         ):
             response = self.client.post("/api/rankings/cb/run")
@@ -80,7 +80,7 @@ class TestRankingsApi(unittest.TestCase):
     def test_failed_run_keeps_older_complete_run_and_returns_structured_failure(self):
         old_run = db.get_latest_strategy_run("cb")
         with patch(
-            "app.routers.rankings._run_strategy_impl",
+            "app.strategy_runner._run_strategy_impl",
             side_effect=RuntimeError("forced persistence failure"),
         ):
             response = self.client.post("/api/rankings/cb/run")
