@@ -38,6 +38,13 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("账户事实日", self.html)
         self.assertIn('x-model="form.snapshot_date"', self.html)
         self.assertIn("事实日 ", self.html)
+        self.assertIn("accountRole(acc)", self.html)
+        self.assertIn("summary.read_model?.accounts", self.html)
+        self.assertIn("A 组合小市值股票策略承载账户", self.html)
+        self.assertIn("A 组合多因子可转债策略承载账户", self.html)
+        self.assertIn("A 组合现金池承载账户", self.html)
+        self.assertIn("B 组合当前承载通道", self.html)
+        self.assertIn("C 组合当前承载通道", self.html)
         self.assertNotIn(
             "this.form.snapshot_date = context.snapshot_date || this.form.snapshot_date",
             self.html,
@@ -107,6 +114,9 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn("③ 股票调仓", self.html)
 
     def test_funding_card_prioritizes_lightweight_execution_cards(self):
+        start = self.html.index("账户间资金调拨")
+        end = self.html.index("转债计划", start)
+        funding_card = self.html[start:end]
         self.assertIn("本次请执行", self.html)
         self.assertIn("fundingActionSentence(action)", self.html)
         self.assertIn("转入后仍差", self.html)
@@ -133,7 +143,7 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn("账户结果摘要", self.html)
         self.assertNotIn("fundingActionReasons(action)", self.html)
         self.assertNotIn("fundingDecisionSteps()", self.html)
-        self.assertNotIn("现金池", self.html)
+        self.assertNotIn("现金池", funding_card)
         self.assertNotIn("转债账户", self.html)
         self.assertNotIn("股票账户", self.html)
         self.assertNotIn('<template x-for="(step, i) in transferSteps()">', self.html)

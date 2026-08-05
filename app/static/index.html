@@ -86,7 +86,10 @@
               :class="acc.posType ? 'cursor-pointer hover:bg-gray-50' : ''"
               class="border-b border-gray-50 last:border-b-0">
               <td class="pl-5 py-3.5" style="width:32px"><div :style="'background:' + acc.color" class="w-2.5 h-2.5 rounded-full"></div></td>
-              <td class="py-3.5 pr-4"><span class="text-sm font-medium" x-text="acc.label"></span><span class="text-xs text-gray-400 ml-2" x-text="acc.sub"></span></td>
+              <td class="py-3.5 pr-4">
+                <div><span class="text-sm font-medium" x-text="acc.label"></span><span class="text-xs text-gray-400 ml-2" x-text="acc.sub"></span></div>
+                <div class="text-xs text-gray-400 mt-0.5" x-text="accountRole(acc)"></div>
+              </td>
               <td class="py-3.5 pr-4 text-right"><span x-show="acc.posType" class="text-sm font-semibold tabular-nums" x-text="fmtMoney(num(form[acc.totalKey]))"></span><span x-show="!acc.posType"><span x-show="editingSimple === acc.id" class="flex items-baseline gap-1 justify-end"><span class="text-sm text-gray-400">¥</span><input type="text" inputmode="decimal" x-model="form[acc.totalKey]" @blur="saveSimpleAccount(acc.id)" @keyup.enter="$el.blur()" x-init="$el.focus()" class="text-sm font-semibold tabular-nums bg-transparent text-right outline-none border-b border-gray-200 w-28" placeholder="0"></span><span x-show="editingSimple !== acc.id" @click.stop="editingSimple = acc.id" class="text-sm font-semibold tabular-nums cursor-pointer" x-text="fmtMoney(num(form[acc.totalKey]))"></span></span></td>
               <td class="py-3.5 pr-4 text-right text-xs text-gray-400 tabular-nums"><span x-text="acctPct(acc)"></span></td>
               <td class="py-3.5 pr-4 text-right text-xs text-gray-400"><span x-text="accUpdateDate(acc)"></span></td>
@@ -514,11 +517,11 @@
       _sortTimers: {},
       loadedOnce: false,
       accounts: [
-        { id: 'stock',    label: '广发账户', sub: '股票仓位',   color: '#8b5cf6', totalKey: 'stock_total',     cashKey: 'stock_cash', posType: 'stock' },
-        { id: 'cb',       label: '华泰账户', sub: '转债仓位',   color: '#14b8a6', totalKey: 'bond_total',      cashKey: 'bond_cash',  posType: 'cb'    },
-        { id: 'changqian',label: '长钱账户', sub: '国内基金',   color: '#f59e0b', totalKey: 'changqian_total', posType: null    },
-        { id: 'overseas', label: '海外长钱', sub: '海外基金',   color: '#60a5fa', totalKey: 'overseas_total',  posType: null    },
-        { id: 'cash',     label: '资金账户', sub: '现金仓位',   color: '#9ca3af', totalKey: 'cash_pool',       posType: null    },
+        { id: 'stock',    label: '广发账户', sub: '证券交易与托管', role: 'A 组合小市值股票策略承载账户', color: '#8b5cf6', totalKey: 'stock_total',     cashKey: 'stock_cash', posType: 'stock' },
+        { id: 'cb',       label: '华泰账户', sub: '证券交易与托管', role: 'A 组合多因子可转债策略承载账户', color: '#14b8a6', totalKey: 'bond_total',      cashKey: 'bond_cash',  posType: 'cb'    },
+        { id: 'changqian',label: '长钱投顾组合', sub: '雪球基金托管', role: 'C 组合当前承载通道', color: '#f59e0b', totalKey: 'changqian_total', posType: null    },
+        { id: 'overseas', label: '海外长钱投顾组合', sub: '雪球基金托管', role: 'B 组合当前承载通道', color: '#60a5fa', totalKey: 'overseas_total',  posType: null    },
+        { id: 'cash',     label: '浦发现金账户', sub: '资金调拨与现金管理', role: 'A 组合现金池承载账户', color: '#9ca3af', totalKey: 'cash_pool',       posType: null    },
       ],
       form: {
         snapshot_date: localDate(),
@@ -568,6 +571,14 @@
             this.form[acc.cashKey.replace('_cash', '_available_cash')] = item.available_cash
             this.form[acc.cashKey.replace('_cash', '_frozen_cash')] = item.frozen_cash || 0
           }
+        })
+        ;(summary.read_model?.accounts || []).forEach(item => {
+          const acc = this.accounts.find(a => a.id === item.id)
+          if (!acc) return
+          acc.label = item.name || acc.label
+          acc.role = item.role || acc.role
+          acc.sub = item.portfolio_node_name || acc.sub
+          acc.readModel = item
         })
       },
       addRow(strategy) {
@@ -649,6 +660,9 @@
       acctPct(acc) {
         const total = this.totalAssets()
         return total > 0 ? (this.num(this.form[acc.totalKey]) / total * 100).toFixed(1) + '%' : '0%'
+      },
+      accountRole(acc) {
+        return acc.readModel?.role || acc.role || ''
       },
       accUpdateDate(acc) {
         const accountDate = this.accountItem(acc.id)?.snapshot_date
