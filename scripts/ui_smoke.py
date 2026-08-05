@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT))
 PYTHON = ROOT / ".venv" / "bin" / "python"
 DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "ui-smoke"
 VIEWPORTS = {
+    "wide": {"width": 2048, "height": 1178},
     "desktop": {"width": 1440, "height": 1000},
     "narrow": {"width": 390, "height": 900},
 }
@@ -212,6 +213,8 @@ def run_viewport(
         raise SmokeFailure("playwright-cli not found; install it before running browser smoke checks")
 
     viewport = VIEWPORTS[viewport_name]
+    account_screenshot_path = output_dir / f"{viewport_name}-account.png"
+    plan_screenshot_path = output_dir / f"{viewport_name}-plan.png"
     screenshot_path = output_dir / f"{viewport_name}-changelog.png"
     failure_screenshot_path = output_dir / f"{viewport_name}-failure.png"
     failure_text_path = output_dir / f"{viewport_name}-failure.txt"
@@ -219,6 +222,8 @@ def run_viewport(
         base_url,
         viewport_name,
         viewport,
+        account_screenshot_path,
+        plan_screenshot_path,
         screenshot_path,
         failure_screenshot_path,
         failure_text_path,
@@ -246,11 +251,15 @@ def browser_check_code(
     base_url: str,
     viewport_name: str,
     viewport: dict,
+    account_screenshot_path: Path,
+    plan_screenshot_path: Path,
     screenshot_path: Path,
     failure_screenshot_path: Path,
     failure_text_path: Path,
     expected_plan_date: str,
 ) -> str:
+    account_screenshot = str(account_screenshot_path)
+    plan_screenshot = str(plan_screenshot_path)
     screenshot = str(screenshot_path)
     failure_screenshot = str(failure_screenshot_path)
     failure_text = str(failure_text_path)
@@ -309,6 +318,7 @@ def browser_check_code(
               'A 组合现金池承载账户',
             ];
             for (const text of accountRequired) await assertVisibleText(text);
+            await page.screenshot({{ path: {json.dumps(account_screenshot)}, fullPage: true }});
 
             await page.getByRole('button', {{ name: /计划/ }}).click();
             await page.waitForFunction(
@@ -396,6 +406,9 @@ def browser_check_code(
             if (!box || box.width <= 0 || box.height <= 0) {{
               throw new Error('计算依据区域不可见');
             }}
+            await page.evaluate(() => document.querySelector('[x-data="tradingPage()"]')?.scrollIntoView({{ block: 'start' }}));
+            await page.waitForTimeout(100);
+            await page.screenshot({{ path: {json.dumps(plan_screenshot)}, fullPage: true }});
 
             await page.getByRole('button', {{ name: /更新日志/ }}).click();
             await page.waitForFunction(
@@ -407,11 +420,13 @@ def browser_check_code(
             const changelogRequired = [
               '更新日志',
               '最近发生了什么',
-              '2026-08-05',
+              'CHANGELOG',
+              '2026 年 8 月 5 日',
+              '周三',
               '15:59',
               '优化',
               '账户事实展示口径统一',
-              '2026-06-29',
+              '2026 年 6 月 29 日',
               'Web 看板实施计划形成',
             ];
             for (const text of changelogRequired) await assertVisibleText(text);
@@ -431,11 +446,15 @@ def browser_check_code(
             if (!changelogBox || changelogBox.width <= 0 || changelogBox.height <= 0) {{
               throw new Error('更新日志区域不可见');
             }}
+            await page.evaluate(() => document.querySelector('[x-data="changelogPage()"]')?.scrollIntoView({{ block: 'start' }}));
+            await page.waitForTimeout(100);
             await page.screenshot({{ path: {json.dumps(screenshot)}, fullPage: true }});
             return {{
               ok: true,
               viewport: {json.dumps(viewport_name)},
               size: {json.dumps(viewport)},
+              accountScreenshot: {json.dumps(account_screenshot)},
+              planScreenshot: {json.dumps(plan_screenshot)},
               screenshot: {json.dumps(screenshot)},
               accountChecks: accountRequired.length,
               planChecks: planRequired.length,

@@ -6,6 +6,7 @@
 <title>ark-quant</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+<script defer src="https://unpkg.com/lucide@latest"></script>
 <style>
   .order-plan-table {
     table-layout: fixed;
@@ -29,49 +30,385 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  :root {
+    --ark-bg: #f7f8fa;
+    --ark-panel: #ffffff;
+    --ark-text: #111827;
+    --ark-muted: #6b7280;
+    --ark-soft: #9ca3af;
+    --ark-line: #e5e7eb;
+    --ark-faint: #eef2f7;
+    --ark-accent: #0f766e;
+  }
+  body {
+    background: var(--ark-bg);
+  }
+  .app-nav {
+    width: 180px;
+    padding: 38px 14px 22px;
+    background: var(--ark-panel);
+    border-right: 1px solid var(--ark-line);
+  }
+  .changelog-brand {
+    padding: 0 2px 28px;
+    border-bottom: 1px solid var(--ark-line);
+    margin-bottom: 28px;
+  }
+  .changelog-brand-name {
+    color: var(--ark-text);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    line-height: 1;
+  }
+  .changelog-brand-subtitle {
+    margin-top: 10px;
+    color: var(--ark-soft);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .app-nav-section {
+    margin: 0 0 14px 12px;
+    color: var(--ark-soft);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .nav-item {
+    min-height: 36px;
+    border-radius: 8px;
+    color: var(--ark-muted);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .nav-item:hover {
+    background: #f3f4f6;
+    color: var(--ark-text);
+  }
+  .nav-item:focus-visible {
+    outline: 2px solid var(--ark-text);
+    outline-offset: 2px;
+  }
+  .nav-icon {
+    width: 18px;
+    height: 18px;
+    text-align: center;
+    color: #748092;
+    font-size: 16px;
+    line-height: 1;
+  }
+  .nav-item svg {
+    width: 18px;
+    height: 18px;
+    stroke-width: 2;
+  }
+  .app-nav-footer {
+    margin-top: auto;
+    padding: 12px 10px 0;
+    border-top: 1px solid var(--ark-faint);
+    color: var(--ark-soft);
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  .app-main {
+    background: var(--ark-bg);
+    padding: 0 0 96px;
+  }
+  .workspace-shell {
+    width: 100%;
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 76px 0 96px;
+  }
+  .workspace-shell-wide {
+    max-width: 1120px;
+  }
+  .workspace-title-row {
+    align-items: end;
+    border-bottom: 1px solid var(--ark-line);
+    margin-bottom: 26px;
+    padding-bottom: 22px;
+  }
+  .workspace-title {
+    color: var(--ark-text);
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .workspace-meta {
+    color: var(--ark-muted);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .ark-panel {
+    background: var(--ark-panel);
+    border: 1px solid var(--ark-faint);
+    border-radius: 8px;
+    box-shadow: none;
+  }
+  .ark-panel + .ark-panel {
+    margin-top: 16px;
+  }
+  .changelog-shell {
+    width: 100%;
+    max-width: 840px;
+    margin: 0 auto;
+    padding: 82px 0 80px;
+  }
+  .changelog-kicker {
+    margin-bottom: 22px;
+    color: var(--ark-accent);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.28em;
+  }
+  .changelog-title {
+    color: var(--ark-text);
+    font-size: 36px;
+    font-weight: 650;
+    line-height: 1.12;
+  }
+  .changelog-subtitle {
+    margin-top: 16px;
+    color: var(--ark-muted);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.7;
+  }
+  .changelog-header {
+    margin-bottom: 70px;
+  }
+  .changelog-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 72px;
+  }
+  .changelog-date-header {
+    display: flex;
+    align-items: baseline;
+    gap: 24px;
+    border-bottom: 1px solid var(--ark-line);
+    padding-bottom: 18px;
+  }
+  .changelog-date-title {
+    color: var(--ark-text);
+    font-size: 26px;
+    font-weight: 650;
+    line-height: 1.2;
+  }
+  .changelog-weekday {
+    color: var(--ark-soft);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .changelog-entry-grid {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr);
+    gap: 26px;
+    border-bottom: 1px solid var(--ark-faint);
+    padding: 24px 0;
+  }
+  .changelog-entry-grid:last-child {
+    border-bottom: 0;
+  }
+  .changelog-entry-meta {
+    padding-top: 2px;
+  }
+  .changelog-entry-time {
+    display: block;
+    color: var(--ark-text);
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+  }
+  .changelog-entry-type {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 13px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .changelog-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+  }
+  .changelog-entry-main {
+    border-left: 1px solid var(--ark-line);
+    padding-left: 30px;
+  }
+  .changelog-entry-title {
+    color: var(--ark-text);
+    font-size: 18px;
+    font-weight: 650;
+    line-height: 1.35;
+  }
+  .changelog-entry-body {
+    margin-top: 14px;
+    color: var(--ark-muted);
+    font-size: 15px;
+    line-height: 1.8;
+  }
+  @media (max-width: 720px) {
+    .app-nav {
+      width: 88px;
+      padding: 24px 8px;
+    }
+    .changelog-brand {
+      padding: 0 0 20px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .changelog-brand-name {
+      font-size: 20px;
+      letter-spacing: 0.12em;
+    }
+    .changelog-brand-subtitle,
+    .nav-label,
+    .app-nav-section,
+    .app-nav-footer {
+      display: none;
+    }
+    .nav-item {
+      justify-content: center;
+      padding-left: 0;
+      padding-right: 0;
+    }
+    .workspace-shell {
+      padding: 54px 20px 72px;
+    }
+    .workspace-title-row {
+      align-items: start;
+    }
+    .workspace-title {
+      font-size: 30px;
+    }
+    .changelog-shell {
+      padding: 54px 24px 64px;
+    }
+    .changelog-title {
+      font-size: 34px;
+    }
+    .changelog-subtitle {
+      font-size: 16px;
+    }
+    .changelog-header {
+      margin-bottom: 72px;
+    }
+    .changelog-groups {
+      gap: 72px;
+    }
+    .changelog-date-header {
+      display: block;
+    }
+    .changelog-date-title {
+      font-size: 32px;
+    }
+    .changelog-weekday {
+      display: block;
+      margin-top: 16px;
+    }
+    .changelog-entry-grid {
+      grid-template-columns: 1fr;
+      gap: 18px;
+      padding: 30px 0;
+    }
+    .changelog-entry-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .changelog-entry-type {
+      margin-top: 0;
+    }
+    .changelog-entry-main {
+      padding-left: 22px;
+    }
+    .changelog-entry-title {
+      font-size: 20px;
+    }
+    .changelog-entry-body {
+      font-size: 16px;
+      line-height: 1.75;
+    }
+  }
 </style>
 </head>
 <body class="bg-gray-50 text-gray-900 flex h-screen antialiased">
 
 <!-- 侧边导航 -->
-<nav class="w-40 bg-white border-r border-gray-200 flex flex-col pt-6 px-3 gap-1 shrink-0">
-  <span class="text-xs text-gray-400 font-medium px-2 mb-2">ark-quant</span>
-  <template x-data x-for="item in [
-    {id:'account', label:'账户', icon:'📊'},
-    {id:'trading', label:'计划', icon:'📋'},
-    {id:'changelog', label:'更新日志', icon:'🕒'}
-  ]">
-    <button @click="$dispatch('nav', item.id)"
-      :class="$store.page === item.id
-        ? 'bg-gray-100 text-gray-900 font-medium'
-        : 'text-gray-500 hover:bg-gray-50'"
-      class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left w-full">
-      <span x-text="item.icon"></span>
-      <span x-text="item.label"></span>
-    </button>
-  </template>
+<nav
+  x-data
+  class="app-nav flex flex-col gap-1 shrink-0">
+  <div class="changelog-brand">
+    <div class="changelog-brand-name">ARK</div>
+    <div class="changelog-brand-subtitle">quant journal</div>
+  </div>
+  <div class="app-nav-section">工作台</div>
+  <button @click="$dispatch('nav', 'account')"
+    aria-label="账户"
+    :aria-current="$store.page === 'account' ? 'page' : null"
+    :class="$store.page === 'account'
+      ? 'bg-gray-100 text-gray-900 font-medium'
+      : 'text-gray-500 hover:bg-gray-50'"
+    class="nav-item flex items-center gap-2 px-3 py-2 text-left w-full">
+    <i class="nav-icon" data-lucide="bar-chart-3" aria-hidden="true"></i>
+    <span class="nav-label">账户</span>
+  </button>
+  <button @click="$dispatch('nav', 'trading')"
+    aria-label="计划"
+    :aria-current="$store.page === 'trading' ? 'page' : null"
+    :class="$store.page === 'trading'
+      ? 'bg-gray-100 text-gray-900 font-medium'
+      : 'text-gray-500 hover:bg-gray-50'"
+    class="nav-item flex items-center gap-2 px-3 py-2 text-left w-full">
+    <i class="nav-icon" data-lucide="square" aria-hidden="true"></i>
+    <span class="nav-label">计划</span>
+  </button>
+  <div class="app-nav-section mt-7">更多</div>
+  <button @click="$dispatch('nav', 'changelog')"
+    aria-label="更新日志"
+    :aria-current="$store.page === 'changelog' ? 'page' : null"
+    :class="$store.page === 'changelog'
+      ? 'bg-gray-100 text-gray-900 font-medium'
+      : 'text-gray-500 hover:bg-gray-50'"
+    class="nav-item flex items-center gap-2 px-3 py-2 text-left w-full">
+    <i class="nav-icon" data-lucide="history" aria-hidden="true"></i>
+    <span class="nav-label">更新日志</span>
+  </button>
+  <div class="app-nav-footer">
+    <div>ark-quant</div>
+    <div>本地投资工作台</div>
+  </div>
 </nav>
 
 <!-- 主内容 -->
-<main class="flex-1 overflow-auto px-5 py-4" x-data @nav.window="$store.page = $event.detail">
+<main
+  class="app-main flex-1 overflow-auto"
+  x-data
+  @nav.window="$store.page = $event.detail">
 
   <!-- 账户总览 -->
   <div x-show="$store.page === 'account'" x-data="accountPage()" x-init="ensureLoaded($store.page)" x-effect="ensureLoaded($store.page)">
 
-    <div class="max-w-7xl">
+    <div class="workspace-shell">
       <!-- 标题栏 -->
-      <div class="flex justify-between items-center mb-5">
+      <div class="workspace-title-row flex justify-between gap-5">
         <div>
-          <h1 class="text-xl font-semibold tracking-normal">账户</h1>
+          <h1 class="workspace-title tracking-normal">账户</h1>
         </div>
-        <label class="text-xs text-gray-500 flex items-center gap-2">
+        <label class="workspace-meta flex items-center gap-2">
           账户事实日
           <input type="date" x-model="form.snapshot_date" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white">
         </label>
       </div>
 
       <!-- 总资产 -->
-      <section class="bg-white border border-gray-100 rounded-xl p-6 mb-5 shadow-sm shadow-gray-100/40">
+      <section class="ark-panel p-6 mb-5">
         <div class="flex items-baseline gap-3">
           <span class="text-sm text-gray-400">总资产</span>
           <span class="text-4xl font-semibold tracking-normal tabular-nums" x-text="fmtMoney(totalAssets())"></span>
@@ -80,7 +417,7 @@
       </section>
 
       <!-- 账户列表 -->
-      <table class="w-full table-fixed bg-white border border-gray-100 rounded-xl shadow-sm shadow-gray-100/40">
+      <table class="ark-panel w-full table-fixed">
         <template x-for="acc in accounts" :key="acc.id">
           <tbody>
             <tr @click="acc.posType ? toggleExpand(acc.id) : null"
@@ -134,12 +471,12 @@
 
 <!-- 计划 -->
   <template x-if="$store.page === 'trading'">
-  <div x-data="tradingPage()" class="max-w-7xl mx-auto">
+  <div x-data="tradingPage()" class="workspace-shell workspace-shell-wide">
     <!-- 计划基准与唯一主操作 -->
-    <div class="flex flex-col xl:flex-row xl:items-center gap-4 mb-5 p-4 bg-white border border-gray-100 rounded-xl shadow-sm">
+    <div class="ark-panel flex flex-col xl:flex-row xl:items-center gap-4 mb-5 p-5">
       <div>
-        <h1 class="text-xl font-semibold">生成计划</h1>
-        <div class="text-xs text-gray-400 mt-1" x-text="tDate ? '基于 ' + tDate + ' 收盘数据' : '等待计划基准日'"></div>
+        <h1 class="workspace-title text-[34px]">生成计划</h1>
+        <div class="workspace-meta mt-2" x-text="tDate ? '基于 ' + tDate + ' 收盘数据' : '等待计划基准日'"></div>
       </div>
       <span x-show="executionDate()" class="text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full"
         x-text="'适用 ' + executionDate() + ' 开盘执行'"></span>
@@ -158,7 +495,7 @@
     </div>
 
     <!-- 本次计划条件 -->
-    <details class="bg-white border border-gray-100 rounded-xl px-5 py-3 mb-4 shadow-sm shadow-gray-100/40" :open="!plan">
+    <details class="ark-panel px-5 py-3 mb-4" :open="!plan">
       <summary class="cursor-pointer select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">
         <div class="inline-flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span class="text-sm font-semibold">本次计划条件</span>
@@ -198,7 +535,7 @@
     <div x-show="planError" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-sm text-red-700 whitespace-pre-line" x-text="planError"></div>
 
     <!-- 就绪状态 -->
-    <section class="bg-white border border-gray-100 rounded-xl p-4 mb-4 shadow-sm shadow-gray-100/40">
+    <section class="ark-panel p-4 mb-4">
       <div class="flex items-center justify-between mb-3">
         <div class="text-sm font-semibold">计划就绪状态</div>
         <div class="text-xs text-gray-400">榜单生成受盘中保护；盘中可查看已有计划。</div>
@@ -213,7 +550,7 @@
       </div>
     </section>
 
-    <details class="bg-white border border-gray-100 rounded-xl px-4 py-3 mb-4 text-sm shadow-sm shadow-gray-100/40">
+    <details class="ark-panel px-4 py-3 mb-4 text-sm">
       <summary class="cursor-pointer text-xs text-gray-500 select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">高级操作</summary>
       <div class="flex flex-wrap items-center gap-2 mt-3">
         <button @click="refreshFullPlan(true)" :disabled="loadingPlan" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">更新市场温度</button>
@@ -227,7 +564,7 @@
     </details>
 
     <!-- 资金调拨结果始终可见 -->
-    <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40">
+    <div class="ark-panel p-5 mb-4">
       <div class="flex items-center justify-between mb-3">
         <div class="text-sm font-semibold">账户间资金调拨</div>
         <span class="text-xs rounded-full px-2.5 py-1" :class="statusClass(plan?.fund_transfer ? 'ready' : 'waiting')" x-text="transferStatusText()"></span>
@@ -314,7 +651,7 @@
     </div>
 
     <!-- 转债计划 -->
-    <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40">
+    <div class="ark-panel p-5 mb-4">
       <div class="flex items-center justify-between mb-3">
         <div class="text-sm font-semibold">转债计划
           <span class="text-xs text-gray-400 font-normal ml-2" x-text="plan?.cb?.data_date ? '基于 ' + plan?.cb?.data_date + ' 收盘' : ''"></span>
@@ -401,7 +738,7 @@
     </div>
 
     <!-- 股票计划 -->
-    <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
+    <div class="ark-panel p-5">
       <div class="flex items-center justify-between mb-3">
         <div class="text-sm font-semibold">股票计划
           <span class="text-xs text-gray-400 font-normal ml-2" x-text="plan?.stock?.data_date ? '基于 ' + plan?.stock?.data_date + ' 收盘' : ''"></span>
@@ -492,28 +829,36 @@
 
   <!-- 更新日志 -->
   <template x-if="$store.page === 'changelog'">
-  <div x-data="changelogPage()" x-init="load()" class="max-w-4xl mx-auto">
-    <div class="mb-5">
-      <h1 class="text-xl font-semibold tracking-normal">更新日志</h1>
-      <p class="text-sm text-gray-400 mt-1">最近发生了什么 — 新功能、调整、下线，都写在这里。</p>
+  <div x-data="changelogPage()" x-init="load()" class="changelog-shell">
+    <div class="changelog-header">
+      <div class="changelog-kicker">CHANGELOG</div>
+      <h1 class="changelog-title">更新日志</h1>
+      <p class="changelog-subtitle">最近发生了什么 — 新功能、调整、下线，都写在这里。</p>
     </div>
 
-    <div x-show="loadError" class="bg-red-50 border border-red-100 rounded-lg px-4 py-3 mb-4 text-sm text-red-700" x-text="loadError"></div>
+    <div x-show="loadError" class="mb-8 border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700" x-text="loadError"></div>
 
-    <div x-show="!loadError" class="space-y-8">
+    <div x-show="!loadError" class="changelog-groups">
       <template x-for="group in groupedEntries()" :key="group.date">
         <section>
-          <h2 class="text-sm font-semibold text-gray-900 mb-3" x-text="group.date"></h2>
-          <div class="border-l border-gray-200">
+          <div class="changelog-date-header">
+            <h2 class="changelog-date-title" x-text="formatGroupDate(group.date)"></h2>
+            <span class="changelog-weekday" x-text="weekdayText(group.date)"></span>
+          </div>
+          <div>
             <template x-for="entry in group.entries" :key="entry.date + entry.time + entry.title">
-              <article class="relative pl-5 pb-5 last:pb-0">
-                <span class="absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full bg-white border border-gray-300"></span>
-                <div class="flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                  <time class="tabular-nums" x-text="entry.time"></time>
-                  <span class="rounded px-1.5 py-0.5 font-medium" :class="typeClass(entry.type)" x-text="entry.type"></span>
+              <article class="changelog-entry-grid">
+                <div class="changelog-entry-meta">
+                  <time class="changelog-entry-time" x-text="entry.time"></time>
+                  <div class="changelog-entry-type" :class="typeTextClass(entry.type)">
+                    <span class="changelog-dot" :class="typeDotClass(entry.type)"></span>
+                    <span x-text="entry.type"></span>
+                  </div>
                 </div>
-                <h3 class="mt-1 text-sm font-semibold text-gray-900" x-text="entry.title"></h3>
-                <p class="mt-1 text-sm leading-6 text-gray-500" x-text="entry.body"></p>
+                <div class="changelog-entry-main">
+                  <h3 class="changelog-entry-title" x-text="entry.title"></h3>
+                  <p class="changelog-entry-body" x-text="entry.body"></p>
+                </div>
               </article>
             </template>
           </div>
@@ -528,6 +873,10 @@
 </main>
 
 <script>
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.lucide) window.lucide.createIcons()
+  })
+
   // Alpine store for active page
   document.addEventListener('alpine:init', () => {
     Alpine.store('page', 'account')
@@ -567,14 +916,33 @@
         })
         return groups
       },
-      typeClass(type) {
+      formatGroupDate(dateText) {
+        const [year, month, day] = String(dateText).split('-').map(Number)
+        if (!year || !month || !day) return dateText
+        return `${year} 年 ${month} 月 ${day} 日`
+      },
+      weekdayText(dateText) {
+        const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+        const date = new Date(`${dateText}T00:00:00`)
+        return Number.isNaN(date.getTime()) ? '' : weekdays[date.getDay()]
+      },
+      typeTextClass(type) {
         const classes = {
-          更新: 'bg-green-50 text-green-700',
-          优化: 'bg-blue-50 text-blue-700',
-          公告: 'bg-gray-100 text-gray-600',
-          下线: 'bg-amber-50 text-amber-700',
+          更新: 'text-emerald-700',
+          优化: 'text-teal-700',
+          公告: 'text-gray-600',
+          下线: 'text-amber-700',
         }
-        return classes[type] || 'bg-gray-100 text-gray-500'
+        return classes[type] || 'text-gray-500'
+      },
+      typeDotClass(type) {
+        const classes = {
+          更新: 'bg-emerald-600',
+          优化: 'bg-teal-700',
+          公告: 'bg-gray-400',
+          下线: 'bg-amber-600',
+        }
+        return classes[type] || 'bg-gray-400'
       },
     }
   }
