@@ -1432,12 +1432,16 @@ def browser_check_code(
               const fundingAvailability = futureFunding ? 'deferred' : 'same_day';
               const fundingLabel = futureFunding ? '等待未来资金可用' : '当日可用';
               const fundingState = futureFunding ? 'waits_for_funds' : 'needs_same_day_transfer';
+              const fundingDate = plan.stock?.trade_date || plan.cb?.trade_date || null;
+              const fundingDisplayDate = futureFunding ? '日期待确认' : fundingDate;
               plan.execution_read_model = {{
                 plan_date: scenarioFixtures.readiness.plan_date,
                 funding_plan: withActions ? {{
                   groups: [{{
                     availability: fundingAvailability,
                     label: fundingLabel,
+                    available_date: futureFunding ? null : fundingDate,
+                    display_date: fundingDisplayDate,
                     actions: [{{
                       source_account_id: 'cash',
                       source_account_name: '资金账户',
@@ -1447,6 +1451,8 @@ def browser_check_code(
                       reason: 'a_internal_rebalance',
                       reason_label: '完成主动组合内部资金调整',
                       availability: fundingAvailability,
+                      available_date: futureFunding ? null : fundingDate,
+                      display_date: fundingDisplayDate,
                       cash_effect: futureFunding ? 'deferred_cash_in' : 'immediate_cash_in',
                     }}],
                   }}],
@@ -1461,6 +1467,8 @@ def browser_check_code(
                     funding: {{
                       state: fundingState,
                       available_on: fundingAvailability,
+                      available_date: futureFunding ? null : fundingDate,
+                      display_date: fundingDisplayDate,
                       transfer_in: 6000,
                       transfer_out: 0,
                       blocked_reason: null,
@@ -1515,6 +1523,8 @@ def browser_check_code(
                     funding: {{
                       state: 'ready',
                       available_on: null,
+                      available_date: fundingDate,
+                      display_date: fundingDate,
                       transfer_in: 0,
                       transfer_out: 0,
                       blocked_reason: null,
@@ -1749,6 +1759,13 @@ def browser_check_code(
                   }}
                 : null;
               const executionBadgeVisible = await scenarioExecutionBadge.isVisible();
+              const expectedFundingDate = scenario.name === 'future-funding'
+                ? '日期待确认'
+                : scenario.plan?.stock?.trade_date;
+              const fundingDatesVisible = !scenario.fundingPlanVisible || (
+                (await scenarioFundingPlan.innerText()).includes(expectedFundingDate)
+                && (await scenarioAccountPlans.first().innerText()).includes(expectedFundingDate)
+              );
               const generateDisabled = await generateButton.isDisabled();
               const legacyPanelsVisible = await scenarioPage
                 .locator('.legacy-plan-transfer-panel:visible, .legacy-plan-order-panel:visible')
@@ -1815,6 +1832,13 @@ def browser_check_code(
                   `plan.scenarios.${{scenario.name}}.accountPlanCount`,
                   scenario.expectedAccountPlanCount,
                   accountPlanCount,
+                ));
+              }}
+              if (!fundingDatesVisible) {{
+                scenarioDifferences.push(difference(
+                  `plan.scenarios.${{scenario.name}}.fundingDatesVisible`,
+                  expectedFundingDate,
+                  {{ fundingDatesVisible }},
                 ));
               }}
               if (!accountsCollapsedByDefault || legacyPanelsVisible !== 0) {{
@@ -2027,6 +2051,7 @@ def browser_check_code(
                 noActionConclusion,
                 legacyPanelsVisible,
                 executionBadgeVisible,
+                fundingDatesVisible,
                 generateDisabled,
                 requests: scenarioRequests,
                 orderEntryNarrowChecks,

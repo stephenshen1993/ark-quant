@@ -123,6 +123,14 @@ class TestPlanExecutionReadModel(unittest.TestCase):
             [group["label"] for group in result["funding_plan"]["groups"]],
             ["当日可用", "下一交易日可用", "等待未来资金可用"],
         )
+        self.assertEqual(
+            [group["available_date"] for group in result["funding_plan"]["groups"]],
+            ["2026-08-06", "2026-08-07", None],
+        )
+        self.assertEqual(
+            [group["display_date"] for group in result["funding_plan"]["groups"]],
+            ["2026-08-06", "2026-08-07", "日期待确认"],
+        )
         actions = [
             action
             for group in result["funding_plan"]["groups"]
@@ -148,6 +156,14 @@ class TestPlanExecutionReadModel(unittest.TestCase):
         self.assertEqual(
             [action["reason_label"] for action in actions],
             ["主动组合内部再平衡", "主动组合内部再平衡", "组合偏离修复"],
+        )
+        self.assertEqual(
+            [action["available_date"] for action in actions],
+            ["2026-08-06", "2026-08-07", None],
+        )
+        self.assertEqual(
+            [action["display_date"] for action in actions],
+            ["2026-08-06", "2026-08-07", "日期待确认"],
         )
         self.assertNotIn("path", actions[0])
         self.assertEqual(result["account_trading_plans"], [])
@@ -255,6 +271,8 @@ class TestPlanExecutionReadModel(unittest.TestCase):
             ["ready", "needs_same_day_transfer"],
         )
         cb_plan, stock_plan = plans
+        self.assertEqual(stock_plan["funding"]["available_date"], "2026-08-06")
+        self.assertEqual(stock_plan["funding"]["display_date"], "2026-08-06")
         self.assertEqual(
             (cb_plan["account_name"], cb_plan["portfolio_name"], cb_plan["strategy_name"]),
             ("华泰账户", "主动组合", "多因子可转债策略"),
@@ -339,6 +357,8 @@ class TestPlanExecutionReadModel(unittest.TestCase):
         )["account_trading_plans"][0]
         self.assertEqual(waiting["funding"]["state"], "waits_for_funds")
         self.assertEqual(waiting["funding"]["available_on"], "deferred")
+        self.assertIsNone(waiting["funding"]["available_date"])
+        self.assertEqual(waiting["funding"]["display_date"], "日期待确认")
         self.assertEqual(waiting["cash"]["expected_ending"], 100.0)
 
         stock["orders"][0]["amount"] = 1200.0
@@ -351,6 +371,8 @@ class TestPlanExecutionReadModel(unittest.TestCase):
         )["account_trading_plans"][0]
         self.assertEqual(blocked["funding"]["state"], "blocked")
         self.assertEqual(blocked["funding"]["blocked_reason"], "计划后预计资金余额不足")
+        self.assertIsNone(blocked["funding"]["available_date"])
+        self.assertEqual(blocked["funding"]["display_date"], "尚不可用")
         self.assertEqual(blocked["cash"]["expected_ending"], -100.0)
 
     def test_omits_accounts_and_phases_without_executable_orders(self):

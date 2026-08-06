@@ -1321,7 +1321,10 @@
           <div>
             <template x-for="group in fundingPlan().groups" :key="group.availability">
               <section class="plan-funding-group" :aria-label="group.label">
-                <h3 class="plan-funding-group-title" x-text="group.label"></h3>
+                <h3 class="plan-funding-group-title">
+                  <span x-text="group.label"></span>
+                  <span class="block mt-1 font-normal" x-text="group.display_date"></span>
+                </h3>
                 <div>
                   <template x-for="(action, actionIndex) in group.actions" :key="`${group.availability}-${action.source_account_id}-${action.target_account_id}-${actionIndex}`">
                     <article class="plan-funding-action">
@@ -1331,7 +1334,11 @@
                           <span class="mx-2 text-gray-300" aria-hidden="true">→</span>
                           <span x-text="action.target_account_name"></span>
                         </div>
-                        <p class="plan-funding-reason" x-text="action.reason_label"></p>
+                        <p class="plan-funding-reason">
+                          <span x-text="action.reason_label"></span>
+                          <span aria-hidden="true"> · </span>
+                          <span x-text="action.display_date"></span>
+                        </p>
                       </div>
                       <div class="plan-funding-amount" x-text="fmtMoney(action.amount)"></div>
                     </article>
@@ -2896,8 +2903,8 @@
         return !this.readiness?.plan_date || generation.plan_date === this.readiness.plan_date
       },
       planState() {
-        if (this.readinessError) return 'problem'
         if (this.generatingPlan || this.latestGeneration?.status === 'running') return 'running'
+        if (this.readinessError) return 'problem'
         if (this.readiness?.status === 'needs_facts') return 'needs-facts'
         if (this.lifecycleError) return 'problem'
         if (['stale', 'failed'].includes(this.latestGeneration?.status)) return 'problem'
@@ -2905,39 +2912,71 @@
         if (!this.hasCurrentGeneratedPlan()) return 'problem'
         return this.hasExecutionPlans() ? 'action' : 'no-action'
       },
-      planStateTitle() {
+      planStateDescriptor() {
         const state = this.planState()
-        if (state === 'running') return '正在生成完整计划'
-        if (state === 'needs-facts') return '待补充账户事实'
-        if (state === 'problem') {
-          if (this.readinessError) return '无法确认账户事实'
-          if (this.latestGeneration?.status === 'stale') return '计划已失效'
-          if (this.latestGeneration?.status === 'failed') return '计划生成失败'
-          if (this.lifecycleError) return '无法确认计划状态'
-          return '今日计划待生成'
+        if (state === 'running') {
+          return {
+            title: '正在生成完整计划',
+            copy: '服务器正在校验账户事实、生成榜单、调拨与订单；完成前不会展示猜测进度。',
+          }
         }
-        if (state === 'action') return '今日需要操作'
-        return '今日无需操作'
-      },
-      planStateCopy() {
-        const state = this.planState()
-        if (state === 'running') return '服务器正在校验账户事实、生成榜单、调拨与订单；完成前不会展示猜测进度。'
         if (state === 'needs-facts') {
           const names = (this.readiness?.accounts || [])
             .filter(item => item.status !== 'ready')
             .map(item => item.account_name)
-          return `${names.join('、') || '账户'}不在计划输入窗口内，补齐后再生成完整计划。`
+          return {
+            title: '待补充账户事实',
+            copy: `${names.join('、') || '账户'}不在计划输入窗口内，补齐后再生成完整计划。`,
+          }
         }
         if (state === 'problem') {
-          if (this.readinessError) return `${this.readinessError}；为避免误导，暂不展示任何操作。`
-          if (this.latestGeneration?.status === 'stale' || this.latestGeneration?.status === 'failed') {
-            return this.latestGeneration?.error?.message || this.planError || '现有计划不可继续使用，请检查事实后重新生成。'
+          if (this.readinessError) {
+            return {
+              title: '无法确认账户事实',
+              copy: `${this.readinessError}；为避免误导，暂不展示任何操作。`,
+            }
           }
-          if (this.lifecycleError) return '无法读取已保存计划的生成记录；为避免误导，暂不展示任何操作。'
-          return '计划输入已就绪；生成完整计划后确认今日是否需要操作。'
+          if (this.latestGeneration?.status === 'stale') {
+            return {
+              title: '计划已失效',
+              copy: this.latestGeneration?.error?.message || this.planError || '现有计划不可继续使用，请检查事实后重新生成。',
+            }
+          }
+          if (this.latestGeneration?.status === 'failed') {
+            return {
+              title: '计划生成失败',
+              copy: this.latestGeneration?.error?.message || this.planError || '现有计划不可继续使用，请检查事实后重新生成。',
+            }
+          }
+          if (this.lifecycleError) {
+            return {
+              title: '无法确认计划状态',
+              copy: '无法读取已保存计划的生成记录；为避免误导，暂不展示任何操作。',
+            }
+          }
+          return {
+            title: '今日计划待生成',
+            copy: '计划输入已就绪；生成完整计划后确认今日是否需要操作。',
+          }
         }
-        if (state === 'action') return '先审阅资金调拨计划，再逐一审阅具体账户交易计划；执行前仍需人工复核。'
-        return this.plan ? '完整计划已检查，本次没有需要手工执行的订单或调拨。' : '计划输入就绪；生成完整计划后确认今日是否需要操作。'
+        if (state === 'action') {
+          return {
+            title: '今日需要操作',
+            copy: '先审阅资金调拨计划，再逐一审阅具体账户交易计划；执行前仍需人工复核。',
+          }
+        }
+        return {
+          title: '今日无需操作',
+          copy: this.plan
+            ? '完整计划已检查，本次没有需要手工执行的订单或调拨。'
+            : '计划输入就绪；生成完整计划后确认今日是否需要操作。',
+        }
+      },
+      planStateTitle() {
+        return this.planStateDescriptor().title
+      },
+      planStateCopy() {
+        return this.planStateDescriptor().copy
       },
       planDecisionMark() {
         const window = this.readiness?.input_window
@@ -2963,21 +3002,25 @@
       hasExecutionPlans() {
         return Boolean(this.fundingPlan() || this.accountTradingPlans().length)
       },
-      fundingStateText(funding) {
+      fundingStateDescriptor(funding) {
+        const descriptor = {
+          ready: { text: '资金已具备', className: 'is-ready' },
+          needs_same_day_transfer: { text: '需要当日调入', className: 'is-same-day' },
+          waits_for_funds: { text: '等待未来资金可用', className: 'is-future' },
+          blocked: { text: '资金不足 · 已阻断', className: 'is-blocked' },
+        }[funding?.state] || { text: '等待资金确认', className: '' }
         return {
-          ready: '资金已具备',
-          needs_same_day_transfer: '需要当日调入',
-          waits_for_funds: '等待未来资金可用',
-          blocked: '资金不足 · 已阻断',
-        }[funding?.state] || '等待资金确认'
+          ...descriptor,
+          text: funding?.display_date
+            ? `${descriptor.text} · ${funding.display_date}`
+            : descriptor.text,
+        }
+      },
+      fundingStateText(funding) {
+        return this.fundingStateDescriptor(funding).text
       },
       fundingStateClass(funding) {
-        return {
-          ready: 'is-ready',
-          needs_same_day_transfer: 'is-same-day',
-          waits_for_funds: 'is-future',
-          blocked: 'is-blocked',
-        }[funding?.state] || ''
+        return this.fundingStateDescriptor(funding).className
       },
       phaseLabel(phase) {
         return phase === 'sell' ? '卖出阶段' : '买入阶段'

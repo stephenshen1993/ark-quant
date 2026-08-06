@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 
 AVAILABILITY_LABELS = {
     "same_day": "当日可用",
@@ -32,14 +34,31 @@ def build_execution_read_model(
     cb: dict | None,
     stock: dict | None,
 ) -> dict:
+    read_model = account_read_model or {}
     funding_actions = _raw_funding_actions(fund_transfer)
+    execution_date = _execution_date(stock, cb)
     return {
         "plan_date": plan_date,
-        "funding_plan": _funding_plan(funding_actions, account_read_model),
+        "funding_plan": _funding_plan(
+            funding_actions,
+            account_read_model,
+            execution_date,
+        ),
         "account_trading_plans": _account_trading_plans(
             account_read_model=account_read_model,
             funding_actions=funding_actions,
-            sections=(("stock", stock), ("cb", cb)),
+            sections=(
+                {
+                    "strategy_id": "stock",
+                    "account_id": _account_id_for_strategy("stock", read_model),
+                    "plan": stock,
+                },
+                {
+                    "strategy_id": "cb",
+                    "account_id": _account_id_for_strategy("cb", read_model),
+                    "plan": cb,
+                },
+            ),
         ),
     }
 
@@ -47,6 +66,7 @@ def build_execution_read_model(
 def _funding_plan(
     actions: list[dict],
     account_read_model: dict | None,
+    execution_date: str | None,
 ) -> dict | None:
     grouped = {availability: [] for availability in AVAILABILITY_LABELS}
     for action in actions:
@@ -60,6 +80,11 @@ def _funding_plan(
         target_id, target_name = _account_identity(
             action.get("target"), account_read_model
         )
+        available_date = _availability_date(
+            availability,
+            execution_date,
+            action.get("available_date"),
+        )
         grouped[availability].append({
             "source_account_id": source_id,
             "source_account_name": source_name,
@@ -71,18 +96,30 @@ def _funding_plan(
                 action.get("reason"), "按计划完成资金调拨"
             ),
             "availability": availability,
+            "available_date": available_date,
+            "display_date": available_date or "日期待确认",
             "cash_effect": action.get("cash_effect"),
         })
 
-    groups = [
-        {
+    groups = []
+    for availability, label in AVAILABILITY_LABELS.items():
+        group_actions = grouped[availability]
+        if not group_actions:
+            continue
+        dates = {action["available_date"] for action in group_actions}
+        available_date = next(iter(dates)) if len(dates) == 1 else None
+        display_date = (
+            (available_date or "日期待确认")
+            if len(dates) == 1
+            else "多个日期"
+        )
+        groups.append({
             "availability": availability,
             "label": label,
-            "actions": grouped[availability],
-        }
-        for availability, label in AVAILABILITY_LABELS.items()
-        if grouped[availability]
-    ]
+            "available_date": available_date,
+            "display_date": display_date,
+            "actions": group_actions,
+        })
     return {"groups": groups} if groups else None
 
 
@@ -108,7 +145,7 @@ def _account_trading_plans(
     *,
     account_read_model: dict | None,
     funding_actions: list[dict],
-    sections: tuple[tuple[str, dict | None], ...],
+    sections: tuple[dict, ...],
 ) -> list[dict]:
     read_model = account_read_model or {}
     accounts = read_model.get("accounts") or []
@@ -121,8 +158,18 @@ def _account_trading_plans(
         account["id"]: index for index, account in enumerate(accounts)
     }
     plans = []
-    for strategy, section in sections:
-        section = section or {}
+    resolved_actions = [
+        (
+            action,
+            _account_id_for_transfer_endpoint(action.get("source"), read_model),
+            _account_id_for_transfer_endpoint(action.get("target"), read_model),
+        )
+        for action in funding_actions
+    ]
+    for section_spec in sections:
+        strategy = section_spec["strategy_id"]
+        account_id = section_spec["account_id"]
+        section = section_spec.get("plan") or {}
         orders = [
             normalized
             for order in section.get("orders") or []
@@ -131,31 +178,26 @@ def _account_trading_plans(
         if not orders:
             continue
 
-        account_id = _account_id(strategy, read_model)
         account = account_by_id.get(account_id) or {}
         related_actions = [
-            action
-            for action in funding_actions
-            if account_id
-            in {
-                _account_id(action.get("source"), read_model),
-                _account_id(action.get("target"), read_model),
-            }
+            item
+            for item in resolved_actions
+            if account_id in {item[1], item[2]}
         ]
         transfer_in = _money(sum(
             _money(action.get("amount"))
-            for action in related_actions
-            if _account_id(action.get("target"), read_model) == account_id
+            for action, _, target_account_id in related_actions
+            if target_account_id == account_id
         ))
         transfer_out = _money(sum(
             _money(action.get("amount"))
-            for action in related_actions
-            if _account_id(action.get("source"), read_model) == account_id
+            for action, source_account_id, _ in related_actions
+            if source_account_id == account_id
         ))
         incoming_availability = [
             action.get("available_on")
-            for action in related_actions
-            if _account_id(action.get("target"), read_model) == account_id
+            for action, _, target_account_id in related_actions
+            if target_account_id == account_id
         ]
         expected_sell = _money(sum(
             order["estimated_amount"]
@@ -183,6 +225,16 @@ def _account_trading_plans(
             incoming_availability,
             expected_ending,
         )
+        available_date, display_date = _account_funding_date(
+            state=state,
+            availability=available_on,
+            execution_date=section.get("trade_date"),
+            incoming_actions=[
+                action
+                for action, _, target_account_id in related_actions
+                if target_account_id == account_id
+            ],
+        )
         phases = [
             {"phase": "sell", "orders": [
                 order for order in orders if order["action"] in SELL_ACTIONS
@@ -202,6 +254,8 @@ def _account_trading_plans(
             "funding": {
                 "state": state,
                 "available_on": available_on,
+                "available_date": available_date,
+                "display_date": display_date,
                 "transfer_in": transfer_in,
                 "transfer_out": transfer_out,
                 "blocked_reason": (
@@ -286,27 +340,105 @@ def _account_identity(
     read_model = account_read_model or {}
     accounts = read_model.get("accounts") or []
     account_by_id = {account["id"]: account for account in accounts}
-    account_id = _account_id(raw_id, read_model)
+    account_id = _account_id_for_transfer_endpoint(raw_id, read_model)
     account = account_by_id.get(account_id) or {}
     return account_id or "unknown", account.get("name") or raw_id or "未知账户"
 
 
-def _account_id(raw_id: str | None, read_model: dict) -> str | None:
+def _account_id_for_strategy(strategy_id: str, read_model: dict) -> str | None:
     legacy_map = (
         (read_model.get("legacy_adapter") or {}).get("strategy_to_account_id")
         or {}
     )
-    aliases = {**legacy_map, "bond": "cb"}
-    account_id = aliases.get(raw_id, raw_id)
-    if raw_id in {portfolio.get("id") for portfolio in read_model.get("portfolios") or []}:
-        portfolio = next(
+    account_ids = {account.get("id") for account in read_model.get("accounts") or []}
+    mapped_id = legacy_map.get(strategy_id)
+    if mapped_id in account_ids:
+        return mapped_id
+    return strategy_id if strategy_id in account_ids else None
+
+
+def _account_id_for_transfer_endpoint(raw_id: str | None, read_model: dict) -> str | None:
+    if not raw_id:
+        return None
+    account_ids = {account.get("id") for account in read_model.get("accounts") or []}
+    if raw_id in account_ids:
+        return raw_id
+
+    strategy_id = {"bond": "cb"}.get(raw_id, raw_id)
+    strategy_account_id = _account_id_for_strategy(strategy_id, read_model)
+    if strategy_account_id:
+        return strategy_account_id
+
+    portfolio = next(
+        (
             item
             for item in read_model.get("portfolios") or []
             if item.get("id") == raw_id
-        )
-        if len(portfolio.get("account_ids") or []) == 1:
-            account_id = portfolio["account_ids"][0]
-    return account_id
+        ),
+        None,
+    )
+    portfolio_account_ids = (portfolio or {}).get("account_ids") or []
+    return portfolio_account_ids[0] if len(portfolio_account_ids) == 1 else raw_id
+
+
+def _execution_date(*sections: dict | None) -> str | None:
+    return next(
+        (
+            section.get("trade_date")
+            for section in sections
+            if section and section.get("trade_date")
+        ),
+        None,
+    )
+
+
+def _availability_date(
+    availability: str | None,
+    execution_date: str | None,
+    explicit_date: str | None = None,
+) -> str | None:
+    if explicit_date:
+        return explicit_date
+    if not execution_date:
+        return None
+    if availability == "same_day":
+        return execution_date
+    if availability != "next_trading_day":
+        return None
+    try:
+        next_date = date.fromisoformat(execution_date) + timedelta(days=1)
+    except ValueError:
+        return None
+    while next_date.weekday() >= 5:
+        next_date += timedelta(days=1)
+    return next_date.isoformat()
+
+
+def _account_funding_date(
+    *,
+    state: str,
+    availability: str | None,
+    execution_date: str | None,
+    incoming_actions: list[dict],
+) -> tuple[str | None, str]:
+    if state == "blocked":
+        return None, "尚不可用"
+    effective_availability = availability or "same_day"
+    explicit_date = next(
+        (
+            action.get("available_date")
+            for action in incoming_actions
+            if action.get("available_on") == effective_availability
+            and action.get("available_date")
+        ),
+        None,
+    )
+    available_date = _availability_date(
+        effective_availability,
+        execution_date,
+        explicit_date,
+    )
+    return available_date, available_date or "日期待确认"
 
 
 def _money(value) -> float:

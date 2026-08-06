@@ -311,6 +311,25 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn("个步骤", self.html)
         self.assertNotIn("今日动作摘要", self.html)
 
+    def test_execution_plans_show_server_supplied_funding_dates(self):
+        self.assertIn("group.display_date", self.html)
+        self.assertIn("action.display_date", self.html)
+        self.assertIn("funding.display_date", self.html)
+
+    def test_running_state_precedes_readiness_errors(self):
+        start = self.html.index("planState() {")
+        end = self.html.index("planStateTitle() {", start)
+        plan_state = self.html[start:end]
+        self.assertLess(
+            plan_state.index("this.generatingPlan"),
+            plan_state.index("this.readinessError"),
+        )
+
+    def test_funding_state_copy_and_style_share_one_descriptor(self):
+        self.assertIn("fundingStateDescriptor(funding)", self.html)
+        self.assertIn("return this.fundingStateDescriptor(funding).text", self.html)
+        self.assertIn("return this.fundingStateDescriptor(funding).className", self.html)
+
     def test_account_trading_plans_use_real_accounts_and_complete_cash_equation(self):
         self.assertIn("账户交易计划", self.html)
         self.assertIn('x-for="plan in accountTradingPlans()"', self.html)

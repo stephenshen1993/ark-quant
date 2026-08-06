@@ -123,6 +123,8 @@ class TestUiSmokeScript(unittest.TestCase):
             "fundingBeforeAccounts",
             "accountsCollapsedByDefault",
             "expandedAccountPlanChecks",
+            "fundingDatesVisible",
+            "日期待确认",
             "计划后预计资金余额",
             "['动作', '证券代码与名称', '数量', '参考价', '估算金额']",
             "noHorizontalOverflow",
