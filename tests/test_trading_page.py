@@ -10,6 +10,14 @@ class TestTradingPageInteraction(unittest.TestCase):
     def setUpClass(cls):
         cls.html = INDEX_HTML.read_text(encoding="utf-8")
 
+    def test_navigation_only_exposes_available_destinations(self):
+        self.assertIn('aria-label="账户"', self.html)
+        self.assertIn('aria-label="计划"', self.html)
+        self.assertIn('aria-label="更新日志"', self.html)
+        self.assertNotIn('aria-label="关于，暂未开放"', self.html)
+        self.assertNotIn('aria-label="反馈，暂未开放"', self.html)
+        self.assertNotIn("nav-item-disabled", self.html)
+
     def test_regular_flow_has_one_complete_plan_action(self):
         self.assertEqual(self.html.count(">生成完整计划<"), 1)
         self.assertNotIn("保存并生成计划", self.html)

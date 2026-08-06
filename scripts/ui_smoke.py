@@ -583,21 +583,21 @@ def browser_check_code(
               disabled: button.disabled,
               ariaDisabled: button.getAttribute('aria-disabled'),
             }})));
-            const expectedNavLabels = ['账户', '计划', '关于', '更新日志', '反馈'];
+            const expectedNavLabels = ['账户', '计划', '更新日志'];
             const actualNavLabels = navItems.map(item => (item.ariaLabel || item.label).split('，')[0]);
             const navigationDifferences = [];
             if (JSON.stringify(actualNavLabels) !== JSON.stringify(expectedNavLabels)) {{
               navigationDifferences.push(difference('navigation.order', expectedNavLabels, actualNavLabels));
             }}
             const disabledItems = navItems.filter(item => item.disabled);
-            if (disabledItems.length !== 2 || disabledItems.some(item => item.ariaDisabled !== 'true')) {{
+            if (disabledItems.length) {{
               navigationDifferences.push(difference(
                 'navigation.disabledItems',
-                {{ count: 2, ariaDisabled: 'true' }},
+                [],
                 disabledItems,
               ));
             }}
-            assertNoDifferences('navigation', '全站导航顺序或禁用状态异常', navigationDifferences);
+            assertNoDifferences('navigation', '全站导航顺序或可用状态异常', navigationDifferences);
 
             const accountPage = main.getByRole('region', {{ name: '账户工作台' }});
             const accountHeading = accountPage.getByRole('heading', {{ name: '账户', level: 1 }});
