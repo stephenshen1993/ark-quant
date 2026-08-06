@@ -34,21 +34,32 @@
     white-space: nowrap;
   }
   :root {
-    --ark-bg: #f7f8fa;
+    --ark-bg: #f4f5f6;
     --ark-panel: #ffffff;
-    --ark-text: #111827;
-    --ark-muted: #6b7280;
-    --ark-soft: #9ca3af;
-    --ark-line: #e5e7eb;
-    --ark-faint: #eef2f7;
-    --ark-accent: #0f766e;
-    --ark-nav-width: 240px;
-    --ark-reading-width: 1128px;
-    --ark-reading-top: 108px;
-    --ark-reading-time-column: 150px;
+    --ark-text: #1b2733;
+    --ark-muted: #5c6672;
+    --ark-soft: #858c96;
+    --ark-line: #e3e4e7;
+    --ark-faint: #e9eef0;
+    --ark-nav-active: #e9eef0;
+    --ark-accent: #125e6c;
+    --ark-update: #2e7e5d;
+    --ark-neutral: #66717e;
+    --ark-nav-width: 179px;
+    --ark-reading-width: 833px;
+    --ark-reading-top: 80px;
+    --ark-header-stream-gap: 61px;
+    --ark-date-group-gap: 72px;
+    --ark-reading-time-column: 86px;
+    --ark-entry-column-gap: 22px;
+    --ark-entry-copy-indent: 24px;
+    --ark-font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont,
+      "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    --ark-font-data: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   }
-  body {
+  body.bg-gray-50 {
     background: var(--ark-bg);
+    font-family: var(--ark-font-sans);
     -webkit-tap-highlight-color: transparent;
   }
   .app-nav {
@@ -95,6 +106,10 @@
   .nav-item:hover {
     background: #f3f4f6;
     color: var(--ark-text);
+  }
+  .nav-item[aria-current="page"] {
+    background: var(--ark-nav-active);
+    color: var(--ark-accent);
   }
   .nav-item-disabled {
     cursor: not-allowed;
@@ -203,105 +218,133 @@
     padding: var(--ark-reading-top) 0 96px;
   }
   .changelog-kicker {
-    margin-bottom: 26px;
+    margin: 0 0 16px;
     color: var(--ark-accent);
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.28em;
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.23em;
+    line-height: 16px;
   }
   .changelog-title {
+    margin: 0;
     color: var(--ark-text);
-    font-size: 48px;
+    font-size: 32px;
     font-weight: 680;
-    line-height: 1.12;
+    letter-spacing: -0.035em;
+    line-height: 39.04px;
     text-wrap: balance;
   }
   .changelog-subtitle {
-    margin-top: 18px;
+    margin: 12px 0 0;
     color: var(--ark-muted);
-    font-size: 18px;
-    font-weight: 600;
-    line-height: 1.7;
+    font-size: 17px;
+    font-weight: 400;
+    line-height: 27.2px;
   }
   .changelog-header {
-    margin-bottom: 88px;
+    margin-bottom: var(--ark-header-stream-gap);
   }
   .changelog-groups {
     display: flex;
     flex-direction: column;
-    gap: 86px;
+    gap: var(--ark-date-group-gap);
   }
   .changelog-date-header {
     display: flex;
     align-items: baseline;
-    gap: 24px;
+    gap: 22px;
+    min-height: 44px;
     border-bottom: 1px solid var(--ark-line);
-    padding-bottom: 24px;
+    padding-bottom: 12px;
   }
   .changelog-date-title {
+    margin: 0;
     color: var(--ark-text);
-    font-size: 34px;
-    font-weight: 680;
-    line-height: 1.2;
+    font-size: 24px;
+    font-weight: 650;
+    letter-spacing: -0.025em;
+    line-height: 31.2px;
     text-wrap: balance;
   }
   .changelog-weekday {
     color: var(--ark-soft);
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 16.9px;
   }
   .changelog-entry-grid {
     display: grid;
     grid-template-columns: var(--ark-reading-time-column) minmax(0, 1fr);
-    gap: 36px;
-    border-bottom: 1px solid var(--ark-faint);
-    padding: 34px 0;
+    column-gap: var(--ark-entry-column-gap);
+    border-bottom: 1px solid var(--ark-line);
+    padding: 25px 0;
   }
   .changelog-entry-grid:last-child {
     border-bottom: 0;
   }
   .changelog-entry-meta {
-    padding-top: 2px;
+    padding-top: 1px;
   }
   .changelog-entry-time {
     display: block;
     color: var(--ark-text);
-    font-size: 18px;
-    font-weight: 700;
-    line-height: 1.2;
+    font-family: var(--ark-font-data);
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    line-height: 20px;
     font-variant-numeric: tabular-nums;
   }
   .changelog-entry-type {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-top: 16px;
-    font-size: 15px;
-    font-weight: 700;
+    gap: 7px;
+    margin-top: 13px;
+    font-size: 14px;
+    font-weight: 560;
+    line-height: 18.9px;
   }
   .changelog-dot {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: 999px;
+  }
+  .changelog-entry-type .changelog-dot {
+    background: currentColor;
+  }
+  .changelog-entry-type.changelog-type-optimize {
+    color: var(--ark-accent);
+  }
+  .changelog-entry-type.changelog-type-update {
+    color: var(--ark-update);
+  }
+  .changelog-entry-type.changelog-type-neutral {
+    color: var(--ark-neutral);
+  }
+  .changelog-entry-type.changelog-type-retired {
+    color: #b45309;
   }
   .changelog-entry-main {
     border-left: 1px solid var(--ark-line);
-    padding-left: 38px;
+    padding-left: var(--ark-entry-copy-indent);
     min-width: 0;
   }
   .changelog-entry-title {
+    margin: 0;
     color: var(--ark-text);
-    font-size: 24px;
-    font-weight: 680;
-    line-height: 1.35;
+    font-size: 18px;
+    font-weight: 650;
+    letter-spacing: -0.018em;
+    line-height: 25.2px;
     overflow-wrap: anywhere;
     text-wrap: balance;
   }
   .changelog-entry-body {
-    margin-top: 16px;
+    margin: 13px 0 0;
     color: var(--ark-muted);
-    font-size: 17px;
-    line-height: 1.8;
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 28px;
     overflow-wrap: anywhere;
     text-wrap: pretty;
   }
@@ -1130,12 +1173,12 @@
       },
       typeTextClass(type) {
         const classes = {
-          更新: 'text-emerald-700',
-          优化: 'text-teal-700',
-          公告: 'text-gray-600',
-          下线: 'text-amber-700',
+          更新: 'changelog-type-update',
+          优化: 'changelog-type-optimize',
+          公告: 'changelog-type-neutral',
+          下线: 'changelog-type-retired',
         }
-        return classes[type] || 'text-gray-500'
+        return classes[type] || 'changelog-type-neutral'
       },
       typeDotClass(type) {
         const classes = {

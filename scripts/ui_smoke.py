@@ -24,14 +24,45 @@ PYTHON = ROOT / ".venv" / "bin" / "python"
 DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "ui-smoke"
 VISUAL_GATE_NAME = "AIHOT 视觉回归闸门"
 WORKBENCH_WIDTH_RANGE = (1000, 1100)
-AIHOT_WIDE_READING_METRICS = {
-    "nav_width": 240,
-    "shell_width": (1100, 1140),
-    "shell_left": (560, 600),
-    "title_top": (140, 170),
+AIHOT_CHANGELOG_REFERENCE_METRICS = {
+    "nav_width": 179,
+    "shell_left": 429,
+    "shell_top": 80,
+    "shell_width": 833,
+    "header_stream_gap": 61,
+    "date_group_gap": 72,
+    "date_header_height": 44,
+    "date_divider_y": 295.41,
+    "meta_width": 86,
+    "entry_column_gap": 22,
+    "entry_divider_x": 537,
+    "entry_copy_x": 562,
+}
+AIHOT_CHANGELOG_STYLE_METRICS = {
+    "canvas": "rgb(244, 245, 246)",
+    "surface": "rgb(255, 255, 255)",
+    "navBorder": "rgb(227, 228, 231)",
+    "navBorderWidth": 1,
+    "ink": "rgb(27, 39, 51)",
+    "secondary": "rgb(92, 102, 114)",
+    "tertiary": "rgb(133, 140, 150)",
+    "line": "rgb(227, 228, 231)",
+    "navActive": "rgb(233, 238, 240)",
+    "accent": "rgb(18, 94, 108)",
+    "update": "rgb(46, 126, 93)",
+    "neutral": "rgb(102, 113, 126)",
+    "kicker": {"fontSize": 11, "lineHeight": 16, "fontWeight": 650},
+    "title": {"fontSize": 32, "lineHeight": 39.04, "fontWeight": 680},
+    "subtitle": {"fontSize": 17, "lineHeight": 27.2, "fontWeight": 400},
+    "date": {"fontSize": 24, "lineHeight": 31.2, "fontWeight": 650},
+    "entryTitle": {"fontSize": 18, "lineHeight": 25.2, "fontWeight": 650},
+    "body": {"fontSize": 16, "lineHeight": 28, "fontWeight": 400},
+    "time": {"fontSize": 16, "lineHeight": 20, "fontWeight": 500},
+    "label": {"fontSize": 14, "lineHeight": 18.9, "fontWeight": 560},
+    "dotSize": 8,
 }
 VIEWPORTS = {
-    "wide": {"width": 2048, "height": 1178},
+    "wide": {"width": 1512, "height": 749},
     "desktop": {"width": 1440, "height": 1000},
     "narrow": {"width": 390, "height": 900},
 }
@@ -125,13 +156,18 @@ def seed_database(db_path: Path, plan_date: str) -> None:
     from datasource.youzhiyouxing import DATA_URL
 
     data_date = date.fromisoformat(plan_date)
+    fetched_at = (
+        datetime.now(ZoneInfo("Asia/Shanghai"))
+        .replace(tzinfo=None)
+        .isoformat(timespec="seconds")
+    )
     db.init_db()
     with db._conn() as conn:
         conn.execute(
             """INSERT INTO market_temperatures
                (temperature,label,source_updated_at,source,fetched_at)
                VALUES (45.0,'正常',?,?,?)""",
-            (f"{plan_date}T15:00", DATA_URL, f"{plan_date}T15:30:00"),
+            (f"{plan_date}T15:00", DATA_URL, fetched_at),
         )
     db.insert_account_context(
         plan_date,
@@ -424,6 +460,13 @@ def browser_check_code(
                 && document.body.innerText.includes('更新日志'),
               {{ timeout: 10000 }}
             );
+            await page.reload({{ waitUntil: 'domcontentloaded', timeout: 15000 }});
+            await page.waitForFunction(
+              () => window.Alpine
+                && window.Alpine.store('page') === 'changelog'
+                && document.querySelector('[aria-label="更新日志"]')?.getAttribute('aria-current') === 'page',
+              {{ timeout: 10000 }}
+            );
             await page.getByRole('button', {{ name: /账户/ }}).click();
             await page.waitForFunction(() => window.Alpine.store('page') === 'account', {{ timeout: 10000 }});
             await page.goBack();
@@ -590,28 +633,154 @@ def browser_check_code(
             const readingMetrics = await page.evaluate(() => {{
               const nav = document.querySelector('.app-nav')?.getBoundingClientRect();
               const shell = document.querySelector('[x-data="changelogPage()"]')?.getBoundingClientRect();
+              const kicker = document.querySelector('.changelog-kicker')?.getBoundingClientRect();
               const title = document.querySelector('.changelog-title')?.getBoundingClientRect();
+              const header = document.querySelector('.changelog-header')?.getBoundingClientRect();
+              const groups = document.querySelector('.changelog-groups');
+              const dateHeader = document.querySelector('.changelog-date-header')?.getBoundingClientRect();
+              const entryMeta = document.querySelector('.changelog-entry-meta')?.getBoundingClientRect();
+              const entryMain = document.querySelector('.changelog-entry-main')?.getBoundingClientRect();
+              const entryTitle = document.querySelector('.changelog-entry-title')?.getBoundingClientRect();
               return {{
                 navWidth: nav?.width || 0,
                 shellLeft: shell?.left || 0,
-                shellTop: shell?.top || 0,
+                contentTop: kicker?.top || 0,
                 shellWidth: shell?.width || 0,
                 titleTop: title?.top || 0,
+                headerStreamGap: (dateHeader?.top || 0) - (header?.bottom || 0),
+                dateGroupGap: Number.parseFloat(window.getComputedStyle(groups).gap),
+                dateHeaderHeight: dateHeader?.height || 0,
+                dateDividerY: dateHeader?.bottom || 0,
+                metaWidth: entryMeta?.width || 0,
+                entryColumnGap: (entryMain?.left || 0) - (entryMeta?.right || 0),
+                entryDividerX: entryMain?.left || 0,
+                entryCopyX: entryTitle?.left || 0,
+              }};
+            }});
+            const styleMetrics = await page.evaluate(() => {{
+              const styleOf = element => {{
+                const style = window.getComputedStyle(element);
+                return {{
+                  color: style.color,
+                  backgroundColor: style.backgroundColor,
+                  borderRightColor: style.borderRightColor,
+                  borderBottomColor: style.borderBottomColor,
+                  fontFamily: style.fontFamily,
+                  fontSize: Number.parseFloat(style.fontSize),
+                  lineHeight: Number.parseFloat(style.lineHeight),
+                  fontWeight: Number.parseInt(style.fontWeight, 10),
+                  width: Number.parseFloat(style.width),
+                  height: Number.parseFloat(style.height),
+                }};
+              }};
+              const typeElement = label => Array.from(document.querySelectorAll('.changelog-entry-type'))
+                .find(element => element.innerText.trim() === label);
+              const optimize = typeElement('优化');
+              const update = typeElement('更新');
+              const neutral = typeElement('公告');
+              const body = document.body;
+              const nav = document.querySelector('.app-nav');
+              const activeNav = document.querySelector('[aria-label="更新日志"]');
+              const dateHeader = document.querySelector('.changelog-date-header');
+              const kicker = document.querySelector('.changelog-kicker');
+              const title = document.querySelector('.changelog-title');
+              const subtitle = document.querySelector('.changelog-subtitle');
+              const date = document.querySelector('.changelog-date-title');
+              const entryTitle = document.querySelector('.changelog-entry-title');
+              const entryBody = document.querySelector('.changelog-entry-body');
+              const time = document.querySelector('.changelog-entry-time');
+              const label = document.querySelector('.changelog-entry-type');
+              const dot = document.querySelector('.changelog-dot');
+              const appMain = document.querySelector('.app-main');
+              return {{
+                canvas: styleOf(body).backgroundColor,
+                surface: styleOf(nav).backgroundColor,
+                navBorder: styleOf(nav).borderRightColor,
+                navBorderWidth: Number.parseFloat(window.getComputedStyle(nav).borderRightWidth),
+                ink: styleOf(title).color,
+                secondary: styleOf(subtitle).color,
+                tertiary: styleOf(document.querySelector('.changelog-weekday')).color,
+                line: styleOf(dateHeader).borderBottomColor,
+                navActive: styleOf(activeNav).backgroundColor,
+                accent: styleOf(optimize).color,
+                update: styleOf(update).color,
+                neutral: styleOf(neutral).color,
+                kicker: styleOf(kicker),
+                title: styleOf(title),
+                subtitle: styleOf(subtitle),
+                date: styleOf(date),
+                entryTitle: styleOf(entryTitle),
+                body: styleOf(entryBody),
+                time: styleOf(time),
+                label: styleOf(label),
+                dotSize: styleOf(dot).width,
+                timeUsesMonospace: styleOf(time).fontFamily.toLowerCase().includes('monospace'),
+                appClientWidth: appMain?.clientWidth || 0,
+                appScrollWidth: appMain?.scrollWidth || 0,
               }};
             }});
             if ({json.dumps(viewport_name)} === 'wide') {{
-              if (Math.abs(readingMetrics.navWidth - {AIHOT_WIDE_READING_METRICS["nav_width"]}) > 2) {{
+              if (Math.abs(readingMetrics.navWidth - {AIHOT_CHANGELOG_REFERENCE_METRICS["nav_width"]}) > 2) {{
                 throw new Error('AIHOT 侧栏宽度偏离: ' + JSON.stringify(readingMetrics));
               }}
-              if (readingMetrics.shellWidth < {AIHOT_WIDE_READING_METRICS["shell_width"][0]} || readingMetrics.shellWidth > {AIHOT_WIDE_READING_METRICS["shell_width"][1]}) {{
+              if (Math.abs(readingMetrics.shellWidth - {AIHOT_CHANGELOG_REFERENCE_METRICS["shell_width"]}) > 2) {{
                 throw new Error('更新日志阅读容器宽度偏离: ' + JSON.stringify(readingMetrics));
               }}
-              if (readingMetrics.shellLeft < {AIHOT_WIDE_READING_METRICS["shell_left"][0]} || readingMetrics.shellLeft > {AIHOT_WIDE_READING_METRICS["shell_left"][1]}) {{
+              if (Math.abs(readingMetrics.shellLeft - {AIHOT_CHANGELOG_REFERENCE_METRICS["shell_left"]}) > 2) {{
                 throw new Error('更新日志阅读容器起点偏离 AIHOT 坐标: ' + JSON.stringify(readingMetrics));
               }}
-              if (readingMetrics.titleTop < {AIHOT_WIDE_READING_METRICS["title_top"][0]} || readingMetrics.titleTop > {AIHOT_WIDE_READING_METRICS["title_top"][1]}) {{
-                throw new Error('更新日志标题首屏位置偏离: ' + JSON.stringify(readingMetrics));
+              if (Math.abs(readingMetrics.contentTop - {AIHOT_CHANGELOG_REFERENCE_METRICS["shell_top"]}) > 2) {{
+                throw new Error('更新日志阅读容器顶距偏离: ' + JSON.stringify(readingMetrics));
               }}
+              const expectedStructure = {{
+                headerStreamGap: {AIHOT_CHANGELOG_REFERENCE_METRICS["header_stream_gap"]},
+                dateGroupGap: {AIHOT_CHANGELOG_REFERENCE_METRICS["date_group_gap"]},
+                dateHeaderHeight: {AIHOT_CHANGELOG_REFERENCE_METRICS["date_header_height"]},
+                dateDividerY: {AIHOT_CHANGELOG_REFERENCE_METRICS["date_divider_y"]},
+                metaWidth: {AIHOT_CHANGELOG_REFERENCE_METRICS["meta_width"]},
+                entryColumnGap: {AIHOT_CHANGELOG_REFERENCE_METRICS["entry_column_gap"]},
+                entryDividerX: {AIHOT_CHANGELOG_REFERENCE_METRICS["entry_divider_x"]},
+                entryCopyX: {AIHOT_CHANGELOG_REFERENCE_METRICS["entry_copy_x"]},
+              }};
+              const structureDrift = Object.entries(expectedStructure)
+                .filter(([key, expected]) => Math.abs(readingMetrics[key] - expected) > 2)
+                .map(([key, expected]) => ({{ key, expected, actual: readingMetrics[key] }}));
+              if (structureDrift.length) {{
+                throw new Error('更新日志桌面结构锚点偏离: ' + JSON.stringify({{
+                  drift: structureDrift,
+                  readingMetrics,
+                }}));
+              }}
+              const expectedStyleMetrics = {json.dumps(AIHOT_CHANGELOG_STYLE_METRICS)};
+              const styleDrift = [];
+              Object.entries(expectedStyleMetrics).forEach(([role, expected]) => {{
+                const actual = styleMetrics[role];
+                if (expected && typeof expected === 'object') {{
+                  Object.entries(expected).forEach(([property, expectedValue]) => {{
+                    if (Math.abs(actual[property] - expectedValue) > 0.2) {{
+                      styleDrift.push({{ role, property, expected: expectedValue, actual: actual[property] }});
+                    }}
+                  }});
+                }} else if (typeof expected === 'number') {{
+                  if (Math.abs(actual - expected) > 0.2) {{
+                    styleDrift.push({{ role, expected, actual }});
+                  }}
+                }} else if (actual !== expected) {{
+                  styleDrift.push({{ role, expected, actual }});
+                }}
+              }});
+              if (!styleMetrics.timeUsesMonospace) {{
+                styleDrift.push({{ role: 'time', property: 'fontFamily', expected: 'monospace', actual: styleMetrics.time.fontFamily }});
+              }}
+              if (styleDrift.length) {{
+                throw new Error('更新日志桌面计算样式偏离: ' + JSON.stringify({{
+                  drift: styleDrift,
+                  styleMetrics,
+                }}));
+              }}
+            }}
+            if (styleMetrics.appScrollWidth > styleMetrics.appClientWidth + 2) {{
+              throw new Error('更新日志页出现横向溢出: ' + JSON.stringify(styleMetrics));
             }}
             await page.screenshot({{ path: {json.dumps(screenshot)}, fullPage: true }});
             return {{
@@ -626,6 +795,8 @@ def browser_check_code(
               planChecks: planRequired.length,
               hierarchyChecks: expectedHierarchy.length + expectedDomLabels.length + 1,
               changelogChecks: changelogRequired.length,
+              readingMetrics,
+              styleMetrics,
               consoleErrors,
               pageErrors,
             }};
