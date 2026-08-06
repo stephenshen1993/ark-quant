@@ -120,14 +120,6 @@
   .nav-item[aria-current="page"] .nav-icon {
     color: var(--ark-changelog-accent);
   }
-  .nav-item-disabled {
-    cursor: not-allowed;
-    color: #a8b0bd;
-  }
-  .nav-item-disabled:hover {
-    background: transparent;
-    color: #a8b0bd;
-  }
   .nav-item:focus-visible {
     outline: 2px solid var(--ark-changelog-ink);
     outline-offset: 2px;
@@ -144,9 +136,6 @@
     width: 20px;
     height: 20px;
     stroke-width: 2;
-  }
-  .nav-item-disabled svg {
-    stroke-width: 1.8;
   }
   .app-nav-footer {
     margin-top: auto;
@@ -568,16 +557,6 @@
     <span class="nav-label">计划</span>
   </button>
   <div class="app-nav-section mt-7">更多</div>
-  <button
-    type="button"
-    aria-label="关于，暂未开放"
-    aria-disabled="true"
-    disabled
-    title="暂未开放"
-    class="nav-item nav-item-disabled flex items-center gap-2 px-3 py-2 text-left w-full">
-    <i class="nav-icon" data-lucide="heart" aria-hidden="true"></i>
-    <span class="nav-label">关于</span>
-  </button>
   <button @click="$dispatch('nav', 'changelog')"
     aria-label="更新日志"
     :aria-current="$store.page === 'changelog' ? 'page' : null"
@@ -587,16 +566,6 @@
     class="nav-item flex items-center gap-2 px-3 py-2 text-left w-full">
     <i class="nav-icon" data-lucide="history" aria-hidden="true"></i>
     <span class="nav-label">更新日志</span>
-  </button>
-  <button
-    type="button"
-    aria-label="反馈，暂未开放"
-    aria-disabled="true"
-    disabled
-    title="暂未开放"
-    class="nav-item nav-item-disabled flex items-center gap-2 px-3 py-2 text-left w-full">
-    <i class="nav-icon" data-lucide="message-circle" aria-hidden="true"></i>
-    <span class="nav-label">反馈</span>
   </button>
   <div class="app-nav-footer">
     <div>ark-quant</div>
