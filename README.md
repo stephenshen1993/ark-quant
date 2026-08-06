@@ -47,7 +47,7 @@ scripts/stop_app.sh
 # 静态检查
 .venv/bin/ruff check .
 
-# 真实浏览器 smoke test（单独运行，会启动隔离数据库和临时端口）
+# AIHOT 视觉回归闸门（单独运行，会启动隔离数据库和临时端口）
 scripts/ui_smoke.py
 
 # 两条账户内策略
@@ -58,9 +58,13 @@ scripts/ui_smoke.py
 .venv/bin/python rebalance.py
 ```
 
-`scripts/ui_smoke.py` 默认用临时 SQLite 和随机本地端口启动 app，不读取人工维护的
-`data/ark_quant.db`。测试会覆盖桌面与窄屏视口，失败时截图和诊断产物写入
-`outputs/ui-smoke/`。如需连接已经启动的看板，可运行
+`scripts/ui_smoke.py` 是当前 Web 看板唯一最高层真实浏览器视觉回归闸门，默认用临时
+SQLite 和随机本地端口启动 app，不读取人工维护的 `data/ark_quant.db`。它覆盖账户、
+计划、更新日志三页，以及 `1512 × 749`（wide）、`1440 × 1000`（desktop）、
+`390 × 900`（narrow）三种视口；检查可见行为、导航状态、计算样式、关键坐标、
+横向溢出和 console/page error。成功截图及失败时的截图、页面文本、结构化差异写入
+`outputs/ui-smoke/`。完整基准、产物和更新规则见
+[Web 视觉回归闸门](docs/工程/视觉回归闸门.md)。如需连接已经启动的看板，可运行
 `scripts/ui_smoke.py --base-url http://127.0.0.1:8000`。
 
 ## 目录

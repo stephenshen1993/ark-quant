@@ -4,8 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ark-quant</title>
+<link rel="preconnect" href="https://cdn.tailwindcss.com">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="preconnect" href="https://unpkg.com">
 <script src="https://cdn.tailwindcss.com"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+<script defer src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 <style>
   .order-plan-table {
     table-layout: fixed;
@@ -29,49 +33,602 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  :root {
+    --ark-bg: #f7f8fa;
+    --ark-panel: #ffffff;
+    --ark-text: #111827;
+    --ark-muted: #6b7280;
+    --ark-soft: #9ca3af;
+    --ark-line: #e5e7eb;
+    --ark-faint: #eef2f7;
+    --ark-accent: #0f766e;
+    --ark-changelog-canvas: #f4f5f6;
+    --ark-changelog-surface: #ffffff;
+    --ark-changelog-ink: #1b2733;
+    --ark-changelog-secondary: #5c6672;
+    --ark-changelog-tertiary: #858c96;
+    --ark-changelog-line: #e3e4e7;
+    --ark-changelog-nav-active: #e9eef0;
+    --ark-changelog-accent: #125e6c;
+    --ark-changelog-update: #2e7e5d;
+    --ark-changelog-neutral: #66717e;
+    --ark-nav-width: 179px;
+    --ark-reading-width: 833px;
+    --ark-reading-top: 80px;
+    --ark-header-stream-gap: 61px;
+    --ark-date-group-gap: 72px;
+    --ark-reading-time-column: 86px;
+    --ark-entry-column-gap: 22px;
+    --ark-entry-copy-indent: 24px;
+    --ark-font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont,
+      "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    --ark-font-data: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  body.bg-gray-50 {
+    background: var(--ark-bg);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .app-nav {
+    width: var(--ark-nav-width);
+    padding: 48px 18px 24px;
+    background: var(--ark-changelog-surface);
+    border-right: 1px solid var(--ark-changelog-line);
+    touch-action: manipulation;
+  }
+  .changelog-brand {
+    padding: 0 6px 36px;
+    border-bottom: 1px solid var(--ark-changelog-line);
+    margin-bottom: 34px;
+  }
+  .changelog-brand-name {
+    color: var(--ark-changelog-ink);
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    line-height: 1;
+  }
+  .changelog-brand-subtitle {
+    margin-top: 14px;
+    color: var(--ark-changelog-tertiary);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .app-nav-section {
+    margin: 0 0 16px 18px;
+    color: var(--ark-changelog-tertiary);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .nav-item {
+    min-height: 42px;
+    border-radius: 8px;
+    color: var(--ark-changelog-secondary);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .nav-item:hover {
+    background: #f3f4f6;
+    color: var(--ark-changelog-ink);
+  }
+  .nav-item[aria-current="page"] {
+    background: var(--ark-changelog-nav-active);
+    color: var(--ark-changelog-accent);
+  }
+  .nav-item[aria-current="page"] .nav-icon {
+    color: var(--ark-changelog-accent);
+  }
+  .nav-item-disabled {
+    cursor: not-allowed;
+    color: #a8b0bd;
+  }
+  .nav-item-disabled:hover {
+    background: transparent;
+    color: #a8b0bd;
+  }
+  .nav-item:focus-visible {
+    outline: 2px solid var(--ark-changelog-ink);
+    outline-offset: 2px;
+  }
+  .nav-icon {
+    width: 20px;
+    height: 20px;
+    text-align: center;
+    color: #748092;
+    font-size: 16px;
+    line-height: 1;
+  }
+  .nav-item svg {
+    width: 20px;
+    height: 20px;
+    stroke-width: 2;
+  }
+  .nav-item-disabled svg {
+    stroke-width: 1.8;
+  }
+  .app-nav-footer {
+    margin-top: auto;
+    padding: 12px 10px 0;
+    border-top: 1px solid var(--ark-changelog-line);
+    color: var(--ark-changelog-tertiary);
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  .app-main {
+    background: var(--ark-bg);
+    padding: 0 0 96px;
+    overflow-x: hidden;
+  }
+  .app-main:has(.changelog-shell) {
+    background: var(--ark-changelog-canvas);
+  }
+  .workspace-shell {
+    width: 100%;
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 76px 0 96px;
+  }
+  .workspace-shell-workbench {
+    max-width: 1080px;
+  }
+  .workspace-shell-wide {
+    max-width: 1120px;
+  }
+  .workspace-kicker {
+    margin-bottom: 14px;
+    color: var(--ark-accent);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.24em;
+  }
+  .workspace-title-row {
+    align-items: end;
+    border-bottom: 1px solid var(--ark-line);
+    margin-bottom: 26px;
+    padding-bottom: 22px;
+  }
+  .workspace-title {
+    color: var(--ark-text);
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .workspace-meta {
+    color: var(--ark-muted);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .ark-panel {
+    background: var(--ark-panel);
+    border: 1px solid var(--ark-faint);
+    border-radius: 8px;
+    box-shadow: none;
+  }
+  .ark-panel + .ark-panel {
+    margin-top: 16px;
+  }
+  .account-total-card {
+    border-color: var(--ark-line);
+  }
+  .account-ledger {
+    border-collapse: separate;
+    border-spacing: 0;
+    overflow: hidden;
+  }
+  .responsive-table-scroll {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .changelog-shell {
+    width: 100%;
+    max-width: var(--ark-reading-width);
+    margin: 0 auto;
+    padding: var(--ark-reading-top) 0 96px;
+    color: var(--ark-changelog-ink);
+    font-family: var(--ark-font-sans);
+  }
+  .changelog-kicker {
+    margin: 0 0 16px;
+    color: var(--ark-changelog-accent);
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.23em;
+    line-height: 16px;
+  }
+  .changelog-title {
+    margin: 0;
+    color: var(--ark-changelog-ink);
+    font-size: 32px;
+    font-weight: 680;
+    letter-spacing: -0.035em;
+    line-height: 39.04px;
+    text-wrap: balance;
+  }
+  .changelog-subtitle {
+    margin: 12px 0 0;
+    color: var(--ark-changelog-secondary);
+    font-size: 17px;
+    font-weight: 400;
+    line-height: 27.2px;
+  }
+  .changelog-header {
+    margin-bottom: var(--ark-header-stream-gap);
+  }
+  .changelog-groups {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ark-date-group-gap);
+  }
+  .changelog-date-header {
+    display: flex;
+    align-items: baseline;
+    gap: 22px;
+    min-height: 44px;
+    border-bottom: 1px solid var(--ark-changelog-line);
+    padding-bottom: 12px;
+  }
+  .changelog-date-title {
+    margin: 0;
+    color: var(--ark-changelog-ink);
+    font-size: 24px;
+    font-weight: 650;
+    letter-spacing: -0.025em;
+    line-height: 31.2px;
+    text-wrap: balance;
+  }
+  .changelog-weekday {
+    color: var(--ark-changelog-tertiary);
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 16.9px;
+  }
+  .changelog-entry-grid {
+    display: grid;
+    grid-template-columns: var(--ark-reading-time-column) minmax(0, 1fr);
+    column-gap: var(--ark-entry-column-gap);
+    border-bottom: 1px solid var(--ark-changelog-line);
+    padding: 25px 0;
+  }
+  .changelog-entry-grid:last-child {
+    border-bottom: 0;
+  }
+  .changelog-entry-meta {
+    padding-top: 1px;
+  }
+  .changelog-entry-time {
+    display: block;
+    color: var(--ark-changelog-ink);
+    font-family: var(--ark-font-data);
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    line-height: 20px;
+    font-variant-numeric: tabular-nums;
+  }
+  .changelog-entry-type {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 13px;
+    font-size: 14px;
+    font-weight: 560;
+    line-height: 18.9px;
+  }
+  .changelog-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+  }
+  .changelog-entry-type .changelog-dot {
+    background: currentColor;
+  }
+  .changelog-entry-type.changelog-type-optimize {
+    color: var(--ark-changelog-accent);
+  }
+  .changelog-entry-type.changelog-type-update {
+    color: var(--ark-changelog-update);
+  }
+  .changelog-entry-type.changelog-type-neutral {
+    color: var(--ark-changelog-neutral);
+  }
+  .changelog-entry-type.changelog-type-retired {
+    color: #b45309;
+  }
+  .changelog-entry-main {
+    border-left: 1px solid var(--ark-changelog-line);
+    padding-left: var(--ark-entry-copy-indent);
+    min-width: 0;
+  }
+  .changelog-entry-title {
+    margin: 0;
+    color: var(--ark-changelog-ink);
+    font-size: 18px;
+    font-weight: 650;
+    letter-spacing: -0.018em;
+    line-height: 25.2px;
+    overflow-wrap: anywhere;
+    text-wrap: balance;
+  }
+  .changelog-entry-body {
+    margin: 13px 0 0;
+    color: var(--ark-changelog-secondary);
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 28px;
+    overflow-wrap: anywhere;
+    text-wrap: pretty;
+  }
+  @media (max-width: 720px) {
+    body {
+      flex-direction: column;
+      height: auto;
+      min-height: 100vh;
+    }
+    .app-nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      width: 100%;
+      height: 64px;
+      min-height: 64px;
+      flex-direction: row !important;
+      align-items: center;
+      overflow: hidden;
+      padding: 0 20px;
+      border-right: 0;
+      border-bottom: 1px solid var(--ark-changelog-line);
+    }
+    .changelog-brand {
+      flex: 1;
+      padding: 0;
+      margin: 0;
+      border-bottom: 0;
+    }
+    .changelog-brand-name {
+      font-size: 20px;
+      letter-spacing: 0.12em;
+    }
+    .changelog-brand-subtitle,
+    .app-nav-section,
+    .app-nav-footer {
+      display: none;
+    }
+    .nav-label {
+      display: none;
+    }
+    .nav-item {
+      flex: 0 0 36px;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      min-height: 36px;
+      padding: 0 !important;
+    }
+    .app-main {
+      min-height: calc(100vh - 64px);
+    }
+    .workspace-shell {
+      padding: 54px 20px 72px;
+    }
+    .workspace-title-row {
+      align-items: start;
+    }
+    .workspace-title {
+      font-size: 30px;
+    }
+    .account-total-card .text-4xl {
+      font-size: 30px;
+      line-height: 1.2;
+    }
+    .account-ledger {
+      display: block;
+    }
+    .account-ledger tbody {
+      display: block;
+    }
+    .account-ledger-row {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr) auto;
+      column-gap: 10px;
+      row-gap: 8px;
+      align-items: center;
+      padding: 16px;
+    }
+    .account-ledger-row > td {
+      display: block;
+      width: auto !important;
+      padding: 0 !important;
+    }
+    .account-ledger-row > td:nth-child(2) {
+      min-width: 0;
+    }
+    .account-ledger-row > td:nth-child(2) span {
+      overflow-wrap: anywhere;
+    }
+    .account-ledger-row > td:nth-child(3) {
+      grid-column: 3;
+      grid-row: 1;
+      white-space: nowrap;
+    }
+    .account-ledger-row > td:nth-child(4) {
+      grid-column: 3;
+      grid-row: 2;
+      white-space: nowrap;
+    }
+    .account-ledger-row > td:nth-child(5) {
+      grid-column: 2;
+      grid-row: 2;
+      text-align: left !important;
+    }
+    .account-ledger-row > td:nth-child(6) {
+      display: none;
+    }
+    .account-position-row {
+      display: block;
+    }
+    .account-position-row > td {
+      display: block;
+      width: 100% !important;
+      padding: 16px !important;
+    }
+    .account-position-row .flex.items-center.gap-3 {
+      align-items: start;
+      flex-direction: column;
+    }
+    .changelog-shell {
+      padding: 42px 22px 88px;
+    }
+    .changelog-kicker {
+      margin-bottom: 15px;
+    }
+    .changelog-title {
+      font-size: 32px;
+    }
+    .changelog-subtitle {
+      font-size: 15px;
+    }
+    .changelog-header {
+      margin-bottom: 50px;
+    }
+    .changelog-groups {
+      gap: 58px;
+    }
+    .changelog-date-header {
+      display: block;
+      min-height: 0;
+      padding-bottom: 14px;
+    }
+    .changelog-date-title {
+      font-size: 24px;
+    }
+    .changelog-weekday {
+      display: block;
+      margin-top: 7px;
+    }
+    .changelog-entry-grid {
+      grid-template-columns: 1fr;
+      gap: 16px;
+      padding: 22px 0 24px;
+    }
+    .changelog-entry-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .changelog-entry-type {
+      margin-top: 0;
+    }
+    .changelog-entry-main {
+      padding-left: 16px;
+    }
+    .changelog-entry-title {
+      font-size: 19px;
+    }
+    .changelog-entry-body {
+      font-size: 15px;
+      line-height: 1.7;
+    }
+  }
 </style>
 </head>
 <body class="bg-gray-50 text-gray-900 flex h-screen antialiased">
 
 <!-- 侧边导航 -->
-<nav class="w-40 bg-white border-r border-gray-200 flex flex-col pt-6 px-3 gap-1 shrink-0">
-  <span class="text-xs text-gray-400 font-medium px-2 mb-2">ark-quant</span>
-  <template x-data x-for="item in [
-    {id:'account', label:'账户', icon:'📊'},
-    {id:'trading', label:'计划', icon:'📋'},
-    {id:'changelog', label:'更新日志', icon:'🕒'}
-  ]">
-    <button @click="$dispatch('nav', item.id)"
-      :class="$store.page === item.id
-        ? 'bg-gray-100 text-gray-900 font-medium'
-        : 'text-gray-500 hover:bg-gray-50'"
-      class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left w-full">
-      <span x-text="item.icon"></span>
-      <span x-text="item.label"></span>
-    </button>
-  </template>
+<nav
+  x-data
+  aria-label="主导航"
+  class="app-nav flex flex-col gap-1 shrink-0">
+  <div class="changelog-brand">
+    <div class="changelog-brand-name">ARK</div>
+    <div class="changelog-brand-subtitle">quant journal</div>
+  </div>
+  <div class="app-nav-section">工作台</div>
+  <button @click="$dispatch('nav', 'account')"
+    aria-label="账户"
+    :aria-current="$store.page === 'account' ? 'page' : null"
+    :class="$store.page === 'account'
+      ? 'bg-gray-100 text-gray-900 font-medium'
+      : 'text-gray-500 hover:bg-gray-50'"
+    class="nav-item flex items-center gap-2 px-3 py-2 text-left w-full">
+    <i class="nav-icon" data-lucide="bar-chart-3" aria-hidden="true"></i>
+    <span class="nav-label">账户</span>
+  </button>
+  <button @click="$dispatch('nav', 'trading')"
+    aria-label="计划"
+    :aria-current="$store.page === 'trading' ? 'page' : null"
+    :class="$store.page === 'trading'
+      ? 'bg-gray-100 text-gray-900 font-medium'
+      : 'text-gray-500 hover:bg-gray-50'"
+    class="nav-item flex items-center gap-2 px-3 py-2 text-left w-full">
+    <i class="nav-icon" data-lucide="square" aria-hidden="true"></i>
+    <span class="nav-label">计划</span>
+  </button>
+  <div class="app-nav-section mt-7">更多</div>
+  <button
+    type="button"
+    aria-label="关于，暂未开放"
+    aria-disabled="true"
+    disabled
+    title="暂未开放"
+    class="nav-item nav-item-disabled flex items-center gap-2 px-3 py-2 text-left w-full">
+    <i class="nav-icon" data-lucide="heart" aria-hidden="true"></i>
+    <span class="nav-label">关于</span>
+  </button>
+  <button @click="$dispatch('nav', 'changelog')"
+    aria-label="更新日志"
+    :aria-current="$store.page === 'changelog' ? 'page' : null"
+    :class="$store.page === 'changelog'
+      ? 'bg-gray-100 text-gray-900 font-medium'
+      : 'text-gray-500 hover:bg-gray-50'"
+    class="nav-item flex items-center gap-2 px-3 py-2 text-left w-full">
+    <i class="nav-icon" data-lucide="history" aria-hidden="true"></i>
+    <span class="nav-label">更新日志</span>
+  </button>
+  <button
+    type="button"
+    aria-label="反馈，暂未开放"
+    aria-disabled="true"
+    disabled
+    title="暂未开放"
+    class="nav-item nav-item-disabled flex items-center gap-2 px-3 py-2 text-left w-full">
+    <i class="nav-icon" data-lucide="message-circle" aria-hidden="true"></i>
+    <span class="nav-label">反馈</span>
+  </button>
+  <div class="app-nav-footer">
+    <div>ark-quant</div>
+    <div>本地投资工作台</div>
+  </div>
 </nav>
 
 <!-- 主内容 -->
-<main class="flex-1 overflow-auto px-5 py-4" x-data @nav.window="$store.page = $event.detail">
+<main
+  aria-label="工作台内容"
+  class="app-main flex-1 overflow-auto"
+  x-data
+  @nav.window="setActivePage($event.detail)">
 
   <!-- 账户总览 -->
-  <div x-show="$store.page === 'account'" x-data="accountPage()" x-init="ensureLoaded($store.page)" x-effect="ensureLoaded($store.page)">
+  <div x-show="$store.page === 'account'" x-data="accountPage()" x-init="ensureLoaded($store.page)" x-effect="ensureLoaded($store.page)" role="region" aria-label="账户工作台">
 
-    <div class="max-w-7xl">
+    <div role="region" aria-label="账户内容区域" class="workspace-shell workspace-shell-workbench">
       <!-- 标题栏 -->
-      <div class="flex justify-between items-center mb-5">
+      <div class="workspace-title-row flex justify-between gap-5">
         <div>
-          <h1 class="text-xl font-semibold tracking-normal">账户</h1>
+          <div class="workspace-kicker">WORKBENCH</div>
+          <h1 class="workspace-title tracking-normal">账户</h1>
         </div>
-        <label class="text-xs text-gray-500 flex items-center gap-2">
+        <label class="workspace-meta flex items-center gap-2">
           账户事实日
-          <input type="date" x-model="form.snapshot_date" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white">
+          <input type="date" aria-label="账户事实日" x-model="form.snapshot_date" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white">
         </label>
       </div>
 
       <!-- 总资产 -->
-      <section class="bg-white border border-gray-100 rounded-xl p-6 mb-5 shadow-sm shadow-gray-100/40">
+      <section aria-label="账户资产总览" class="ark-panel account-total-card p-6 mb-5">
         <div class="flex items-baseline gap-3">
           <span class="text-sm text-gray-400">总资产</span>
           <span class="text-4xl font-semibold tracking-normal tabular-nums" x-text="fmtMoney(totalAssets())"></span>
@@ -80,12 +637,12 @@
       </section>
 
       <!-- 账户列表 -->
-      <table class="w-full table-fixed bg-white border border-gray-100 rounded-xl shadow-sm shadow-gray-100/40">
+      <table aria-label="账户明细" class="ark-panel account-ledger w-full table-fixed">
         <template x-for="acc in accounts" :key="acc.id">
           <tbody>
             <tr @click="acc.posType ? toggleExpand(acc.id) : null"
               :class="acc.posType ? 'cursor-pointer hover:bg-gray-50' : ''"
-              class="border-b border-gray-50 last:border-b-0">
+              class="account-ledger-row border-b border-gray-50 last:border-b-0">
               <td class="pl-5 py-3.5" style="width:32px"><div :style="'background:' + acc.color" class="w-2.5 h-2.5 rounded-full"></div></td>
               <td class="py-3.5 pr-4">
                 <div><span class="text-sm font-medium" x-text="acc.label"></span><span class="text-xs text-gray-400 ml-2" x-text="acc.sub"></span></div>
@@ -96,7 +653,7 @@
               <td class="py-3.5 pr-4 text-right text-xs text-gray-400"><span x-text="accUpdateDate(acc)"></span></td>
               <td class="py-3.5 pr-5 text-center" style="width:28px"><span x-show="acc.posType" class="text-gray-300 text-sm" x-text="expanded === acc.id ? '▾' : '▸'"></span></td>
             </tr>
-            <tr x-show="expanded === 'stock' && acc.id === 'stock'" class="border-b border-gray-50">
+            <tr x-show="expanded === 'stock' && acc.id === 'stock'" class="account-position-row border-b border-gray-50">
               <td colspan="6" class="bg-gray-50/30 px-5 py-4">
               <div class="flex items-center gap-3 mb-3">
                 <span class="text-xs text-gray-400">可用 ¥</span>
@@ -105,13 +662,15 @@
                 <input type="text" inputmode="decimal" x-model="form.stock_frozen_cash" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
                 <span class="text-xs text-gray-400">现金总额 <span x-text="fmtMoney(accountCash('stock'))"></span></span>
               </div>
-              <table class="w-full table-fixed text-sm"><thead><tr class="text-xs text-gray-400 border-b border-gray-200"><th class="text-left font-normal py-1.5">代码</th><th class="text-left font-normal py-1.5">名称</th><th class="text-right font-normal py-1.5">股数</th><th class="text-right font-normal py-1.5">现价</th><th class="text-right font-normal py-1.5">市值</th><th class="text-right font-normal py-1.5">占比</th><th style="width:24px"></th></tr></thead>
+              <div class="responsive-table-scroll account-position-table-scroll">
+              <table class="w-full min-w-[640px] table-fixed text-sm"><thead><tr class="text-xs text-gray-400 border-b border-gray-200"><th class="text-left font-normal py-1.5">代码</th><th class="text-left font-normal py-1.5">名称</th><th class="text-right font-normal py-1.5">股数</th><th class="text-right font-normal py-1.5">现价</th><th class="text-right font-normal py-1.5">市值</th><th class="text-right font-normal py-1.5">占比</th><th style="width:24px"></th></tr></thead>
               <tbody><template x-for="row in stockRows" :key="row._id"><tr class="border-b border-gray-100"><td class="py-1.5"><template x-if="row.isNew"><input type="text" x-model="row.code" @change="autofill('stock', row)" placeholder="代码" style="border:none;border-bottom:1px solid #d1d5db;background:transparent;outline:none;padding:1px 0;font-size:12px;width:5em;"></template><span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span></td><td class="py-1.5 text-gray-700 font-medium text-xs" x-text="row.name || '—'"></td><td class="py-1.5 text-right"><input type="number" min="0" step="100" x-model.number="row.shares" @input.debounce.600ms="scheduleSortRows('stock')" style="border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0 1px 0;text-align:right;font-size:12px;width:5em;padding-right:0;"></td><td class="py-1.5 text-right text-xs text-gray-500" x-text="rowPrice('stock', row.code)?.toFixed(2) ?? '-'"></td><td class="py-1.5 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('stock', row) != null ? fmtMoney(rowValue('stock', row)) : '-'"></td><td class="py-1.5 text-right text-xs text-gray-400" x-text="rowWeight('stock', row) != null ? (rowWeight('stock', row)*100).toFixed(1)+'%' : '-'"></td><td class="py-1.5 text-center"><button @click="removeRow('stock', row)" class="text-gray-300 hover:text-red-400 text-xs">✕</button></td></tr></template></tbody></table>
+              </div>
               <div x-show="stockRows.length === 0" class="text-xs text-gray-400 py-2">暂无持仓</div>
               <div class="flex items-center gap-3 mt-3"><button @click="addRow('stock')" class="text-xs text-gray-400 hover:text-gray-600">＋ 添加行</button><button @click="saveAccount('stock')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-700">保存</button><span x-show="stockSaved" class="text-xs text-green-600">已保存</span></div>
               </td>
             </tr>
-            <tr x-show="expanded === 'cb' && acc.id === 'cb'" class="border-b border-gray-50">
+            <tr x-show="expanded === 'cb' && acc.id === 'cb'" class="account-position-row border-b border-gray-50">
               <td colspan="6" class="bg-gray-50/30 px-5 py-4">
               <div class="flex items-center gap-3 mb-3">
                 <span class="text-xs text-gray-400">可用 ¥</span>
@@ -120,8 +679,10 @@
                 <input type="text" inputmode="decimal" x-model="form.bond_frozen_cash" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
                 <span class="text-xs text-gray-400">现金总额 <span x-text="fmtMoney(accountCash('cb'))"></span></span>
               </div>
-              <table class="w-full table-fixed text-sm"><thead><tr class="text-xs text-gray-400 border-b border-gray-200"><th class="text-left font-normal py-1.5">代码</th><th class="text-left font-normal py-1.5">名称</th><th class="text-right font-normal py-1.5">张数</th><th class="text-right font-normal py-1.5">现价</th><th class="text-right font-normal py-1.5">市值</th><th class="text-right font-normal py-1.5">占比</th><th style="width:24px"></th></tr></thead>
+              <div class="responsive-table-scroll account-position-table-scroll">
+              <table class="w-full min-w-[640px] table-fixed text-sm"><thead><tr class="text-xs text-gray-400 border-b border-gray-200"><th class="text-left font-normal py-1.5">代码</th><th class="text-left font-normal py-1.5">名称</th><th class="text-right font-normal py-1.5">张数</th><th class="text-right font-normal py-1.5">现价</th><th class="text-right font-normal py-1.5">市值</th><th class="text-right font-normal py-1.5">占比</th><th style="width:24px"></th></tr></thead>
               <tbody><template x-for="row in cbRows" :key="row._id"><tr class="border-b border-gray-100"><td class="py-1.5"><template x-if="row.isNew"><input type="text" x-model="row.code" @change="autofill('cb', row)" placeholder="代码" style="border:none;border-bottom:1px solid #d1d5db;background:transparent;outline:none;padding:1px 0;font-size:12px;width:5em;"></template><span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span></td><td class="py-1.5 text-gray-700 font-medium text-xs" x-text="row.name || '—'"></td><td class="py-1.5 text-right"><input type="number" min="0" step="10" x-model.number="row.shares" @input.debounce.600ms="scheduleSortRows('cb')" style="border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0 1px 0;text-align:right;font-size:12px;width:5em;padding-right:0;"></td><td class="py-1.5 text-right text-xs text-gray-500" x-text="rowPrice('cb', row.code)?.toFixed(2) ?? '-'"></td><td class="py-1.5 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('cb', row) != null ? fmtMoney(rowValue('cb', row)) : '-'"></td><td class="py-1.5 text-right text-xs text-gray-400" x-text="rowWeight('cb', row) != null ? (rowWeight('cb', row)*100).toFixed(1)+'%' : '-'"></td><td class="py-1.5 text-center"><button @click="removeRow('cb', row)" class="text-gray-300 hover:text-red-400 text-xs">✕</button></td></tr></template></tbody></table>
+              </div>
               <div x-show="cbRows.length === 0" class="text-xs text-gray-400 py-2">暂无持仓</div>
               <div class="flex items-center gap-3 mt-3"><button @click="addRow('cb')" class="text-xs text-gray-400 hover:text-gray-600">＋ 添加行</button><button @click="saveAccount('cb')" class="text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-700">保存</button><span x-show="cbSaved" class="text-xs text-green-600">已保存</span></div>
               </td>
@@ -134,15 +695,23 @@
 
 <!-- 计划 -->
   <template x-if="$store.page === 'trading'">
-  <div x-data="tradingPage()" class="max-w-7xl mx-auto">
-    <!-- 计划基准与唯一主操作 -->
-    <div class="flex flex-col xl:flex-row xl:items-center gap-4 mb-5 p-4 bg-white border border-gray-100 rounded-xl shadow-sm">
+  <div x-data="tradingPage()" class="workspace-shell workspace-shell-workbench plan-workbench" role="region" aria-label="计划工作台" :aria-busy="planReady ? 'false' : 'true'">
+    <div class="workspace-title-row flex justify-between gap-5">
       <div>
-        <h1 class="text-xl font-semibold">生成计划</h1>
-        <div class="text-xs text-gray-400 mt-1" x-text="tDate ? '基于 ' + tDate + ' 收盘数据' : '等待计划基准日'"></div>
+        <div class="workspace-kicker">WORKBENCH</div>
+        <h1 class="workspace-title tracking-normal">计划</h1>
+        <div class="workspace-meta mt-2" x-text="tDate ? '基于 ' + tDate + ' 收盘数据' : '等待计划基准日'"></div>
       </div>
-      <span x-show="executionDate()" class="text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full"
+      <span x-show="executionDate()" class="text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full self-start"
         x-text="'适用 ' + executionDate() + ' 开盘执行'"></span>
+    </div>
+
+    <!-- 计划基准与唯一主操作 -->
+    <div class="ark-panel plan-hero-panel flex flex-col xl:flex-row xl:items-center gap-4 mb-5 p-5">
+      <div>
+        <div class="text-sm font-semibold text-gray-900">生成计划</div>
+        <div class="workspace-meta mt-2">按账户事实、计划条件和策略榜单生成当日可执行安排。</div>
+      </div>
       <div class="flex flex-wrap items-center gap-2 xl:ml-auto">
         <span class="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">
           温度 <span class="text-gray-700 font-medium tabular-nums" x-text="temperatureText()"></span>
@@ -158,7 +727,7 @@
     </div>
 
     <!-- 本次计划条件 -->
-    <details class="bg-white border border-gray-100 rounded-xl px-5 py-3 mb-4 shadow-sm shadow-gray-100/40" :open="!plan">
+    <details aria-label="计划条件" class="ark-panel plan-conditions-panel px-5 py-3 mb-4" :open="!plan">
       <summary class="cursor-pointer select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">
         <div class="inline-flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span class="text-sm font-semibold">本次计划条件</span>
@@ -198,7 +767,7 @@
     <div x-show="planError" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-sm text-red-700 whitespace-pre-line" x-text="planError"></div>
 
     <!-- 就绪状态 -->
-    <section class="bg-white border border-gray-100 rounded-xl p-4 mb-4 shadow-sm shadow-gray-100/40">
+    <section class="ark-panel plan-readiness-panel p-4 mb-4">
       <div class="flex items-center justify-between mb-3">
         <div class="text-sm font-semibold">计划就绪状态</div>
         <div class="text-xs text-gray-400">榜单生成受盘中保护；盘中可查看已有计划。</div>
@@ -213,7 +782,7 @@
       </div>
     </section>
 
-    <details class="bg-white border border-gray-100 rounded-xl px-4 py-3 mb-4 text-sm shadow-sm shadow-gray-100/40">
+    <details class="ark-panel px-4 py-3 mb-4 text-sm">
       <summary class="cursor-pointer text-xs text-gray-500 select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">高级操作</summary>
       <div class="flex flex-wrap items-center gap-2 mt-3">
         <button @click="refreshFullPlan(true)" :disabled="loadingPlan" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">更新市场温度</button>
@@ -227,7 +796,7 @@
     </details>
 
     <!-- 资金调拨结果始终可见 -->
-    <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40">
+    <div class="ark-panel plan-transfer-panel p-5 mb-4">
       <div class="flex items-center justify-between mb-3">
         <div class="text-sm font-semibold">账户间资金调拨</div>
         <span class="text-xs rounded-full px-2.5 py-1" :class="statusClass(plan?.fund_transfer ? 'ready' : 'waiting')" x-text="transferStatusText()"></span>
@@ -314,7 +883,7 @@
     </div>
 
     <!-- 转债计划 -->
-    <div class="bg-white border border-gray-100 rounded-xl p-5 mb-4 shadow-sm shadow-gray-100/40">
+    <div class="ark-panel plan-order-panel plan-cb-panel p-5 mb-4">
       <div class="flex items-center justify-between mb-3">
         <div class="text-sm font-semibold">转债计划
           <span class="text-xs text-gray-400 font-normal ml-2" x-text="plan?.cb?.data_date ? '基于 ' + plan?.cb?.data_date + ' 收盘' : ''"></span>
@@ -326,9 +895,9 @@
       </div>
       <div x-show="componentErrors.cb" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-3 text-sm text-red-700" x-text="componentErrors.cb"></div>
       <!-- 排名表 -->
-      <div x-show="cbItems.length && !plan?.cb?.orders?.length" class="mb-4">
+      <div x-show="cbItems.length && !plan?.cb?.orders?.length" class="responsive-table-scroll plan-ranking-table-scroll mb-4">
         <div class="text-xs text-gray-400 mb-2" x-text="cbTradeDate ? '基于 ' + cbDate + ' 收盘 · 适用 ' + cbTradeDate + ' 开盘执行' : ''"></div>
-        <table class="w-full text-sm">
+        <table class="plan-ranking-table w-full min-w-[720px] text-sm">
           <thead class="bg-gray-50 text-xs text-gray-400"><tr>
             <th class="text-center px-3 py-2 w-10 font-normal">#</th><th class="text-left px-2 py-2 font-normal">代码</th><th class="text-left px-2 py-2 font-normal">名称</th><th class="text-right px-2 py-2 font-normal">价格</th><th class="text-right px-2 py-2 font-normal">溢价率</th><th class="text-right px-2 py-2 font-normal">双低值</th><th class="text-right px-3 py-2 font-normal">评分</th>
           </tr></thead>
@@ -350,8 +919,8 @@
       <template x-if="plan?.cb?.orders?.length">
         <div>
           <button @click="showCbRank = !showCbRank" class="text-xs text-gray-500 hover:text-gray-700 mb-2 underline decoration-gray-200 underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900" x-text="showCbRank ? '收起排名' : '查看排名'"></button>
-          <div x-show="showCbRank" class="mb-4">
-            <table class="w-full text-sm">
+          <div x-show="showCbRank" class="responsive-table-scroll plan-ranking-table-scroll mb-4">
+            <table class="plan-ranking-table w-full min-w-[720px] text-sm">
               <thead class="bg-gray-50 text-xs text-gray-400"><tr><th class="text-center px-3 py-2 w-10 font-normal">#</th><th class="text-left px-2 py-2 font-normal">代码</th><th class="text-left px-2 py-2 font-normal">名称</th><th class="text-right px-2 py-2 font-normal">价格</th><th class="text-right px-2 py-2 font-normal">溢价率</th><th class="text-right px-2 py-2 font-normal">双低值</th><th class="text-right px-3 py-2 font-normal">评分</th></tr></thead>
               <tbody><template x-for="r in cbItems" :key="r.bond_code"><tr class="border-t border-gray-50"><td class="text-center px-3 py-1.5 text-gray-400 text-xs" x-text="r.rank"></td><td class="px-2 py-1.5 text-gray-500 tabular-nums" x-text="r.bond_code"></td><td class="px-2 py-1.5 font-medium" x-text="r.bond_name"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.cb_price?.toFixed(2)"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.premium_rate?.toFixed(2) + '%'"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.double_low?.toFixed(2)"></td><td class="px-3 py-1.5 text-right tabular-nums text-gray-800" x-text="r.score?.toFixed(3)"></td></tr></template></tbody>
             </table>
@@ -362,7 +931,8 @@
                 <template x-for="group in column" :key="group.label">
                   <div class="bg-gray-50 rounded-lg px-3 py-2.5">
                     <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
-                    <table class="order-plan-table text-sm">
+                    <div class="responsive-table-scroll plan-order-table-scroll">
+                    <table class="order-plan-table min-w-[520px] text-sm">
                       <colgroup>
                         <col class="order-code-col">
                         <col class="order-name-col">
@@ -377,6 +947,7 @@
                         <tr class="border-b border-gray-50 last:border-0"><td class="text-gray-400 tabular-nums" x-text="r.bond_code"></td><td class="order-name-cell pr-3 font-medium" x-text="r.bond_name"></td><td class="text-right whitespace-nowrap tabular-nums" :class="orderQuantityClass(r)" x-text="orderQuantityText(r, '张')"></td><td class="text-right text-gray-500 whitespace-nowrap tabular-nums" x-text="orderReferencePrice(r)"></td><td class="text-right text-gray-800 whitespace-nowrap tabular-nums" x-text="fmtMoney(Math.abs(r.amount || 0))"></td></tr>
                       </template>
                     </table>
+                    </div>
                   </div>
                 </template>
               </div>
@@ -401,7 +972,7 @@
     </div>
 
     <!-- 股票计划 -->
-    <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm shadow-gray-100/40">
+    <div class="ark-panel plan-order-panel plan-stock-panel p-5">
       <div class="flex items-center justify-between mb-3">
         <div class="text-sm font-semibold">股票计划
           <span class="text-xs text-gray-400 font-normal ml-2" x-text="plan?.stock?.data_date ? '基于 ' + plan?.stock?.data_date + ' 收盘' : ''"></span>
@@ -413,9 +984,9 @@
       </div>
       <div x-show="componentErrors.stock" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-3 text-sm text-red-700" x-text="componentErrors.stock"></div>
       <!-- 排名表（有排名但无订单时展开） -->
-      <div x-show="stockItems.length && !plan?.stock?.orders?.length" class="mb-4">
+      <div x-show="stockItems.length && !plan?.stock?.orders?.length" class="responsive-table-scroll plan-ranking-table-scroll mb-4">
         <div class="text-xs text-gray-400 mb-2" x-text="stockTradeDate ? '基于 ' + stockDate + ' 收盘 · 适用 ' + stockTradeDate + ' 开盘执行' : ''"></div>
-        <table class="w-full text-sm">
+        <table class="plan-ranking-table w-full min-w-[720px] text-sm">
           <thead class="bg-gray-50 text-xs text-gray-400"><tr>
             <th class="text-center px-3 py-2 w-10 font-normal">#</th><th class="text-left px-2 py-2 font-normal">代码</th><th class="text-left px-2 py-2 font-normal">名称</th><th class="text-right px-2 py-2 font-normal">总市值(亿)</th><th class="text-right px-2 py-2 font-normal">PE</th><th class="text-right px-3 py-2 font-normal">扣非ROE</th>
           </tr></thead>
@@ -437,8 +1008,8 @@
       <template x-if="plan?.stock?.orders?.length">
         <div>
           <button @click="showStockRank = !showStockRank" class="text-xs text-gray-500 hover:text-gray-700 mb-2 underline decoration-gray-200 underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900" x-text="showStockRank ? '收起排名' : '查看排名'"></button>
-          <div x-show="showStockRank" class="mb-4">
-            <table class="w-full text-sm">
+          <div x-show="showStockRank" class="responsive-table-scroll plan-ranking-table-scroll mb-4">
+            <table class="plan-ranking-table w-full min-w-[720px] text-sm">
               <thead class="bg-gray-50 text-xs text-gray-400"><tr><th class="text-center px-3 py-2 w-10 font-normal">#</th><th class="text-left px-2 py-2 font-normal">代码</th><th class="text-left px-2 py-2 font-normal">名称</th><th class="text-right px-2 py-2 font-normal">总市值(亿)</th><th class="text-right px-2 py-2 font-normal">PE</th><th class="text-right px-3 py-2 font-normal">扣非ROE</th></tr></thead>
               <tbody><template x-for="r in stockItems" :key="r.stock_code"><tr class="border-t border-gray-50"><td class="text-center px-3 py-1.5 text-gray-400 text-xs" x-text="r.rank"></td><td class="px-2 py-1.5 text-gray-500 tabular-nums" x-text="r.stock_code"></td><td class="px-2 py-1.5 font-medium" x-text="r.stock_name"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.market_cap?.toFixed(2)"></td><td class="px-2 py-1.5 text-right tabular-nums" x-text="r.pe_ttm?.toFixed(2)"></td><td class="px-3 py-1.5 text-right tabular-nums text-gray-800" x-text="r.roe_ex?.toFixed(2) + '%'"></td></tr></template></tbody>
             </table>
@@ -449,7 +1020,8 @@
                 <template x-for="group in column" :key="group.label">
                   <div class="bg-gray-50 rounded-lg px-3 py-2.5">
                     <div class="text-xs font-medium mb-2" :class="groupClass(group.action)" x-text="group.label + ' (' + group.items.length + ')'"></div>
-                    <table class="order-plan-table text-sm">
+                    <div class="responsive-table-scroll plan-order-table-scroll">
+                    <table class="order-plan-table min-w-[520px] text-sm">
                       <colgroup>
                         <col class="order-code-col">
                         <col class="order-name-col">
@@ -464,6 +1036,7 @@
                         <tr class="border-b border-gray-50 last:border-0"><td class="text-gray-400 tabular-nums" x-text="r.stock_code"></td><td class="order-name-cell pr-3 font-medium" x-text="r.stock_name"></td><td class="text-right whitespace-nowrap tabular-nums" :class="orderQuantityClass(r)" x-text="orderQuantityText(r, '股')"></td><td class="text-right text-gray-500 whitespace-nowrap tabular-nums" x-text="orderReferencePrice(r)"></td><td class="text-right text-gray-800 whitespace-nowrap tabular-nums" x-text="r.amount ? fmtMoney(Math.abs(r.amount)) : ''"></td></tr>
                       </template>
                     </table>
+                    </div>
                   </div>
                 </template>
               </div>
@@ -492,28 +1065,42 @@
 
   <!-- 更新日志 -->
   <template x-if="$store.page === 'changelog'">
-  <div x-data="changelogPage()" x-init="load()" class="max-w-4xl mx-auto">
-    <div class="mb-5">
-      <h1 class="text-xl font-semibold tracking-normal">更新日志</h1>
-      <p class="text-sm text-gray-400 mt-1">最近发生了什么 — 新功能、调整、下线，都写在这里。</p>
+  <div x-data="changelogPage()" x-init="load()" class="changelog-shell" role="region" aria-label="更新日志内容">
+    <div role="group" aria-label="更新日志页头" class="changelog-header">
+      <div data-visual-metric="kicker" class="changelog-kicker">CHANGELOG</div>
+      <h1 class="changelog-title">更新日志</h1>
+      <p data-visual-metric="subtitle" class="changelog-subtitle">最近发生了什么 — 新功能、调整、下线，都写在这里。</p>
     </div>
 
-    <div x-show="loadError" class="bg-red-50 border border-red-100 rounded-lg px-4 py-3 mb-4 text-sm text-red-700" x-text="loadError"></div>
+    <div x-show="loadError" class="mb-8 border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700" x-text="loadError"></div>
 
-    <div x-show="!loadError" class="space-y-8">
+    <div x-show="!loadError" data-visual-metric="groups" class="changelog-groups">
       <template x-for="group in groupedEntries()" :key="group.date">
-        <section>
-          <h2 class="text-sm font-semibold text-gray-900 mb-3" x-text="group.date"></h2>
-          <div class="border-l border-gray-200">
+        <section :aria-label="formatGroupDate(group.date)">
+          <div data-visual-metric="date-header" class="changelog-date-header">
+            <h2 class="changelog-date-title">
+              <time :datetime="group.date" x-text="formatGroupDate(group.date)"></time>
+            </h2>
+            <span data-visual-metric="weekday" class="changelog-weekday" x-text="weekdayText(group.date)"></span>
+          </div>
+          <div>
             <template x-for="entry in group.entries" :key="entry.date + entry.time + entry.title">
-              <article class="relative pl-5 pb-5 last:pb-0">
-                <span class="absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full bg-white border border-gray-300"></span>
-                <div class="flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                  <time class="tabular-nums" x-text="entry.time"></time>
-                  <span class="rounded px-1.5 py-0.5 font-medium" :class="typeClass(entry.type)" x-text="entry.type"></span>
+              <article :aria-label="entry.title" class="changelog-entry-grid">
+                <div data-visual-metric="entry-meta" class="changelog-entry-meta">
+                  <time
+                    data-visual-metric="time"
+                    class="changelog-entry-time"
+                    :datetime="entry.date + 'T' + entry.time"
+                    x-text="entry.time"></time>
+                  <div data-visual-metric="type" class="changelog-entry-type" :class="typeTextClass(entry.type)">
+                    <span aria-hidden="true" data-visual-metric="type-dot" class="changelog-dot" :class="typeDotClass(entry.type)"></span>
+                    <span x-text="entry.type"></span>
+                  </div>
                 </div>
-                <h3 class="mt-1 text-sm font-semibold text-gray-900" x-text="entry.title"></h3>
-                <p class="mt-1 text-sm leading-6 text-gray-500" x-text="entry.body"></p>
+                <div data-visual-metric="entry-main" class="changelog-entry-main">
+                  <h3 class="changelog-entry-title" x-text="entry.title"></h3>
+                  <p data-visual-metric="entry-body" class="changelog-entry-body" x-text="entry.body"></p>
+                </div>
               </article>
             </template>
           </div>
@@ -528,10 +1115,37 @@
 </main>
 
 <script>
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.lucide) window.lucide.createIcons()
+  })
+
   // Alpine store for active page
   document.addEventListener('alpine:init', () => {
-    Alpine.store('page', 'account')
+    Alpine.store('page', pageFromLocation())
   })
+
+  window.addEventListener('hashchange', () => {
+    if (window.Alpine) Alpine.store('page', pageFromLocation())
+  })
+
+  function pageFromLocation() {
+    const page = window.location.hash.replace(/^#/, '')
+    return ['account', 'trading', 'changelog'].includes(page) ? page : 'account'
+  }
+
+  function setActivePage(page) {
+    if (!['account', 'trading', 'changelog'].includes(page)) return
+    Alpine.store('page', page)
+    const nextHash = page === 'account' ? '' : `#${page}`
+    if (window.location.hash !== nextHash) {
+      history.pushState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`)
+    }
+    requestAnimationFrame(() => {
+      const main = document.querySelector('.app-main')
+      if (main) main.scrollTo({ top: 0, left: 0 })
+      window.scrollTo({ top: 0, left: 0 })
+    })
+  }
 
   function localDate() {
     const now = new Date()
@@ -567,14 +1181,39 @@
         })
         return groups
       },
-      typeClass(type) {
+      formatGroupDate(dateText) {
+        const [year, month, day] = String(dateText).split('-').map(Number)
+        if (!year || !month || !day) return dateText
+        const parts = new Intl.DateTimeFormat('zh-CN', {
+          year: 'numeric',
+          month: 'numeric',
+          day: 'numeric',
+        }).formatToParts(new Date(year, month - 1, day))
+        const values = Object.fromEntries(parts.map(part => [part.type, part.value]))
+        return `${values.year} 年 ${values.month} 月 ${values.day} 日`
+      },
+      weekdayText(dateText) {
+        const [year, month, day] = String(dateText).split('-').map(Number)
+        if (!year || !month || !day) return ''
+        return new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(new Date(year, month - 1, day))
+      },
+      typeTextClass(type) {
         const classes = {
-          更新: 'bg-green-50 text-green-700',
-          优化: 'bg-blue-50 text-blue-700',
-          公告: 'bg-gray-100 text-gray-600',
-          下线: 'bg-amber-50 text-amber-700',
+          更新: 'changelog-type-update',
+          优化: 'changelog-type-optimize',
+          公告: 'changelog-type-neutral',
+          下线: 'changelog-type-retired',
         }
-        return classes[type] || 'bg-gray-100 text-gray-500'
+        return classes[type] || 'changelog-type-neutral'
+      },
+      typeDotClass(type) {
+        const classes = {
+          更新: 'bg-emerald-600',
+          优化: 'bg-teal-700',
+          公告: 'bg-gray-400',
+          下线: 'bg-amber-600',
+        }
+        return classes[type] || 'bg-gray-400'
       },
     }
   }
@@ -818,7 +1457,7 @@
       // T 日数据
       tDate: localDate(), marketTemperature: null,
       // 资金分配 + 订单
-      plan: null, transferPlan: null, accountReadModel: null, planError: '', loadingPlan: false,
+      plan: null, transferPlan: null, accountReadModel: null, planError: '', loadingPlan: false, planReady: false,
       generationStage: '', componentErrors: { cb: '', stock: '' },
       funding: { snapshot_date: '', temperature: null, check_type: 'a_internal', new_contribution: 0, b_purchase_status: 'unchecked', b_purchase_limit: 0 },
       basisExpanded: { A: true },
@@ -831,20 +1470,24 @@
       cbTradeDate: '', stockTradeDate: '',
       showCbRank: false, showStockRank: false,
       async init() {
-        const summary = await fetch('/api/account/summary').then(r => r.json().catch(() => null))
-        if (summary) {
-          this.accountReadModel = summary.read_model || this.accountReadModel
-          this.tDate = summary.context?.snapshot_date || this.tDate
-          const context = summary.context || {}
-          this.funding.snapshot_date = context.snapshot_date || this.tDate
-          this.funding.temperature = context.temperature
-          this.funding.check_type = this.normalizeCheckType(context.check_type)
-          this.funding.new_contribution = 0
-          this.funding.b_purchase_limit = context.b_purchase_limit || 0
-          this.funding.b_purchase_status = this.inferBPurchaseStatus(context)
+        try {
+          const summary = await fetch('/api/account/summary').then(r => r.json().catch(() => null))
+          if (summary) {
+            this.accountReadModel = summary.read_model || this.accountReadModel
+            this.tDate = summary.context?.snapshot_date || this.tDate
+            const context = summary.context || {}
+            this.funding.snapshot_date = context.snapshot_date || this.tDate
+            this.funding.temperature = context.temperature
+            this.funding.check_type = this.normalizeCheckType(context.check_type)
+            this.funding.new_contribution = 0
+            this.funding.b_purchase_limit = context.b_purchase_limit || 0
+            this.funding.b_purchase_status = this.inferBPurchaseStatus(context)
+          }
+          await this.refreshFullPlan(false)
+          await this.refreshRankingState()
+        } finally {
+          this.planReady = true
         }
-        await this.refreshFullPlan(false)
-        await this.refreshRankingState()
       },
 
       inferBPurchaseStatus(context) {
