@@ -1,5 +1,8 @@
+import json
 import os
 import subprocess
+import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -13,7 +16,7 @@ class TestUiSmokeScript(unittest.TestCase):
         self.assertTrue(SCRIPT.exists())
         self.assertTrue(os.access(SCRIPT, os.X_OK))
 
-    def test_help_documents_browser_smoke_entrypoint(self):
+    def test_help_documents_the_single_browser_gate_entrypoint(self):
         result = subprocess.run(
             [str(SCRIPT), "--help"],
             check=True,
@@ -25,63 +28,70 @@ class TestUiSmokeScript(unittest.TestCase):
         self.assertIn("--base-url", result.stdout)
         self.assertIn("--output-dir", result.stdout)
         self.assertIn("AIHOT", result.stdout)
+        self.assertIn("{all,wide,desktop,narrow}", result.stdout)
 
-    def test_script_contract_keeps_smoke_isolated_and_diagnostic(self):
-        text = SCRIPT.read_text(encoding="utf-8")
+    def test_failed_browser_gate_writes_complete_diagnostic_report(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            fake_cli = temp_path / "playwright-cli"
+            fake_cli.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/usr/bin/env python3
+                    import json
+                    import sys
 
-        self.assertIn("ARK_QUANT_DB_PATH", text)
-        self.assertIn("playwright-cli", text)
-        self.assertIn("outputs", text)
-        self.assertIn("ui-smoke", text)
-        self.assertIn("AIHOT 视觉回归闸门", text)
-        self.assertIn("visualGate", text)
-        self.assertIn("wide", text)
-        self.assertIn("desktop", text)
-        self.assertIn("narrow", text)
-        self.assertIn("consoleErrors", text)
-        self.assertIn("page.screenshot", text)
-        self.assertIn("accountScreenshot", text)
-        self.assertIn("accountMetrics", text)
-        self.assertIn("账户工作台容器宽度偏离", text)
-        self.assertIn("账户页出现横向溢出", text)
-        self.assertIn("assertNoClippedWideTables", text)
-        self.assertIn("表格被外层裁切且没有横向滚动容器", text)
-        self.assertIn("planScreenshot", text)
-        self.assertIn("planMetrics", text)
-        self.assertIn("计划工作台容器宽度偏离", text)
-        self.assertIn("计划页出现横向溢出", text)
-        self.assertIn("navItems", text)
-        self.assertIn("关于入口不是明确禁用态", text)
-        self.assertIn("反馈入口不是明确禁用态", text)
-        self.assertIn("#changelog", text)
-        self.assertIn("page.goBack()", text)
-        self.assertIn("readingMetrics", text)
-        self.assertIn("更新日志阅读容器起点偏离 AIHOT 坐标", text)
-        self.assertIn("更新日志桌面结构锚点偏离", text)
-        self.assertIn("更新日志桌面计算样式偏离", text)
-        self.assertIn("AIHOT_CHANGELOG_RESPONSIVE_METRICS", text)
-        self.assertIn("更新日志 1440px 阅读比例偏离", text)
-        self.assertIn("更新日志 390px 响应式令牌偏离", text)
-        self.assertIn("更新日志移动顶栏没有取代桌面侧栏", text)
-        self.assertIn("更新日志移动元信息与正文竖线布局偏离", text)
-        self.assertIn("更新日志移动内容或控件被裁切", text)
-        self.assertIn("更新日志移动导航焦点或标题语义异常", text)
-        self.assertIn("更新日志页出现横向溢出", text)
-        self.assertIn("failureScreenshot", text)
-        self.assertIn("failureText", text)
-        self.assertIn("server.log", text)
-        self.assertIn("page.route('**/favicon.ico'", text)
-        self.assertIn("assertVisibleText", text)
-        self.assertIn("fundingBasisRows()", text)
-        self.assertIn("hierarchyChecks", text)
-        self.assertIn("top-A-stock", text)
-        self.assertIn("expectedDomLabels", text)
-        self.assertIn("主动组合下属账户没有以子行缩进展示", text)
-        self.assertIn("账户事实日", text)
-        self.assertIn("展开查看计算依据", text)
-        self.assertIn("更新日志", text)
-        self.assertIn("最近发生了什么", text)
-        self.assertIn("changelogChecks", text)
+                    if "run-code" in sys.argv:
+                        print(json.dumps({
+                            "ok": False,
+                            "viewport": "wide",
+                            "error": "visual drift",
+                            "differences": [
+                                {"metric": "shellLeft", "expected": 429, "actual": 421}
+                            ],
+                            "bodyText": "visible page text",
+                            "consoleErrors": ["console exploded"],
+                            "pageErrors": ["page exploded"],
+                            "failureScreenshot": "wide-failure.png"
+                        }))
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake_cli.chmod(0o755)
+            output_dir = temp_path / "artifacts"
+            env = {**os.environ, "PATH": f"{temp_path}:{os.environ.get('PATH', '')}"}
+
+            result = subprocess.run(
+                [
+                    str(SCRIPT),
+                    "--base-url",
+                    "http://browser-boundary.invalid",
+                    "--viewport",
+                    "wide",
+                    "--output-dir",
+                    str(output_dir),
+                ],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            report = json.loads((output_dir / "wide-failure.json").read_text(encoding="utf-8"))
+            self.assertEqual(report["error"], "visual drift")
+            self.assertEqual(
+                report["differences"],
+                [{"metric": "shellLeft", "expected": 429, "actual": 421}],
+            )
+            self.assertEqual(report["consoleErrors"], ["console exploded"])
+            self.assertEqual(report["pageErrors"], ["page exploded"])
+            self.assertEqual(report["bodyText"], "visible page text")
+            self.assertEqual(report["failureScreenshot"], "wide-failure.png")
+            self.assertEqual(
+                (output_dir / "wide-failure.txt").read_text(encoding="utf-8"),
+                "visible page text",
+            )
 
 
 if __name__ == "__main__":
