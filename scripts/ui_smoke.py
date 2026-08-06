@@ -679,11 +679,28 @@ def browser_check_code(
             await assertActivePage('account.fromPlan', accountNav, '');
             await page.goBack();
             await assertActivePage('plan.back', planNav, '#trading');
+            await page.waitForLoadState('networkidle', {{ timeout: 10000 }});
             const planPage = main.getByRole('region', {{ name: '计划工作台' }});
             const planHeading = planPage.getByRole('heading', {{ name: '计划', level: 1 }});
             await planHeading.waitFor({{ state: 'visible', timeout: 10000 }});
-            const planDetails = planPage.getByRole('group', {{ name: '计划条件', exact: true }});
-            const planSummary = planDetails.locator('summary');
+            const planDetails = planPage.locator('details[aria-label="计划条件"]:visible');
+            const planDetailsCount = await planDetails.count();
+            if (planDetailsCount !== 1) {{
+              fail(
+                'plan.detailsControl',
+                '计划条件必须有且只有一个可见详情控件',
+                [difference('plan.visibleDetails', 1, planDetailsCount)],
+              );
+            }}
+            const planSummary = planDetails.locator(':scope > summary:visible');
+            const planSummaryCount = await planSummary.count();
+            if (planSummaryCount !== 1) {{
+              fail(
+                'plan.detailsControl',
+                '计划条件必须有且只有一个可见切换控件',
+                [difference('plan.visibleSummaries', 1, planSummaryCount)],
+              );
+            }}
             await planSummary.waitFor({{ state: 'visible', timeout: 10000 }});
             const wasOpen = await planDetails.evaluate(element => element.open);
             await planSummary.focus();
@@ -693,17 +710,35 @@ def browser_check_code(
                 isFocused: document.activeElement === element,
               }};
             }});
-            await page.keyboard.press('Enter');
-            const toggledOpen = await planDetails.evaluate(element => element.open);
-            await page.keyboard.press('Enter');
-            const restoredOpen = await planDetails.evaluate(element => element.open);
+            const clickAndReadDetailsState = async () => {{
+              const toggleResult = planDetails.evaluate(element => new Promise(resolve => {{
+                const timeout = window.setTimeout(
+                  () => resolve({{ eventObserved: false, open: element.open }}),
+                  2000,
+                );
+                element.addEventListener('toggle', () => {{
+                  window.clearTimeout(timeout);
+                  resolve({{ eventObserved: true, open: element.open }});
+                }}, {{ once: true }});
+              }}));
+              await planSummary.click();
+              return toggleResult;
+            }};
+            const toggledResult = await clickAndReadDetailsState();
+            const restoredResult = await clickAndReadDetailsState();
+            const toggledOpen = toggledResult.open;
+            const restoredOpen = restoredResult.open;
             const planShellBox = await planPage.boundingBox();
             const planMetrics = {{
               shellWidth: planShellBox?.width || 0,
-              visibleDetails: await planPage.getByRole('group').count(),
+              visibleDetails: planDetailsCount,
               wasOpen,
               toggledOpen,
               restoredOpen,
+              toggleEvents: {{
+                toggled: toggledResult.eventObserved,
+                restored: restoredResult.eventObserved,
+              }},
               focus: planFocus,
             }};
             const planDifferences = [];
@@ -716,11 +751,24 @@ def browser_check_code(
                 ));
               }}
             }}
-            if (planMetrics.toggledOpen === planMetrics.wasOpen || planMetrics.restoredOpen !== planMetrics.wasOpen) {{
+            if (
+              !planMetrics.toggleEvents.toggled
+              || !planMetrics.toggleEvents.restored
+              || planMetrics.toggledOpen === planMetrics.wasOpen
+              || planMetrics.restoredOpen !== planMetrics.wasOpen
+            ) {{
               planDifferences.push(difference(
                 'plan.detailsToggle',
-                {{ toggled: !planMetrics.wasOpen, restored: planMetrics.wasOpen }},
-                {{ toggled: planMetrics.toggledOpen, restored: planMetrics.restoredOpen }},
+                {{
+                  toggled: !planMetrics.wasOpen,
+                  restored: planMetrics.wasOpen,
+                  events: {{ toggled: true, restored: true }},
+                }},
+                {{
+                  toggled: planMetrics.toggledOpen,
+                  restored: planMetrics.restoredOpen,
+                  events: planMetrics.toggleEvents,
+                }},
               ));
             }}
             if (planMetrics.visibleDetails < 1) {{
