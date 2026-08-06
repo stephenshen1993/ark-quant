@@ -695,7 +695,7 @@
 
 <!-- 计划 -->
   <template x-if="$store.page === 'trading'">
-  <div x-data="tradingPage()" class="workspace-shell workspace-shell-workbench plan-workbench" role="region" aria-label="计划工作台">
+  <div x-data="tradingPage()" class="workspace-shell workspace-shell-workbench plan-workbench" role="region" aria-label="计划工作台" :aria-busy="planReady ? 'false' : 'true'">
     <div class="workspace-title-row flex justify-between gap-5">
       <div>
         <div class="workspace-kicker">WORKBENCH</div>
@@ -1457,7 +1457,7 @@
       // T 日数据
       tDate: localDate(), marketTemperature: null,
       // 资金分配 + 订单
-      plan: null, transferPlan: null, accountReadModel: null, planError: '', loadingPlan: false,
+      plan: null, transferPlan: null, accountReadModel: null, planError: '', loadingPlan: false, planReady: false,
       generationStage: '', componentErrors: { cb: '', stock: '' },
       funding: { snapshot_date: '', temperature: null, check_type: 'a_internal', new_contribution: 0, b_purchase_status: 'unchecked', b_purchase_limit: 0 },
       basisExpanded: { A: true },
@@ -1470,20 +1470,24 @@
       cbTradeDate: '', stockTradeDate: '',
       showCbRank: false, showStockRank: false,
       async init() {
-        const summary = await fetch('/api/account/summary').then(r => r.json().catch(() => null))
-        if (summary) {
-          this.accountReadModel = summary.read_model || this.accountReadModel
-          this.tDate = summary.context?.snapshot_date || this.tDate
-          const context = summary.context || {}
-          this.funding.snapshot_date = context.snapshot_date || this.tDate
-          this.funding.temperature = context.temperature
-          this.funding.check_type = this.normalizeCheckType(context.check_type)
-          this.funding.new_contribution = 0
-          this.funding.b_purchase_limit = context.b_purchase_limit || 0
-          this.funding.b_purchase_status = this.inferBPurchaseStatus(context)
+        try {
+          const summary = await fetch('/api/account/summary').then(r => r.json().catch(() => null))
+          if (summary) {
+            this.accountReadModel = summary.read_model || this.accountReadModel
+            this.tDate = summary.context?.snapshot_date || this.tDate
+            const context = summary.context || {}
+            this.funding.snapshot_date = context.snapshot_date || this.tDate
+            this.funding.temperature = context.temperature
+            this.funding.check_type = this.normalizeCheckType(context.check_type)
+            this.funding.new_contribution = 0
+            this.funding.b_purchase_limit = context.b_purchase_limit || 0
+            this.funding.b_purchase_status = this.inferBPurchaseStatus(context)
+          }
+          await this.refreshFullPlan(false)
+          await this.refreshRankingState()
+        } finally {
+          this.planReady = true
         }
-        await this.refreshFullPlan(false)
-        await this.refreshRankingState()
       },
 
       inferBPurchaseStatus(context) {

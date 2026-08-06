@@ -679,8 +679,15 @@ def browser_check_code(
             await assertActivePage('account.fromPlan', accountNav, '');
             await page.goBack();
             await assertActivePage('plan.back', planNav, '#trading');
-            await page.waitForLoadState('networkidle', {{ timeout: 10000 }});
             const planPage = main.getByRole('region', {{ name: '计划工作台' }});
+            await planPage.waitFor({{ state: 'visible', timeout: 10000 }});
+            await page.waitForFunction(
+              label => Array.from(document.querySelectorAll(`[role="region"][aria-label="${{label}}"]`))
+                .find(element => element.checkVisibility())
+                ?.getAttribute('aria-busy') === 'false',
+              '计划工作台',
+              {{ timeout: 10000 }},
+            );
             const planHeading = planPage.getByRole('heading', {{ name: '计划', level: 1 }});
             await planHeading.waitFor({{ state: 'visible', timeout: 10000 }});
             const planDetails = planPage.locator('details[aria-label="计划条件"]:visible');
@@ -712,14 +719,28 @@ def browser_check_code(
             }});
             const clickAndReadDetailsState = async () => {{
               const toggleResult = planDetails.evaluate(element => new Promise(resolve => {{
+                const summary = element.querySelector(':scope > summary');
+                let clickObserved = false;
+                const cleanup = () => {{
+                  summary?.removeEventListener('click', observeClick);
+                  element.removeEventListener('toggle', observeToggle);
+                }};
+                const observeClick = () => {{ clickObserved = true; }};
+                const observeToggle = () => {{
+                  if (!clickObserved) return;
+                  window.clearTimeout(timeout);
+                  cleanup();
+                  resolve({{ clickObserved, eventObserved: true, open: element.open }});
+                }};
                 const timeout = window.setTimeout(
-                  () => resolve({{ eventObserved: false, open: element.open }}),
+                  () => {{
+                    cleanup();
+                    resolve({{ clickObserved, eventObserved: false, open: element.open }});
+                  }},
                   2000,
                 );
-                element.addEventListener('toggle', () => {{
-                  window.clearTimeout(timeout);
-                  resolve({{ eventObserved: true, open: element.open }});
-                }}, {{ once: true }});
+                summary?.addEventListener('click', observeClick, {{ once: true }});
+                element.addEventListener('toggle', observeToggle);
               }}));
               await planSummary.click();
               return toggleResult;
@@ -739,6 +760,10 @@ def browser_check_code(
                 toggled: toggledResult.eventObserved,
                 restored: restoredResult.eventObserved,
               }},
+              clicks: {{
+                toggled: toggledResult.clickObserved,
+                restored: restoredResult.clickObserved,
+              }},
               focus: planFocus,
             }};
             const planDifferences = [];
@@ -754,6 +779,8 @@ def browser_check_code(
             if (
               !planMetrics.toggleEvents.toggled
               || !planMetrics.toggleEvents.restored
+              || !planMetrics.clicks.toggled
+              || !planMetrics.clicks.restored
               || planMetrics.toggledOpen === planMetrics.wasOpen
               || planMetrics.restoredOpen !== planMetrics.wasOpen
             ) {{
@@ -763,11 +790,13 @@ def browser_check_code(
                   toggled: !planMetrics.wasOpen,
                   restored: planMetrics.wasOpen,
                   events: {{ toggled: true, restored: true }},
+                  clicks: {{ toggled: true, restored: true }},
                 }},
                 {{
                   toggled: planMetrics.toggledOpen,
                   restored: planMetrics.restoredOpen,
                   events: planMetrics.toggleEvents,
+                  clicks: planMetrics.clicks,
                 }},
               ));
             }}
