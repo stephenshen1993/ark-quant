@@ -61,6 +61,26 @@ AIHOT_CHANGELOG_STYLE_METRICS = {
     "label": {"fontSize": 14, "lineHeight": 18.9, "fontWeight": 560},
     "dotSize": 8,
 }
+AIHOT_CHANGELOG_RESPONSIVE_METRICS = {
+    "desktop": {
+        "navWidth": 179,
+        "shellLeft": 393,
+        "contentTop": 80,
+        "shellWidth": 833,
+    },
+    "narrow": {
+        "navHeight": 64,
+        "shellPaddingLeft": 22,
+        "shellPaddingRight": 22,
+        "headerStreamGap": 50,
+        "dateGroupGap": 58,
+        "entryMainPaddingLeft": 16,
+        "titleFontSize": 32,
+        "dateFontSize": 24,
+        "entryTitleFontSize": 19,
+        "bodyFontSize": 15,
+    },
+}
 VIEWPORTS = {
     "wide": {"width": 1512, "height": 749},
     "desktop": {"width": 1440, "height": 1000},
@@ -625,27 +645,53 @@ def browser_check_code(
               window.scrollTo({{ top: 0, left: 0 }});
             }});
             await page.waitForTimeout(100);
-            await page.locator('[x-data="changelogPage()"]').scrollIntoViewIfNeeded();
             const changelogBox = await page.locator('[x-data="changelogPage()"]').boundingBox();
             if (!changelogBox || changelogBox.width <= 0 || changelogBox.height <= 0) {{
               throw new Error('更新日志区域不可见');
             }}
             const readingMetrics = await page.evaluate(() => {{
-              const nav = document.querySelector('.app-nav')?.getBoundingClientRect();
-              const shell = document.querySelector('[x-data="changelogPage()"]')?.getBoundingClientRect();
+              const bodyStyle = window.getComputedStyle(document.body);
+              const navElement = document.querySelector('.app-nav');
+              const nav = navElement?.getBoundingClientRect();
+              const navStyle = window.getComputedStyle(navElement);
+              const main = document.querySelector('.app-main')?.getBoundingClientRect();
+              const shellElement = document.querySelector('[x-data="changelogPage()"]');
+              const shell = shellElement?.getBoundingClientRect();
+              const shellStyle = window.getComputedStyle(shellElement);
               const kicker = document.querySelector('.changelog-kicker')?.getBoundingClientRect();
               const title = document.querySelector('.changelog-title')?.getBoundingClientRect();
               const header = document.querySelector('.changelog-header')?.getBoundingClientRect();
               const groups = document.querySelector('.changelog-groups');
               const dateHeader = document.querySelector('.changelog-date-header')?.getBoundingClientRect();
-              const entryMeta = document.querySelector('.changelog-entry-meta')?.getBoundingClientRect();
-              const entryMain = document.querySelector('.changelog-entry-main')?.getBoundingClientRect();
+              const entryMetaElement = document.querySelector('.changelog-entry-meta');
+              const entryMeta = entryMetaElement?.getBoundingClientRect();
+              const entryMetaStyle = window.getComputedStyle(entryMetaElement);
+              const entryMainElement = document.querySelector('.changelog-entry-main');
+              const entryMain = entryMainElement?.getBoundingClientRect();
+              const entryMainStyle = window.getComputedStyle(entryMainElement);
               const entryTitle = document.querySelector('.changelog-entry-title')?.getBoundingClientRect();
+              const time = document.querySelector('.changelog-entry-time')?.getBoundingClientRect();
+              const type = document.querySelector('.changelog-entry-type')?.getBoundingClientRect();
               return {{
                 navWidth: nav?.width || 0,
+                navHeight: nav?.height || 0,
+                navTop: nav?.top || 0,
+                navLeft: nav?.left || 0,
+                navBottom: nav?.bottom || 0,
+                navFlexDirection: navStyle.flexDirection,
+                navBorderRightWidth: Number.parseFloat(navStyle.borderRightWidth),
+                navBorderBottomWidth: Number.parseFloat(navStyle.borderBottomWidth),
+                navClientWidth: navElement?.clientWidth || 0,
+                navScrollWidth: navElement?.scrollWidth || 0,
+                mainLeft: main?.left || 0,
+                mainTop: main?.top || 0,
+                mainWidth: main?.width || 0,
                 shellLeft: shell?.left || 0,
+                shellRight: shell?.right || 0,
                 contentTop: kicker?.top || 0,
                 shellWidth: shell?.width || 0,
+                shellPaddingLeft: Number.parseFloat(shellStyle.paddingLeft),
+                shellPaddingRight: Number.parseFloat(shellStyle.paddingRight),
                 titleTop: title?.top || 0,
                 headerStreamGap: (dateHeader?.top || 0) - (header?.bottom || 0),
                 dateGroupGap: Number.parseFloat(window.getComputedStyle(groups).gap),
@@ -655,6 +701,13 @@ def browser_check_code(
                 entryColumnGap: (entryMain?.left || 0) - (entryMeta?.right || 0),
                 entryDividerX: entryMain?.left || 0,
                 entryCopyX: entryTitle?.left || 0,
+                entryMetaDisplay: entryMetaStyle.display,
+                entryMetaFlexDirection: entryMetaStyle.flexDirection,
+                metaTimeTop: time?.top || 0,
+                metaTypeTop: type?.top || 0,
+                entryMainPaddingLeft: Number.parseFloat(entryMainStyle.paddingLeft),
+                entryMainBorderLeftWidth: Number.parseFloat(entryMainStyle.borderLeftWidth),
+                bodyFlexDirection: bodyStyle.flexDirection,
               }};
             }});
             const styleMetrics = await page.evaluate(() => {{
@@ -718,6 +771,25 @@ def browser_check_code(
                 appScrollWidth: appMain?.scrollWidth || 0,
               }};
             }});
+            await page.getByRole('button', {{ name: /账户/ }}).focus();
+            await page.keyboard.press('Tab');
+            const accessibilityMetrics = await page.evaluate(() => {{
+              const activeNav = document.querySelector('[aria-label="更新日志"]');
+              const focusStyle = window.getComputedStyle(document.activeElement);
+              return {{
+                activeTag: document.activeElement?.tagName || '',
+                activeLabel: document.activeElement?.getAttribute('aria-label') || '',
+                activeCurrent: activeNav?.getAttribute('aria-current') || '',
+                focusOutlineStyle: focusStyle.outlineStyle,
+                focusOutlineWidth: Number.parseFloat(focusStyle.outlineWidth),
+                h1Count: document.querySelectorAll('.changelog-shell h1').length,
+                h2Count: document.querySelectorAll('.changelog-shell h2').length,
+                h3Count: document.querySelectorAll('.changelog-shell h3').length,
+              }};
+            }});
+            const collectNumericDrift = (actual, expected, tolerance = 2) => Object.entries(expected)
+              .filter(([key, value]) => Math.abs(actual[key] - value) > tolerance)
+              .map(([key, value]) => ({{ key, expected: value, actual: actual[key] }}));
             if ({json.dumps(viewport_name)} === 'wide') {{
               if (Math.abs(readingMetrics.navWidth - {AIHOT_CHANGELOG_REFERENCE_METRICS["nav_width"]}) > 2) {{
                 throw new Error('AIHOT 侧栏宽度偏离: ' + JSON.stringify(readingMetrics));
@@ -741,9 +813,7 @@ def browser_check_code(
                 entryDividerX: {AIHOT_CHANGELOG_REFERENCE_METRICS["entry_divider_x"]},
                 entryCopyX: {AIHOT_CHANGELOG_REFERENCE_METRICS["entry_copy_x"]},
               }};
-              const structureDrift = Object.entries(expectedStructure)
-                .filter(([key, expected]) => Math.abs(readingMetrics[key] - expected) > 2)
-                .map(([key, expected]) => ({{ key, expected, actual: readingMetrics[key] }}));
+              const structureDrift = collectNumericDrift(readingMetrics, expectedStructure);
               if (structureDrift.length) {{
                 throw new Error('更新日志桌面结构锚点偏离: ' + JSON.stringify({{
                   drift: structureDrift,
@@ -778,6 +848,57 @@ def browser_check_code(
                 }}));
               }}
             }}
+            if ({json.dumps(viewport_name)} === 'desktop') {{
+              const expected = {json.dumps(AIHOT_CHANGELOG_RESPONSIVE_METRICS["desktop"])};
+              const drift = collectNumericDrift(readingMetrics, expected);
+              if (drift.length) {{
+                throw new Error('更新日志 1440px 阅读比例偏离: ' + JSON.stringify({{ drift, readingMetrics }}));
+              }}
+            }}
+            if ({json.dumps(viewport_name)} === 'narrow') {{
+              const expected = {json.dumps(AIHOT_CHANGELOG_RESPONSIVE_METRICS["narrow"])};
+              const actual = {{
+                ...readingMetrics,
+                titleFontSize: styleMetrics.title.fontSize,
+                dateFontSize: styleMetrics.date.fontSize,
+                entryTitleFontSize: styleMetrics.entryTitle.fontSize,
+                bodyFontSize: styleMetrics.body.fontSize,
+              }};
+              const drift = collectNumericDrift(actual, expected);
+              if (drift.length) {{
+                throw new Error('更新日志 390px 响应式令牌偏离: ' + JSON.stringify({{ drift, actual }}));
+              }}
+              if (readingMetrics.navFlexDirection !== 'row'
+                  || readingMetrics.bodyFlexDirection !== 'column'
+                  || readingMetrics.navBorderRightWidth !== 0
+                  || readingMetrics.navBorderBottomWidth !== 1
+                  || readingMetrics.mainLeft !== 0
+                  || readingMetrics.mainTop < readingMetrics.navBottom - 2) {{
+                throw new Error('更新日志移动顶栏没有取代桌面侧栏: ' + JSON.stringify(readingMetrics));
+              }}
+              if (readingMetrics.entryMetaDisplay !== 'flex'
+                  || readingMetrics.entryMetaFlexDirection !== 'row'
+                  || Math.abs(readingMetrics.metaTimeTop - readingMetrics.metaTypeTop) > 2
+                  || readingMetrics.entryMainBorderLeftWidth !== 1) {{
+                throw new Error('更新日志移动元信息与正文竖线布局偏离: ' + JSON.stringify(readingMetrics));
+              }}
+              if (readingMetrics.navScrollWidth > readingMetrics.navClientWidth + 2
+                  || readingMetrics.shellLeft < -2
+                  || readingMetrics.shellRight > {VIEWPORTS["narrow"]["width"] + 2}) {{
+                throw new Error('更新日志移动内容或控件被裁切: ' + JSON.stringify(readingMetrics));
+              }}
+              if (accessibilityMetrics.activeTag !== 'BUTTON'
+                  || accessibilityMetrics.activeLabel !== '计划'
+                  || accessibilityMetrics.activeCurrent !== 'page'
+                  || accessibilityMetrics.focusOutlineStyle === 'none'
+                  || accessibilityMetrics.focusOutlineWidth < 2
+                  || accessibilityMetrics.h1Count !== 1
+                  || accessibilityMetrics.h2Count < 1
+                  || accessibilityMetrics.h3Count < 1) {{
+                throw new Error('更新日志移动导航焦点或标题语义异常: ' + JSON.stringify(accessibilityMetrics));
+              }}
+            }}
+            await page.evaluate(() => document.activeElement?.blur());
             if (styleMetrics.appScrollWidth > styleMetrics.appClientWidth + 2) {{
               throw new Error('更新日志页出现横向溢出: ' + JSON.stringify(styleMetrics));
             }}
@@ -796,6 +917,7 @@ def browser_check_code(
               changelogChecks: changelogRequired.length,
               readingMetrics,
               styleMetrics,
+              accessibilityMetrics,
               consoleErrors,
               pageErrors,
             }};
