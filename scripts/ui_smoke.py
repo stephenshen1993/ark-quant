@@ -27,7 +27,7 @@ WORKBENCH_WIDTH_RANGE = (1000, 1100)
 AIHOT_CHANGELOG_REFERENCE_METRICS = {
     "nav_width": 179,
     "shell_left": 429,
-    "shell_top": 80,
+    "content_top": 80,
     "shell_width": 833,
     "header_stream_gap": 61,
     "date_group_gap": 72,
@@ -678,7 +678,6 @@ def browser_check_code(
               const optimize = typeElement('优化');
               const update = typeElement('更新');
               const neutral = typeElement('公告');
-              const body = document.body;
               const nav = document.querySelector('.app-nav');
               const activeNav = document.querySelector('[aria-label="更新日志"]');
               const dateHeader = document.querySelector('.changelog-date-header');
@@ -693,7 +692,7 @@ def browser_check_code(
               const dot = document.querySelector('.changelog-dot');
               const appMain = document.querySelector('.app-main');
               return {{
-                canvas: styleOf(body).backgroundColor,
+                canvas: styleOf(appMain).backgroundColor,
                 surface: styleOf(nav).backgroundColor,
                 navBorder: styleOf(nav).borderRightColor,
                 navBorderWidth: Number.parseFloat(window.getComputedStyle(nav).borderRightWidth),
@@ -729,7 +728,7 @@ def browser_check_code(
               if (Math.abs(readingMetrics.shellLeft - {AIHOT_CHANGELOG_REFERENCE_METRICS["shell_left"]}) > 2) {{
                 throw new Error('更新日志阅读容器起点偏离 AIHOT 坐标: ' + JSON.stringify(readingMetrics));
               }}
-              if (Math.abs(readingMetrics.contentTop - {AIHOT_CHANGELOG_REFERENCE_METRICS["shell_top"]}) > 2) {{
+              if (Math.abs(readingMetrics.contentTop - {AIHOT_CHANGELOG_REFERENCE_METRICS["content_top"]}) > 2) {{
                 throw new Error('更新日志阅读容器顶距偏离: ' + JSON.stringify(readingMetrics));
               }}
               const expectedStructure = {{

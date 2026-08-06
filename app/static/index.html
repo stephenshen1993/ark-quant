@@ -34,17 +34,24 @@
     white-space: nowrap;
   }
   :root {
-    --ark-bg: #f4f5f6;
+    --ark-bg: #f7f8fa;
     --ark-panel: #ffffff;
-    --ark-text: #1b2733;
-    --ark-muted: #5c6672;
-    --ark-soft: #858c96;
-    --ark-line: #e3e4e7;
-    --ark-faint: #e9eef0;
-    --ark-nav-active: #e9eef0;
-    --ark-accent: #125e6c;
-    --ark-update: #2e7e5d;
-    --ark-neutral: #66717e;
+    --ark-text: #111827;
+    --ark-muted: #6b7280;
+    --ark-soft: #9ca3af;
+    --ark-line: #e5e7eb;
+    --ark-faint: #eef2f7;
+    --ark-accent: #0f766e;
+    --ark-changelog-canvas: #f4f5f6;
+    --ark-changelog-surface: #ffffff;
+    --ark-changelog-ink: #1b2733;
+    --ark-changelog-secondary: #5c6672;
+    --ark-changelog-tertiary: #858c96;
+    --ark-changelog-line: #e3e4e7;
+    --ark-changelog-nav-active: #e9eef0;
+    --ark-changelog-accent: #125e6c;
+    --ark-changelog-update: #2e7e5d;
+    --ark-changelog-neutral: #66717e;
     --ark-nav-width: 179px;
     --ark-reading-width: 833px;
     --ark-reading-top: 80px;
@@ -59,23 +66,22 @@
   }
   body.bg-gray-50 {
     background: var(--ark-bg);
-    font-family: var(--ark-font-sans);
     -webkit-tap-highlight-color: transparent;
   }
   .app-nav {
     width: var(--ark-nav-width);
     padding: 48px 18px 24px;
-    background: var(--ark-panel);
-    border-right: 1px solid var(--ark-line);
+    background: var(--ark-changelog-surface);
+    border-right: 1px solid var(--ark-changelog-line);
     touch-action: manipulation;
   }
   .changelog-brand {
     padding: 0 6px 36px;
-    border-bottom: 1px solid var(--ark-line);
+    border-bottom: 1px solid var(--ark-changelog-line);
     margin-bottom: 34px;
   }
   .changelog-brand-name {
-    color: var(--ark-text);
+    color: var(--ark-changelog-ink);
     font-size: 34px;
     font-weight: 700;
     letter-spacing: 0.2em;
@@ -83,7 +89,7 @@
   }
   .changelog-brand-subtitle {
     margin-top: 14px;
-    color: var(--ark-soft);
+    color: var(--ark-changelog-tertiary);
     font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.12em;
@@ -91,25 +97,28 @@
   }
   .app-nav-section {
     margin: 0 0 16px 18px;
-    color: var(--ark-soft);
+    color: var(--ark-changelog-tertiary);
     font-size: 12px;
     font-weight: 600;
   }
   .nav-item {
     min-height: 42px;
     border-radius: 8px;
-    color: var(--ark-muted);
+    color: var(--ark-changelog-secondary);
     font-size: 15px;
     font-weight: 600;
     line-height: 1;
   }
   .nav-item:hover {
     background: #f3f4f6;
-    color: var(--ark-text);
+    color: var(--ark-changelog-ink);
   }
   .nav-item[aria-current="page"] {
-    background: var(--ark-nav-active);
-    color: var(--ark-accent);
+    background: var(--ark-changelog-nav-active);
+    color: var(--ark-changelog-accent);
+  }
+  .nav-item[aria-current="page"] .nav-icon {
+    color: var(--ark-changelog-accent);
   }
   .nav-item-disabled {
     cursor: not-allowed;
@@ -120,7 +129,7 @@
     color: #a8b0bd;
   }
   .nav-item:focus-visible {
-    outline: 2px solid var(--ark-text);
+    outline: 2px solid var(--ark-changelog-ink);
     outline-offset: 2px;
   }
   .nav-icon {
@@ -142,8 +151,8 @@
   .app-nav-footer {
     margin-top: auto;
     padding: 12px 10px 0;
-    border-top: 1px solid var(--ark-faint);
-    color: var(--ark-soft);
+    border-top: 1px solid var(--ark-changelog-line);
+    color: var(--ark-changelog-tertiary);
     font-size: 11px;
     line-height: 1.6;
   }
@@ -151,6 +160,9 @@
     background: var(--ark-bg);
     padding: 0 0 96px;
     overflow-x: hidden;
+  }
+  .app-main:has(.changelog-shell) {
+    background: var(--ark-changelog-canvas);
   }
   .workspace-shell {
     width: 100%;
@@ -216,10 +228,12 @@
     max-width: var(--ark-reading-width);
     margin: 0 auto;
     padding: var(--ark-reading-top) 0 96px;
+    color: var(--ark-changelog-ink);
+    font-family: var(--ark-font-sans);
   }
   .changelog-kicker {
     margin: 0 0 16px;
-    color: var(--ark-accent);
+    color: var(--ark-changelog-accent);
     font-size: 11px;
     font-weight: 650;
     letter-spacing: 0.23em;
@@ -227,7 +241,7 @@
   }
   .changelog-title {
     margin: 0;
-    color: var(--ark-text);
+    color: var(--ark-changelog-ink);
     font-size: 32px;
     font-weight: 680;
     letter-spacing: -0.035em;
@@ -236,7 +250,7 @@
   }
   .changelog-subtitle {
     margin: 12px 0 0;
-    color: var(--ark-muted);
+    color: var(--ark-changelog-secondary);
     font-size: 17px;
     font-weight: 400;
     line-height: 27.2px;
@@ -254,12 +268,12 @@
     align-items: baseline;
     gap: 22px;
     min-height: 44px;
-    border-bottom: 1px solid var(--ark-line);
+    border-bottom: 1px solid var(--ark-changelog-line);
     padding-bottom: 12px;
   }
   .changelog-date-title {
     margin: 0;
-    color: var(--ark-text);
+    color: var(--ark-changelog-ink);
     font-size: 24px;
     font-weight: 650;
     letter-spacing: -0.025em;
@@ -267,7 +281,7 @@
     text-wrap: balance;
   }
   .changelog-weekday {
-    color: var(--ark-soft);
+    color: var(--ark-changelog-tertiary);
     font-size: 13px;
     font-weight: 400;
     line-height: 16.9px;
@@ -276,7 +290,7 @@
     display: grid;
     grid-template-columns: var(--ark-reading-time-column) minmax(0, 1fr);
     column-gap: var(--ark-entry-column-gap);
-    border-bottom: 1px solid var(--ark-line);
+    border-bottom: 1px solid var(--ark-changelog-line);
     padding: 25px 0;
   }
   .changelog-entry-grid:last-child {
@@ -287,7 +301,7 @@
   }
   .changelog-entry-time {
     display: block;
-    color: var(--ark-text);
+    color: var(--ark-changelog-ink);
     font-family: var(--ark-font-data);
     font-size: 16px;
     font-weight: 500;
@@ -313,25 +327,25 @@
     background: currentColor;
   }
   .changelog-entry-type.changelog-type-optimize {
-    color: var(--ark-accent);
+    color: var(--ark-changelog-accent);
   }
   .changelog-entry-type.changelog-type-update {
-    color: var(--ark-update);
+    color: var(--ark-changelog-update);
   }
   .changelog-entry-type.changelog-type-neutral {
-    color: var(--ark-neutral);
+    color: var(--ark-changelog-neutral);
   }
   .changelog-entry-type.changelog-type-retired {
     color: #b45309;
   }
   .changelog-entry-main {
-    border-left: 1px solid var(--ark-line);
+    border-left: 1px solid var(--ark-changelog-line);
     padding-left: var(--ark-entry-copy-indent);
     min-width: 0;
   }
   .changelog-entry-title {
     margin: 0;
-    color: var(--ark-text);
+    color: var(--ark-changelog-ink);
     font-size: 18px;
     font-weight: 650;
     letter-spacing: -0.018em;
@@ -341,7 +355,7 @@
   }
   .changelog-entry-body {
     margin: 13px 0 0;
-    color: var(--ark-muted);
+    color: var(--ark-changelog-secondary);
     font-size: 16px;
     font-weight: 400;
     line-height: 28px;
@@ -363,7 +377,7 @@
       align-items: center;
       padding: 16px 20px;
       border-right: 0;
-      border-bottom: 1px solid var(--ark-line);
+      border-bottom: 1px solid var(--ark-changelog-line);
     }
     .changelog-brand {
       flex: 1;
