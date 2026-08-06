@@ -708,6 +708,11 @@ def get_current_account_summary() -> dict | None:
         return account_store.get_current_account_summary(conn)
 
 
+def get_account_summary(snapshot_date: str | None = None) -> dict | None:
+    with _conn() as conn:
+        return account_store.get_account_summary(conn, snapshot_date)
+
+
 def _build_account_items(snap: dict) -> list[dict]:
     return account_store.build_account_items(snap)
 
@@ -884,6 +889,28 @@ def insert_generated_plan(plan_id: str, plan_date: str, status: str, plan: dict)
         )
 
 
+def try_insert_running_generated_plan(plan_id: str, plan_date: str, plan: dict) -> bool:
+    """Atomically reserve a plan date for one in-progress generation."""
+    with _conn() as conn:
+        cursor = conn.execute(
+            """INSERT INTO generated_plans
+               (plan_id, plan_date, status, plan_json, error_json, created_at)
+               SELECT ?, ?, 'running', ?, NULL, ?
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM generated_plans
+                   WHERE plan_date=? AND status='running'
+               )""",
+            (
+                plan_id,
+                plan_date,
+                _to_json(plan),
+                datetime.now().isoformat(),
+                plan_date,
+            ),
+        )
+        return cursor.rowcount == 1
+
+
 def update_generated_plan(
     plan_id: str,
     *,
@@ -936,6 +963,41 @@ def get_generated_plan(plan_id: str) -> dict | None:
             "error": json.loads(item["error_json"]) if item.get("error_json") else None,
             "created_at": item["created_at"],
         }
+
+
+def get_latest_generated_plan(plan_date: str) -> dict | None:
+    with _conn() as conn:
+        row = conn.execute(
+            """SELECT plan_id, plan_date, status, error_json, created_at
+               FROM generated_plans
+               WHERE plan_date=?
+               ORDER BY created_at DESC, plan_id DESC
+               LIMIT 1""",
+            (plan_date,),
+        ).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        return {
+            "plan_id": item["plan_id"],
+            "plan_date": item["plan_date"],
+            "status": item["status"],
+            "error": json.loads(item["error_json"]) if item.get("error_json") else None,
+            "created_at": item["created_at"],
+        }
+
+
+def get_running_generated_plan(plan_date: str) -> dict | None:
+    with _conn() as conn:
+        row = conn.execute(
+            """SELECT plan_id, plan_date, status, created_at
+               FROM generated_plans
+               WHERE plan_date=? AND status='running'
+               ORDER BY created_at DESC, plan_id DESC
+               LIMIT 1""",
+            (plan_date,),
+        ).fetchone()
+        return dict(row) if row is not None else None
 
 
 def insert_plan_order_batch(plan_id: str, strategy: str, orders: list[dict], summary: dict) -> None:

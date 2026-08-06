@@ -43,7 +43,7 @@ ACCOUNT_DEFINITIONS: Final[dict[str, dict]] = {
         "participates_in_domestic_rebalance": False,
     },
     "cash": {
-        "label": "浦发现金账户",
+        "label": "资金账户",
         "sub": "资金调拨与现金管理",
         "asset_classes": ("现金",),
         "country_exposure": "国内",
@@ -115,7 +115,7 @@ DOMESTIC_REBALANCE_TARGETS: Final[dict[str, dict]] = {
         "transfer_in_note": " (T+1/T+2 到账)",
     },
     "cash_pool": {
-        "label": "浦发现金账户",
+        "label": "资金账户",
         "strategy_id": "cash_management",
         "account_ids": ("cash",),
         "summary_total_fields": ("cash_pool",),

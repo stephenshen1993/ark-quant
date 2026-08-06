@@ -1,8 +1,8 @@
 from __future__ import annotations
 from fastapi import APIRouter, HTTPException
-from app import plan_generation
+from app import plan_generation, plan_lifecycle
 from app import order_sizing
-from app.plan_service import PlanServiceError
+from app.plan_service import PlanServiceError, build_plan_readiness
 
 router = APIRouter(prefix="/api/plan", tags=["plan"])
 
@@ -10,6 +10,22 @@ router = APIRouter(prefix="/api/plan", tags=["plan"])
 @router.get("/context")
 def get_plan_context(refresh_temperature: bool = False):
     return _service_response(plan_generation.build_plan_context, refresh_temperature)
+
+
+@router.get("/readiness")
+def get_plan_readiness():
+    try:
+        return _service_response(build_plan_readiness)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "PLAN_READINESS_UNAVAILABLE",
+                "message": "无法读取计划输入就绪度，请稍后重试。",
+            },
+        ) from exc
 
 
 @router.get("/transfer")
@@ -32,6 +48,20 @@ def generate_plan():
         )
     except PlanServiceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@router.get("/generated")
+def get_latest_generated_plan():
+    try:
+        return {"generation": plan_lifecycle.get_latest_plan_status()}
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "PLAN_LIFECYCLE_UNAVAILABLE",
+                "message": "无法读取当前计划生成状态，请稍后重试。",
+            },
+        ) from exc
 
 
 @router.get("/generated/{plan_id}")

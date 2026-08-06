@@ -30,8 +30,12 @@ def with_status(plan: dict, status: str) -> dict:
     return {**plan, "generation": {**plan["generation"], "status": status}}
 
 
-def start(plan_id: str, plan_date: str, plan: dict) -> None:
-    db.insert_generated_plan(plan_id, plan_date, RUNNING, with_status(plan, RUNNING))
+def start(plan_id: str, plan_date: str, plan: dict) -> bool:
+    return db.try_insert_running_generated_plan(
+        plan_id,
+        plan_date,
+        with_status(plan, RUNNING),
+    )
 
 
 def record_order_batch(
@@ -59,6 +63,18 @@ def mark_stale(reason: dict | None = None) -> None:
 
 def get_plan(plan_id: str) -> dict | None:
     return db.get_generated_plan(plan_id)
+
+
+def get_latest_plan_status(plan_date: str | None = None) -> dict | None:
+    if plan_date is None:
+        from app.plan_service import current_plan_date
+
+        plan_date = current_plan_date()
+    return db.get_latest_generated_plan(plan_date)
+
+
+def get_running_plan_status(plan_date: str) -> dict | None:
+    return db.get_running_generated_plan(plan_date)
 
 
 def get_order_batch(plan_id: str, strategy: str) -> dict | None:

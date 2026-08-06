@@ -134,6 +134,28 @@ class TestAccountsApi(unittest.TestCase):
             "cb",
         )
 
+    def test_summary_date_returns_only_that_fact_date(self):
+        self.client.post("/api/account/context", json={
+            "snapshot_date": "2026-06-29", "temperature": 45,
+        })
+        self.client.post("/api/account/stock/snapshot", json={
+            "snapshot_date": "2026-06-29", "total": 100, "cash": 10,
+        })
+        self.client.post("/api/account/context", json={
+            "snapshot_date": "2026-06-30", "temperature": 50,
+        })
+        self.client.post("/api/account/stock/snapshot", json={
+            "snapshot_date": "2026-06-30", "total": 200, "cash": 20,
+        })
+
+        dated = self.client.get("/api/account/summary?date=2026-06-29")
+
+        self.assertEqual(dated.status_code, 200)
+        self.assertEqual(dated.json()["context"]["snapshot_date"], "2026-06-29")
+        accounts = {item["id"]: item for item in dated.json()["accounts"]}
+        self.assertEqual(accounts["stock"]["total"], 100)
+        self.assertEqual(accounts["stock"]["snapshot_date"], "2026-06-29")
+
     def test_account_updates_are_per_account(self):
         r = self.client.post("/api/account/cash/snapshot", json={
             "snapshot_date": "2026-06-29",

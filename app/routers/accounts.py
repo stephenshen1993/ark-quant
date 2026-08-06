@@ -96,8 +96,11 @@ def get_latest():
 
 
 @router.get("/summary")
-def get_summary():
-    return public_account_summary(db.get_current_account_summary())
+def get_summary(date: Optional[str] = None):
+    try:
+        return public_account_summary(db.get_account_summary(date))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/history")

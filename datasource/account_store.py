@@ -185,21 +185,45 @@ def insert_account_context(
     return cur.lastrowid
 
 
-def get_current_account_summary(conn: sqlite3.Connection) -> dict | None:
-    context = conn.execute(
-        "SELECT * FROM account_contexts ORDER BY id DESC LIMIT 1"
-    ).fetchone()
-    values = conn.execute(
-        """
-        SELECT v.*
-        FROM account_value_snapshots v
-        JOIN (
-            SELECT account_id, MAX(id) AS id
-            FROM account_value_snapshots
-            GROUP BY account_id
-        ) latest ON latest.id = v.id
-        """
-    ).fetchall()
+def get_account_summary(
+    conn: sqlite3.Connection, snapshot_date: str | None = None
+) -> dict | None:
+    """Return the latest facts, or the facts recorded for one exact date."""
+    if snapshot_date is None:
+        context = conn.execute(
+            "SELECT * FROM account_contexts ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        values = conn.execute(
+            """
+            SELECT v.*
+            FROM account_value_snapshots v
+            JOIN (
+                SELECT account_id, MAX(id) AS id
+                FROM account_value_snapshots
+                GROUP BY account_id
+            ) latest ON latest.id = v.id
+            """
+        ).fetchall()
+    else:
+        validate_iso_date(snapshot_date)
+        context = conn.execute(
+            """SELECT * FROM account_contexts
+               WHERE snapshot_date=? ORDER BY id DESC LIMIT 1""",
+            (snapshot_date,),
+        ).fetchone()
+        values = conn.execute(
+            """
+            SELECT v.*
+            FROM account_value_snapshots v
+            JOIN (
+                SELECT account_id, MAX(id) AS id
+                FROM account_value_snapshots
+                WHERE snapshot_date=?
+                GROUP BY account_id
+            ) latest ON latest.id = v.id
+            """,
+            (snapshot_date,),
+        ).fetchall()
     if not context and not values:
         return None
     base = {}
@@ -276,6 +300,10 @@ def get_current_account_summary(conn: sqlite3.Connection) -> dict | None:
         + snap["overseas_total"]
     )
     return snap
+
+
+def get_current_account_summary(conn: sqlite3.Connection) -> dict | None:
+    return get_account_summary(conn)
 
 
 def build_account_items(snap: dict) -> list[dict]:

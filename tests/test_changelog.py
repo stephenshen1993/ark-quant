@@ -7,12 +7,14 @@ from pathlib import Path
 
 CHANGELOG_JSON = Path(__file__).resolve().parents[1] / "app" / "static" / "changelog.json"
 CHANGELOG_DOC = Path(__file__).resolve().parents[1] / "docs" / "agents" / "changelog.md"
+INDEX_HTML = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
 
 
 class TestChangelogData(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.entries = json.loads(CHANGELOG_JSON.read_text(encoding="utf-8"))
+        cls.html = INDEX_HTML.read_text(encoding="utf-8")
 
     def test_changelog_is_a_static_visible_field_list(self):
         self.assertIsInstance(self.entries, list)
@@ -71,6 +73,16 @@ class TestChangelogData(unittest.TestCase):
         self.assertIn("git log", text)
         self.assertIn("不进入 SQLite", text)
         self.assertIn("不得出现追溯编号", text)
+
+    def test_changelog_keeps_editorial_semantics_and_inline_retry(self):
+        self.assertEqual(self.html.count('class="changelog-title"'), 1)
+        self.assertIn('class="changelog-date-title"', self.html)
+        self.assertIn('class="changelog-entry-grid"', self.html)
+        self.assertIn('class="changelog-entry-title"', self.html)
+        self.assertIn("SYSTEM / CHANGELOG", self.html)
+        self.assertIn('@click="load()"', self.html)
+        self.assertIn("this.loadError = ''", self.html)
+        self.assertNotIn("暂无更新", self.html)
 
 
 if __name__ == "__main__":

@@ -30,7 +30,12 @@ def generate_complete_plan(
     size_cb_orders: Callable[..., dict],
     size_stock_orders: Callable[..., dict],
 ) -> dict:
-    plan_date, account, market_temperature, fund_transfer = prepare_complete_plan_generation()
+    plan_date = plan_service.current_plan_date()
+    running_generation = plan_lifecycle.get_running_plan_status(plan_date)
+    if running_generation is not None:
+        raise _generation_in_progress_error(plan_date, running_generation)
+
+    plan_date, account, market_temperature, fund_transfer = prepare_complete_plan_generation(plan_date)
     plan_id = plan_lifecycle.new_plan_id(plan_date)
     failed_stage = "cb_orders"
     plan = plan_service.build_generated_plan_response(
@@ -43,7 +48,9 @@ def generate_complete_plan(
         cb_result=None,
         stock_result=None,
     )
-    plan_lifecycle.start(plan_id, plan_date, plan)
+    if not plan_lifecycle.start(plan_id, plan_date, plan):
+        running_generation = plan_lifecycle.get_running_plan_status(plan_date)
+        raise _generation_in_progress_error(plan_date, running_generation)
 
     try:
         _, deltas, _ = plan_service.fund_transfer_compatibility(fund_transfer)
@@ -96,8 +103,25 @@ def generate_complete_plan(
         raise plan_service.PlanServiceError(status_code, {**error, "plan_id": plan_id}) from exc
 
 
-def prepare_complete_plan_generation() -> tuple[str, dict, object, dict]:
-    plan_date = plan_service.current_plan_date()
+def _generation_in_progress_error(plan_date: str, generation: dict | None) -> plan_service.PlanServiceError:
+    return plan_service.PlanServiceError(
+        409,
+        {
+            "stage": "generation",
+            "code": "PLAN_GENERATION_IN_PROGRESS",
+            "message": "当前计划日已有生成正在进行，请等待完成后刷新状态。",
+            "plan_date": plan_date,
+            "generation": {
+                "plan_id": generation.get("plan_id") if generation else None,
+                "plan_date": plan_date,
+                "status": plan_lifecycle.RUNNING,
+            },
+        },
+    )
+
+
+def prepare_complete_plan_generation(plan_date: str | None = None) -> tuple[str, dict, object, dict]:
+    plan_date = plan_date or plan_service.current_plan_date()
     account = db.get_current_account_summary()
     account_errors = plan_service.validate_account_inputs(
         plan_date,

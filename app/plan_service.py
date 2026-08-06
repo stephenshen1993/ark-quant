@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from app.account_read_model import build_account_read_model
 from app import plan_lifecycle
+from app.plan_execution_read_model import build_execution_read_model
 from datasource import db
 from datasource.youzhiyouxing import TemperatureFetchError, get_or_fetch_market_temperature
 from portfolio_rebalance import PlanValidationError, build_fund_transfer_plan
@@ -23,6 +24,52 @@ def build_plan_context(refresh_temperature: bool = False) -> dict:
     return {
         "plan_date": market_temperature.updated_at[:10],
         "market_temperature": market_temperature.to_dict(),
+    }
+
+
+def build_plan_readiness() -> dict:
+    market_temperature = _market_temperature(refresh=False)
+    plan_date = market_temperature.updated_at[:10]
+    input_end = account_transfer_window_end(plan_date)
+    account = db.get_current_account_summary()
+    errors = validate_account_inputs(
+        plan_date,
+        account,
+        input_end,
+        include_overseas=True,
+    )
+    account_facts = (build_account_read_model(account or {}) or {}).get("accounts", [])
+    errors_by_account = {
+        error["account_id"]: error
+        for error in errors
+        if error.get("account_id")
+    }
+    accounts = []
+    for fact in account_facts:
+        error = errors_by_account.get(fact["id"])
+        if account is None:
+            fact_status = "missing"
+            message = "缺少账户快照"
+        elif error:
+            fact_status = "missing" if error.get("date") is None else "outside_window"
+            message = error["message"]
+        else:
+            fact_status = "ready"
+            message = None
+        accounts.append({
+            "account_id": fact["id"],
+            "account_name": fact["name"],
+            "portfolio_id": fact["portfolio_id"],
+            "snapshot_date": fact["snapshot_date"],
+            "status": fact_status,
+            "message": message,
+        })
+    return {
+        "plan_date": plan_date,
+        "input_window": {"start": plan_date, "end": input_end},
+        "status": "needs_facts" if errors else "ready",
+        "accounts": accounts,
+        "errors": errors,
     }
 
 
@@ -138,6 +185,21 @@ def build_current_plan(refresh_temperature: bool = False) -> dict:
         base = account.get(f"{cash_key}_available_cash", account.get(f"{cash_key}_cash", 0))
         return summarize_order_cash(base, delta, orders)
 
+    cb_section = {
+        "data_date": cb_data_date,
+        "trade_date": cb_trade_date,
+        "orders": cb_orders,
+        "rankings": cb_rankings,
+        "summary": order_summary(cb_orders, "bond"),
+    }
+    stock_section = {
+        "data_date": stock_data_date,
+        "trade_date": stock_trade_date,
+        "orders": stock_orders,
+        "rankings": stock_rankings,
+        "summary": order_summary(stock_orders, "stock"),
+    }
+
     return {
         "generated_at": datetime.now().isoformat(),
         "plan_date": plan_date,
@@ -151,20 +213,15 @@ def build_current_plan(refresh_temperature: bool = False) -> dict:
         "transfer_deltas": deltas,
         "fund_transfer": fund_transfer,
         "execution_sequence": execution_sequence(cb_orders, stock_orders, transfer_steps),
-        "cb": {
-            "data_date": cb_data_date,
-            "trade_date": cb_trade_date,
-            "orders": cb_orders,
-            "rankings": cb_rankings,
-            "summary": order_summary(cb_orders, "bond"),
-        },
-        "stock": {
-            "data_date": stock_data_date,
-            "trade_date": stock_trade_date,
-            "orders": stock_orders,
-            "rankings": stock_rankings,
-            "summary": order_summary(stock_orders, "stock"),
-        },
+        "execution_read_model": build_execution_read_model(
+            plan_date=plan_date,
+            account_read_model=account_read_model,
+            fund_transfer=fund_transfer,
+            cb=cb_section,
+            stock=stock_section,
+        ),
+        "cb": cb_section,
+        "stock": stock_section,
     }
 
 
@@ -231,6 +288,20 @@ def build_generated_plan_response(
     cb_orders = (cb_result or {}).get("orders", [])
     stock_orders = (stock_result or {}).get("orders", [])
     account_read_model = build_account_read_model(account)
+    cb_section = {
+        "data_date": plan_date,
+        "trade_date": trade_date_for("cb", plan_date),
+        "orders": cb_orders,
+        "rankings": [],
+        "summary": (cb_result or {}).get("summary"),
+    }
+    stock_section = {
+        "data_date": plan_date,
+        "trade_date": trade_date_for("stock", plan_date),
+        "orders": stock_orders,
+        "rankings": [],
+        "summary": (stock_result or {}).get("summary"),
+    }
     return {
         "generated_at": datetime.now().isoformat(),
         "plan_date": plan_date,
@@ -244,26 +315,21 @@ def build_generated_plan_response(
         "transfer_deltas": deltas,
         "fund_transfer": fund_transfer,
         "execution_sequence": execution_sequence(cb_orders, stock_orders, transfer_steps),
+        "execution_read_model": build_execution_read_model(
+            plan_date=plan_date,
+            account_read_model=account_read_model,
+            fund_transfer=fund_transfer,
+            cb=cb_section,
+            stock=stock_section,
+        ),
         "generation": {
             "plan_id": plan_id,
             "plan_date": plan_date,
             "status": status,
             "stages": plan_lifecycle.generation_stages(),
         },
-        "cb": {
-            "data_date": plan_date,
-            "trade_date": trade_date_for("cb", plan_date),
-            "orders": cb_orders,
-            "rankings": [],
-            "summary": (cb_result or {}).get("summary"),
-        },
-        "stock": {
-            "data_date": plan_date,
-            "trade_date": trade_date_for("stock", plan_date),
-            "orders": stock_orders,
-            "rankings": [],
-            "summary": (stock_result or {}).get("summary"),
-        },
+        "cb": cb_section,
+        "stock": stock_section,
     }
 
 

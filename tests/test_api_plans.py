@@ -69,6 +69,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("transfer_steps", data)
         self.assertIn("execution_sequence", data)
+        self.assertIn("execution_read_model", data)
         self.assertIn("cb", data)
         self.assertIn("stock", data)
         self.assertGreater(len(data["cb"]["orders"]), 0)
@@ -95,6 +96,33 @@ class TestPlansApi(unittest.TestCase):
             {item["id"] for item in read_model["strategies"]},
             {"smallcap_stock", "multifactor_convertible_bond"},
         )
+        funding_plan = data["execution_read_model"]["funding_plan"]
+        self.assertIsNotNone(funding_plan)
+        self.assertEqual(
+            [group["availability"] for group in funding_plan["groups"]],
+            ["same_day", "next_trading_day"],
+        )
+        account_plans = data["execution_read_model"]["account_trading_plans"]
+        self.assertEqual(
+            [plan["account_id"] for plan in account_plans],
+            ["stock", "cb"],
+        )
+        self.assertEqual(
+            [plan["account_name"] for plan in account_plans],
+            ["广发账户", "华泰账户"],
+        )
+        self.assertEqual(
+            [plan["funding"]["state"] for plan in account_plans],
+            ["needs_same_day_transfer", "blocked"],
+        )
+        self.assertEqual(
+            account_plans[0]["cash"]["expected_ending"],
+            69511.0,
+        )
+        self.assertEqual(
+            account_plans[1]["cash"]["expected_ending"],
+            -230196.37,
+        )
 
     def test_plan_service_builds_current_plan_without_http_route(self):
         from app.plan_service import build_current_plan
@@ -107,6 +135,103 @@ class TestPlansApi(unittest.TestCase):
         self.assertGreater(len(data["cb"]["orders"]), 0)
         self.assertGreater(len(data["stock"]["orders"]), 0)
         self.assertIn("account_read_model", data)
+
+    def test_plan_readiness_reports_five_ready_account_facts(self):
+        from app.plan_service import build_plan_readiness
+
+        with patch("app.plan_service.datetime") as clock:
+            clock.now.return_value.date.return_value.isoformat.return_value = "2026-06-29"
+            readiness = build_plan_readiness()
+
+        self.assertEqual(readiness["plan_date"], "2026-06-29")
+        self.assertEqual(
+            readiness["input_window"],
+            {"start": "2026-06-29", "end": "2026-06-30"},
+        )
+        self.assertEqual(readiness["status"], "ready")
+        self.assertEqual(
+            [item["account_id"] for item in readiness["accounts"]],
+            ["stock", "cb", "cash", "overseas", "changqian"],
+        )
+        self.assertEqual(
+            {item["status"] for item in readiness["accounts"]},
+            {"ready"},
+        )
+        self.assertEqual(readiness["errors"], [])
+
+    def test_plan_readiness_route_names_a_missing_overseas_account(self):
+        db._TEST_CONN.execute(
+            "DELETE FROM account_value_snapshots WHERE account_id='overseas'"
+        )
+        db._TEST_CONN.commit()
+
+        with patch("app.plan_service.datetime") as clock:
+            clock.now.return_value.date.return_value.isoformat.return_value = "2026-06-29"
+            response = self.client.get("/api/plan/readiness")
+
+        self.assertEqual(response.status_code, 200)
+        readiness = response.json()
+        self.assertEqual(readiness["status"], "needs_facts")
+        overseas = next(
+            item for item in readiness["accounts"]
+            if item["account_id"] == "overseas"
+        )
+        self.assertEqual(overseas["account_name"], "海外长钱投顾组合")
+        self.assertEqual(overseas["portfolio_id"], "B")
+        self.assertEqual(overseas["status"], "missing")
+        self.assertEqual(overseas["snapshot_date"], None)
+        self.assertEqual(
+            {error.get("account_id") for error in readiness["errors"]},
+            {"overseas"},
+        )
+
+    def test_plan_readiness_distinguishes_an_account_outside_the_input_window(self):
+        db._TEST_CONN.execute(
+            "DELETE FROM account_value_snapshots WHERE account_id='overseas'"
+        )
+        db._TEST_CONN.commit()
+        db.insert_account_value_snapshot("overseas", "2026-06-27", 93030)
+
+        with patch("app.plan_service.datetime") as clock:
+            clock.now.return_value.date.return_value.isoformat.return_value = "2026-06-29"
+            response = self.client.get("/api/plan/readiness")
+
+        self.assertEqual(response.status_code, 200)
+        overseas = next(
+            item for item in response.json()["accounts"]
+            if item["account_id"] == "overseas"
+        )
+        self.assertEqual(overseas["status"], "outside_window")
+        self.assertEqual(overseas["snapshot_date"], "2026-06-27")
+
+    def test_plan_readiness_returns_five_missing_facts_without_an_account_summary(self):
+        db._TEST_CONN.execute("DELETE FROM account_contexts")
+        db._TEST_CONN.execute("DELETE FROM account_value_snapshots")
+        db._TEST_CONN.commit()
+
+        response = self.client.get("/api/plan/readiness")
+
+        self.assertEqual(response.status_code, 200)
+        readiness = response.json()
+        self.assertEqual(readiness["status"], "needs_facts")
+        self.assertEqual(len(readiness["accounts"]), 5)
+        self.assertEqual({item["status"] for item in readiness["accounts"]}, {"missing"})
+
+    def test_plan_readiness_returns_a_structured_service_error(self):
+        with patch(
+            "app.routers.plans.build_plan_readiness",
+            side_effect=RuntimeError("database offline"),
+        ):
+            response = self.client.get("/api/plan/readiness")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json()["detail"],
+            {
+                "code": "PLAN_READINESS_UNAVAILABLE",
+                "message": "无法读取计划输入就绪度，请稍后重试。",
+            },
+        )
 
     def test_full_plan_uses_the_same_structured_fund_transfer_result(self):
         r = self.client.get("/api/plan")
@@ -174,6 +299,41 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual([phase["phase"] for phase in data["execution_sequence"]], ["sell", "transfer", "buy"])
         cb_size.assert_called_once()
         stock_size.assert_called_once()
+
+    def test_generate_plan_rejects_another_running_generation_for_the_same_plan_date(self):
+        running_id = "plan-2026-06-29-running"
+        db.insert_generated_plan(
+            running_id,
+            "2026-06-29",
+            "running",
+            {
+                "plan_date": "2026-06-29",
+                "generation": {"plan_id": running_id, "status": "running"},
+            },
+        )
+
+        with patch("app.order_sizing.size_cb_orders") as cb_size, patch(
+            "app.order_sizing.size_stock_orders"
+        ) as stock_size:
+            response = self.client.post("/api/plan/generate")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.json()["detail"],
+            {
+                "stage": "generation",
+                "code": "PLAN_GENERATION_IN_PROGRESS",
+                "message": "当前计划日已有生成正在进行，请等待完成后刷新状态。",
+                "plan_date": "2026-06-29",
+                "generation": {
+                    "plan_id": running_id,
+                    "plan_date": "2026-06-29",
+                    "status": "running",
+                },
+            },
+        )
+        cb_size.assert_not_called()
+        stock_size.assert_not_called()
 
     def test_generate_plan_records_failed_plan_when_order_stage_fails(self):
         cb_orders = [{
@@ -266,6 +426,42 @@ class TestPlansApi(unittest.TestCase):
         r = self.client.get("/api/plan/generated/plan-2026-06-29-missing")
 
         self.assertEqual(r.status_code, 404)
+
+    def test_get_latest_generated_plan_exposes_only_lifecycle_metadata(self):
+        plan_id = "plan-2026-06-29-deadbeef"
+        db.insert_generated_plan(
+            plan_id,
+            "2026-06-29",
+            "complete",
+            {"plan_date": "2026-06-29", "orders": [{"action": "BUY"}]},
+        )
+
+        response = self.client.get("/api/plan/generated")
+
+        self.assertEqual(response.status_code, 200)
+        generation = response.json()["generation"]
+        self.assertEqual(generation["plan_id"], plan_id)
+        self.assertEqual(generation["status"], "complete")
+        self.assertEqual(generation["plan_date"], "2026-06-29")
+        self.assertIsNone(generation["error"])
+        self.assertNotIn("plan", generation)
+        self.assertNotIn("orders", generation)
+
+    def test_latest_generated_plan_returns_a_structured_service_error(self):
+        with patch(
+            "app.routers.plans.plan_lifecycle.get_latest_plan_status",
+            side_effect=RuntimeError("database offline"),
+        ):
+            response = self.client.get("/api/plan/generated")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json()["detail"],
+            {
+                "code": "PLAN_LIFECYCLE_UNAVAILABLE",
+                "message": "无法读取当前计划生成状态，请稍后重试。",
+            },
+        )
 
     def test_account_changes_mark_generated_plans_stale(self):
         with patch(
