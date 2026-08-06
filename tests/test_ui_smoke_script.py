@@ -93,6 +93,41 @@ class TestUiSmokeScript(unittest.TestCase):
                 "visible page text",
             )
 
+    def test_browser_cli_failure_still_writes_structured_diagnostics(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            fake_cli = temp_path / "playwright-cli"
+            fake_cli.write_text(
+                "#!/bin/sh\necho 'browser command failed' >&2\nexit 3\n",
+                encoding="utf-8",
+            )
+            fake_cli.chmod(0o755)
+            output_dir = temp_path / "artifacts"
+            env = {**os.environ, "PATH": f"{temp_path}:{os.environ.get('PATH', '')}"}
+
+            result = subprocess.run(
+                [
+                    str(SCRIPT),
+                    "--base-url",
+                    "http://browser-boundary.invalid",
+                    "--viewport",
+                    "wide",
+                    "--output-dir",
+                    str(output_dir),
+                ],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            report = json.loads((output_dir / "wide-failure.json").read_text(encoding="utf-8"))
+            self.assertEqual(report["check"], "browser.cli")
+            self.assertIn("browser command failed", report["error"])
+            self.assertGreaterEqual(len(report["differences"]), 1)
+            self.assertEqual(report["differences"][0]["expected"], "exit code 0")
+            self.assertTrue((output_dir / "wide-failure.txt").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

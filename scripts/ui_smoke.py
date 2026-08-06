@@ -302,9 +302,17 @@ def run_viewport(
         failure_text_path,
         expected_plan_date,
     )
-    run_cli(session, ["open", "about:blank"])
-    raw = run_cli(session, ["--raw", "run-code", code])
-    result = parse_json_result(raw)
+    try:
+        run_cli(session, ["open", "about:blank"])
+        raw = run_cli(session, ["--raw", "run-code", code])
+        result = parse_json_result(raw)
+    except (SmokeFailure, json.JSONDecodeError) as exc:
+        result = collect_cli_failure(
+            session,
+            viewport_name=viewport_name,
+            error=exc,
+            failure_screenshot_path=failure_screenshot_path,
+        )
     if result.get("ok") and (result.get("consoleErrors") or result.get("pageErrors")):
         result = {
             **result,
@@ -324,6 +332,55 @@ def run_viewport(
             f"text={result.get('failureText')}; report={result.get('failureReport')}"
         )
     return result
+
+
+def collect_cli_failure(
+    session: str,
+    *,
+    viewport_name: str,
+    error: Exception,
+    failure_screenshot_path: Path,
+) -> dict:
+    diagnostic = {"bodyText": "", "consoleErrors": [], "pageErrors": []}
+    diagnostic_code = textwrap.dedent(
+        f"""
+        async page => {{
+          const bodyText = await page.locator('body').innerText().catch(() => '');
+          const pageErrors = [];
+          await page.screenshot({{
+            path: {json.dumps(str(failure_screenshot_path))},
+            fullPage: true,
+          }}).catch(screenshotError => pageErrors.push(String(screenshotError)));
+          return {{ bodyText, consoleErrors: [], pageErrors }};
+        }}
+        """
+    ).strip()
+    try:
+        diagnostic = parse_json_result(
+            run_cli(session, ["--raw", "run-code", diagnostic_code])
+        )
+    except (SmokeFailure, json.JSONDecodeError) as diagnostic_error:
+        diagnostic["pageErrors"] = [str(diagnostic_error)]
+
+    return {
+        "ok": False,
+        "visualGate": VISUAL_GATE_NAME,
+        "viewport": viewport_name,
+        "check": "browser.cli",
+        "error": str(error),
+        "differences": [
+            {
+                "metric": "browserCommand",
+                "expected": "exit code 0",
+                "actual": str(error),
+                "tolerance": 0,
+            }
+        ],
+        "failureScreenshot": str(failure_screenshot_path),
+        "bodyText": diagnostic.get("bodyText", ""),
+        "consoleErrors": diagnostic.get("consoleErrors", []),
+        "pageErrors": diagnostic.get("pageErrors", []),
+    }
 
 
 def write_failure_artifacts(
@@ -492,8 +549,8 @@ def browser_check_code(
             await page.setViewportSize({json.dumps(viewport)});
             await page.goto({json.dumps(base_url)}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
             await page.waitForFunction(() => window.Alpine, {{ timeout: 10000 }});
-            const navigation = page.getByRole('navigation');
-            const main = page.getByRole('main');
+            const navigation = page.getByRole('navigation', {{ name: '主导航' }});
+            const main = page.getByRole('main', {{ name: '工作台内容' }});
             const accountNav = navigation.getByRole('button', {{ name: '账户', exact: true }});
             const planNav = navigation.getByRole('button', {{ name: '计划', exact: true }});
             const changelogNav = navigation.getByRole('button', {{ name: '更新日志', exact: true }});
@@ -542,16 +599,18 @@ def browser_check_code(
             }}
             assertNoDifferences('navigation', '全站导航顺序或禁用状态异常', navigationDifferences);
 
-            const accountHeading = main.getByRole('heading', {{ level: 1 }});
+            const accountPage = main.getByRole('region', {{ name: '账户工作台' }});
+            const accountHeading = accountPage.getByRole('heading', {{ name: '账户', level: 1 }});
             await accountHeading.waitFor({{ state: 'visible', timeout: 10000 }});
-            const accountDate = main.locator('input[type="date"]').first();
+            const accountDate = accountPage.getByLabel('账户事实日', {{ exact: true }});
             await accountDate.fill({json.dumps(expected_plan_date)});
-            const accountLedger = main.getByRole('table').first();
-            await accountLedger.getByRole('row').first().waitFor({{ state: 'visible', timeout: 10000 }});
-            await accountLedger.getByRole('row').first().click();
-            await main.getByRole('table').nth(1).waitFor({{ state: 'visible', timeout: 10000 }});
-            const accountShell = accountHeading.locator('xpath=../../..');
-            const accountTotal = main.locator('section').first();
+            const accountLedger = accountPage.getByRole('table', {{ name: '账户明细' }});
+            await page.waitForFunction(
+              () => document.querySelector('[aria-label="账户明细"]')?.rows.length > 0,
+              {{ timeout: 10000 }},
+            );
+            const accountTotal = accountPage.getByRole('region', {{ name: '账户资产总览' }});
+            const accountShell = accountPage.getByRole('region', {{ name: '账户内容区域' }});
             const [accountShellBox, accountTotalBox, accountLedgerBox] = await Promise.all([
               accountShell.boundingBox(),
               accountTotal.boundingBox(),
@@ -595,9 +654,16 @@ def browser_check_code(
             assertNoDifferences('account.behavior', '账户页关键可见行为异常', accountDifferences);
             const accountIntegrity = await assertPageIntegrity('account', main);
             await page.screenshot({{ path: {json.dumps(account_screenshot)}, fullPage: true }});
+            await page.reload({{ waitUntil: 'domcontentloaded', timeout: 15000 }});
+            await assertActivePage('account.reload', accountNav, '');
+            await planNav.click();
+            await assertActivePage('plan.fromAccount', planNav, '#trading');
+            await page.goBack();
+            await assertActivePage('account.back', accountNav, '');
+
             await page.goto({json.dumps(base_url + '#changelog')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
             await assertActivePage('changelog.direct', changelogNav, '#changelog');
-            await main.getByRole('heading', {{ level: 1 }}).waitFor({{ state: 'visible', timeout: 10000 }});
+            await main.getByRole('heading', {{ name: '更新日志', level: 1 }}).waitFor({{ state: 'visible', timeout: 10000 }});
             await page.reload({{ waitUntil: 'domcontentloaded', timeout: 15000 }});
             await assertActivePage('changelog.reload', changelogNav, '#changelog');
             await accountNav.click();
@@ -605,11 +671,18 @@ def browser_check_code(
             await page.goBack();
             await assertActivePage('changelog.back', changelogNav, '#changelog');
 
-            await planNav.click();
-            await assertActivePage('plan.fromChangelog', planNav, '#trading');
-            const planHeading = main.getByRole('heading', {{ level: 1 }});
+            await page.goto({json.dumps(base_url + '#trading')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
+            await assertActivePage('plan.direct', planNav, '#trading');
+            await page.reload({{ waitUntil: 'domcontentloaded', timeout: 15000 }});
+            await assertActivePage('plan.reload', planNav, '#trading');
+            await accountNav.click();
+            await assertActivePage('account.fromPlan', accountNav, '');
+            await page.goBack();
+            await assertActivePage('plan.back', planNav, '#trading');
+            const planPage = main.getByRole('region', {{ name: '计划工作台' }});
+            const planHeading = planPage.getByRole('heading', {{ name: '计划', level: 1 }});
             await planHeading.waitFor({{ state: 'visible', timeout: 10000 }});
-            const planDetails = main.locator('details').first();
+            const planDetails = planPage.getByRole('group', {{ name: '计划条件', exact: true }});
             const planSummary = planDetails.locator('summary');
             await planSummary.waitFor({{ state: 'visible', timeout: 10000 }});
             const wasOpen = await planDetails.evaluate(element => element.open);
@@ -624,11 +697,10 @@ def browser_check_code(
             const toggledOpen = await planDetails.evaluate(element => element.open);
             await page.keyboard.press('Enter');
             const restoredOpen = await planDetails.evaluate(element => element.open);
-            const planShell = planHeading.locator('xpath=../../..');
-            const planShellBox = await planShell.boundingBox();
+            const planShellBox = await planPage.boundingBox();
             const planMetrics = {{
               shellWidth: planShellBox?.width || 0,
-              visibleDetails: await main.locator('details:visible').count(),
+              visibleDetails: await planPage.getByRole('group').count(),
               wasOpen,
               toggledOpen,
               restoredOpen,
@@ -669,12 +741,14 @@ def browser_check_code(
 
             await changelogNav.click();
             await assertActivePage('changelog.fromPlan', changelogNav, '#changelog');
-            const changelogHeading = main.getByRole('heading', {{ level: 1 }});
-            const dateHeadings = main.getByRole('heading', {{ level: 2 }});
-            const entryHeadings = main.getByRole('heading', {{ level: 3 }});
-            const articles = main.locator('article');
+            const changelogShell = main.getByRole('region', {{ name: '更新日志内容' }});
+            const changelogHeading = changelogShell.getByRole('heading', {{ name: '更新日志', level: 1 }});
+            const dateHeadings = changelogShell.getByRole('heading', {{ level: 2 }});
+            const entryHeadings = changelogShell.getByRole('heading', {{ level: 3 }});
+            const articles = changelogShell.getByRole('article');
             await articles.first().waitFor({{ state: 'visible', timeout: 10000 }});
-            const firstArticleContract = await articles.first().evaluate(article => ({{
+            const [firstArticle] = await articles.all();
+            const firstArticleContract = await firstArticle.evaluate(article => ({{
               hasDatedTime: Boolean(article.querySelector('time[datetime]')),
               hasHeading: Boolean(article.querySelector('h3')?.innerText.trim()),
               hasBody: Boolean(article.querySelector('p')?.innerText.trim()),
@@ -714,7 +788,6 @@ def browser_check_code(
             await main.evaluate(element => element.scrollTo({{ top: 0, left: 0 }}));
             await page.evaluate(() => window.scrollTo({{ top: 0, left: 0 }}));
             await page.waitForTimeout(100);
-            const changelogShell = changelogHeading.locator('xpath=../..');
             const changelogBox = await changelogShell.boundingBox();
             if (!changelogBox || changelogBox.width <= 0 || changelogBox.height <= 0) {{
               fail(
@@ -723,33 +796,39 @@ def browser_check_code(
                 [difference('changelog.boundingBox', {{ width: '>0', height: '>0' }}, changelogBox)],
               );
             }}
-            const changelogHeader = changelogHeading.locator('xpath=..');
-            const kickerLocator = changelogHeading.locator('xpath=preceding-sibling::*[1]');
-            const subtitleLocator = changelogHeading.locator('xpath=following-sibling::p[1]');
-            const firstDateHeading = dateHeadings.first();
-            const dateHeaderLocator = firstDateHeading.locator('xpath=..');
-            const groupsLocator = firstDateHeading.locator('xpath=../../..');
-            const firstArticle = articles.first();
-            const timeLocator = firstArticle.locator('time').first();
-            const metaLocator = timeLocator.locator('xpath=..');
-            const typeLocator = metaLocator.locator(':scope > div').first();
+            const changelogHeader = changelogShell.getByRole('group', {{ name: '更新日志页头', exact: true }});
+            const kickerLocator = changelogShell.locator('[data-visual-metric="kicker"]');
+            const subtitleLocator = changelogShell.locator('[data-visual-metric="subtitle"]');
+            const [firstDateHeading] = await dateHeadings.all();
+            const [dateHeaderLocator] = await changelogShell.locator('[data-visual-metric="date-header"]').all();
+            const groupsLocator = changelogShell.locator('[data-visual-metric="groups"]');
+            const timeLocator = firstArticle.locator('[data-visual-metric="time"]');
+            const metaLocator = firstArticle.locator('[data-visual-metric="entry-meta"]');
+            const typeLocator = firstArticle.locator('[data-visual-metric="type"]');
             const entryTitleLocator = firstArticle.getByRole('heading', {{ level: 3 }});
-            const entryMainLocator = entryTitleLocator.locator('xpath=..');
-            const readingElements = {{
+            const entryMainLocator = firstArticle.locator('[data-visual-metric="entry-main"]');
+            const [firstWeekday] = await changelogShell.locator('[data-visual-metric="weekday"]').all();
+            const visualElements = {{
               body: await page.locator('body').elementHandle(),
               nav: await navigation.elementHandle(),
+              activeNav: await changelogNav.elementHandle(),
               main: await main.elementHandle(),
               shell: await changelogShell.elementHandle(),
               kicker: await kickerLocator.elementHandle(),
               title: await changelogHeading.elementHandle(),
+              subtitle: await subtitleLocator.elementHandle(),
               header: await changelogHeader.elementHandle(),
               groups: await groupsLocator.elementHandle(),
               dateHeader: await dateHeaderLocator.elementHandle(),
+              date: await firstDateHeading.elementHandle(),
+              weekday: await firstWeekday.elementHandle(),
               entryMeta: await metaLocator.elementHandle(),
               entryMain: await entryMainLocator.elementHandle(),
               entryTitle: await entryTitleLocator.elementHandle(),
+              entryBody: await firstArticle.locator('[data-visual-metric="entry-body"]').elementHandle(),
               time: await timeLocator.elementHandle(),
-              type: await typeLocator.elementHandle(),
+              label: await typeLocator.elementHandle(),
+              dot: await firstArticle.locator('[data-visual-metric="type-dot"]').elementHandle(),
             }};
             const readingMetrics = await page.evaluate(elements => {{
               const bodyStyle = window.getComputedStyle(elements.body);
@@ -773,7 +852,7 @@ def browser_check_code(
               const entryMainStyle = window.getComputedStyle(entryMainElement);
               const entryTitle = elements.entryTitle?.getBoundingClientRect();
               const time = elements.time?.getBoundingClientRect();
-              const type = elements.type?.getBoundingClientRect();
+              const type = elements.label?.getBoundingClientRect();
               return {{
                 navWidth: nav?.width || 0,
                 navHeight: nav?.height || 0,
@@ -811,32 +890,16 @@ def browser_check_code(
                 entryMainBorderLeftWidth: Number.parseFloat(entryMainStyle.borderLeftWidth),
                 bodyFlexDirection: bodyStyle.flexDirection,
               }};
-            }}, readingElements);
+            }}, visualElements);
             const typeColors = await articles.evaluateAll(articleElements => {{
               const colors = {{}};
               articleElements.forEach(article => {{
-                const label = article.querySelector('time')?.nextElementSibling;
+                const label = article.querySelector('[data-visual-metric="type"]');
                 const name = label?.innerText.trim();
                 if (name && !colors[name]) colors[name] = window.getComputedStyle(label).color;
               }});
               return colors;
             }});
-            const styleElements = {{
-              nav: await navigation.elementHandle(),
-              activeNav: await changelogNav.elementHandle(),
-              dateHeader: await dateHeaderLocator.elementHandle(),
-              kicker: await kickerLocator.elementHandle(),
-              title: await changelogHeading.elementHandle(),
-              subtitle: await subtitleLocator.elementHandle(),
-              date: await firstDateHeading.elementHandle(),
-              weekday: await firstDateHeading.locator('xpath=following-sibling::*[1]').elementHandle(),
-              entryTitle: await entryTitleLocator.elementHandle(),
-              entryBody: await entryTitleLocator.locator('xpath=following-sibling::p[1]').elementHandle(),
-              time: await timeLocator.elementHandle(),
-              label: await typeLocator.elementHandle(),
-              dot: await typeLocator.locator('span').first().elementHandle(),
-              main: await main.elementHandle(),
-            }};
             const styleMetrics = await page.evaluate(({{ elements, typeColors }}) => {{
               const styleOf = element => {{
                 const style = window.getComputedStyle(element);
@@ -872,8 +935,14 @@ def browser_check_code(
               return {{
                 canvas: styleOf(appMain).backgroundColor,
                 surface: styleOf(nav).backgroundColor,
-                navBorder: styleOf(nav).borderRightColor,
-                navBorderWidth: Number.parseFloat(window.getComputedStyle(nav).borderRightWidth),
+                navBorder: {json.dumps(viewport_name)} === 'narrow'
+                  ? styleOf(nav).borderBottomColor
+                  : styleOf(nav).borderRightColor,
+                navBorderWidth: Number.parseFloat(
+                  {json.dumps(viewport_name)} === 'narrow'
+                    ? window.getComputedStyle(nav).borderBottomWidth
+                    : window.getComputedStyle(nav).borderRightWidth
+                ),
                 ink: styleOf(title).color,
                 secondary: styleOf(subtitle).color,
                 tertiary: styleOf(weekday).color,
@@ -895,7 +964,7 @@ def browser_check_code(
                 appClientWidth: appMain?.clientWidth || 0,
                 appScrollWidth: appMain?.scrollWidth || 0,
               }};
-            }}, {{ elements: styleElements, typeColors }});
+            }}, {{ elements: visualElements, typeColors }});
             await accountNav.focus();
             await page.keyboard.press('Tab');
             const focusMetrics = await page.evaluate(() => {{
@@ -917,6 +986,42 @@ def browser_check_code(
             const collectNumericDrift = (actual, expected, tolerance = 2) => Object.entries(expected)
               .filter(([key, value]) => Math.abs(actual[key] - value) > tolerance)
               .map(([key, value]) => difference(key, value, actual[key], tolerance));
+            const expectedStyleMetrics = {json.dumps(AIHOT_CHANGELOG_STYLE_METRICS)};
+            if ({json.dumps(viewport_name)} === 'narrow') {{
+              expectedStyleMetrics.subtitle = {{ fontSize: 15, lineHeight: 27.2, fontWeight: 400 }};
+              expectedStyleMetrics.entryTitle = {{ fontSize: 19, lineHeight: 25.2, fontWeight: 650 }};
+              expectedStyleMetrics.body = {{ fontSize: 15, lineHeight: 25.5, fontWeight: 400 }};
+            }}
+            const styleDrift = [];
+            Object.entries(expectedStyleMetrics).forEach(([role, expected]) => {{
+              const actual = styleMetrics[role];
+              if (expected && typeof expected === 'object') {{
+                Object.entries(expected).forEach(([property, expectedValue]) => {{
+                  if (Math.abs(actual[property] - expectedValue) > 0.2) {{
+                    styleDrift.push(difference(
+                      role + '.' + property,
+                      expectedValue,
+                      actual[property],
+                      0.2,
+                    ));
+                  }}
+                }});
+              }} else if (typeof expected === 'number') {{
+                if (Math.abs(actual - expected) > 0.2) {{
+                  styleDrift.push(difference(role, expected, actual, 0.2));
+                }}
+              }} else if (actual !== expected) {{
+                styleDrift.push(difference(role, expected, actual));
+              }}
+            }});
+            if (!styleMetrics.timeUsesMonospace) {{
+              styleDrift.push(difference('time.fontFamily', 'monospace', styleMetrics.time.fontFamily));
+            }}
+            assertNoDifferences(
+              'changelog.' + {json.dumps(viewport_name)} + '.computedStyle',
+              '更新日志计算样式偏离',
+              styleDrift,
+            );
             if ({json.dumps(viewport_name)} === 'wide') {{
               const expectedStructure = {{
                 navWidth: {AIHOT_CHANGELOG_REFERENCE_METRICS["nav_width"]},
@@ -937,37 +1042,6 @@ def browser_check_code(
                 'changelog.wide.geometry',
                 '更新日志桌面结构锚点偏离',
                 structureDrift,
-              );
-              const expectedStyleMetrics = {json.dumps(AIHOT_CHANGELOG_STYLE_METRICS)};
-              const styleDrift = [];
-              Object.entries(expectedStyleMetrics).forEach(([role, expected]) => {{
-                const actual = styleMetrics[role];
-                if (expected && typeof expected === 'object') {{
-                  Object.entries(expected).forEach(([property, expectedValue]) => {{
-                    if (Math.abs(actual[property] - expectedValue) > 0.2) {{
-                      styleDrift.push(difference(
-                        role + '.' + property,
-                        expectedValue,
-                        actual[property],
-                        0.2,
-                      ));
-                    }}
-                  }});
-                }} else if (typeof expected === 'number') {{
-                  if (Math.abs(actual - expected) > 0.2) {{
-                    styleDrift.push(difference(role, expected, actual, 0.2));
-                  }}
-                }} else if (actual !== expected) {{
-                  styleDrift.push(difference(role, expected, actual));
-                }}
-              }});
-              if (!styleMetrics.timeUsesMonospace) {{
-                styleDrift.push(difference('time.fontFamily', 'monospace', styleMetrics.time.fontFamily));
-              }}
-              assertNoDifferences(
-                'changelog.wide.computedStyle',
-                '更新日志桌面计算样式偏离',
-                styleDrift,
               );
             }}
             if ({json.dumps(viewport_name)} === 'desktop') {{
@@ -1104,13 +1178,20 @@ def browser_check_code(
           }} catch (error) {{
             const bodyText = await page.locator('body').innerText().catch(() => '');
             await page.screenshot({{ path: {json.dumps(failure_screenshot)}, fullPage: true }}).catch(() => null);
+            const caughtDifferences = error.differences?.length
+              ? error.differences
+              : [difference(
+                  error.check || 'browser.execution',
+                  'check completed without exception',
+                  String(error),
+                )];
             return {{
               ok: false,
               visualGate: {json.dumps(VISUAL_GATE_NAME)},
               viewport: {json.dumps(viewport_name)},
               check: error.check || 'browser.execution',
               error: String(error),
-              differences: error.differences || [],
+              differences: caughtDifferences,
               failureScreenshot: {json.dumps(failure_screenshot)},
               failureText: {json.dumps(failure_text)},
               bodyText,

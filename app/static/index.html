@@ -540,6 +540,7 @@
 <!-- 侧边导航 -->
 <nav
   x-data
+  aria-label="主导航"
   class="app-nav flex flex-col gap-1 shrink-0">
   <div class="changelog-brand">
     <div class="changelog-brand-name">ARK</div>
@@ -605,14 +606,15 @@
 
 <!-- 主内容 -->
 <main
+  aria-label="工作台内容"
   class="app-main flex-1 overflow-auto"
   x-data
   @nav.window="setActivePage($event.detail)">
 
   <!-- 账户总览 -->
-  <div x-show="$store.page === 'account'" x-data="accountPage()" x-init="ensureLoaded($store.page)" x-effect="ensureLoaded($store.page)">
+  <div x-show="$store.page === 'account'" x-data="accountPage()" x-init="ensureLoaded($store.page)" x-effect="ensureLoaded($store.page)" role="region" aria-label="账户工作台">
 
-    <div class="workspace-shell workspace-shell-workbench">
+    <div role="region" aria-label="账户内容区域" class="workspace-shell workspace-shell-workbench">
       <!-- 标题栏 -->
       <div class="workspace-title-row flex justify-between gap-5">
         <div>
@@ -621,12 +623,12 @@
         </div>
         <label class="workspace-meta flex items-center gap-2">
           账户事实日
-          <input type="date" x-model="form.snapshot_date" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white">
+          <input type="date" aria-label="账户事实日" x-model="form.snapshot_date" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white">
         </label>
       </div>
 
       <!-- 总资产 -->
-      <section class="ark-panel account-total-card p-6 mb-5">
+      <section aria-label="账户资产总览" class="ark-panel account-total-card p-6 mb-5">
         <div class="flex items-baseline gap-3">
           <span class="text-sm text-gray-400">总资产</span>
           <span class="text-4xl font-semibold tracking-normal tabular-nums" x-text="fmtMoney(totalAssets())"></span>
@@ -635,7 +637,7 @@
       </section>
 
       <!-- 账户列表 -->
-      <table class="ark-panel account-ledger w-full table-fixed">
+      <table aria-label="账户明细" class="ark-panel account-ledger w-full table-fixed">
         <template x-for="acc in accounts" :key="acc.id">
           <tbody>
             <tr @click="acc.posType ? toggleExpand(acc.id) : null"
@@ -693,7 +695,7 @@
 
 <!-- 计划 -->
   <template x-if="$store.page === 'trading'">
-  <div x-data="tradingPage()" class="workspace-shell workspace-shell-workbench plan-workbench">
+  <div x-data="tradingPage()" class="workspace-shell workspace-shell-workbench plan-workbench" role="region" aria-label="计划工作台">
     <div class="workspace-title-row flex justify-between gap-5">
       <div>
         <div class="workspace-kicker">WORKBENCH</div>
@@ -725,7 +727,7 @@
     </div>
 
     <!-- 本次计划条件 -->
-    <details class="ark-panel plan-conditions-panel px-5 py-3 mb-4" :open="!plan">
+    <details aria-label="计划条件" class="ark-panel plan-conditions-panel px-5 py-3 mb-4" :open="!plan">
       <summary class="cursor-pointer select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">
         <div class="inline-flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span class="text-sm font-semibold">本次计划条件</span>
@@ -1063,40 +1065,41 @@
 
   <!-- 更新日志 -->
   <template x-if="$store.page === 'changelog'">
-  <div x-data="changelogPage()" x-init="load()" class="changelog-shell">
-    <div class="changelog-header">
-      <div class="changelog-kicker">CHANGELOG</div>
+  <div x-data="changelogPage()" x-init="load()" class="changelog-shell" role="region" aria-label="更新日志内容">
+    <div role="group" aria-label="更新日志页头" class="changelog-header">
+      <div data-visual-metric="kicker" class="changelog-kicker">CHANGELOG</div>
       <h1 class="changelog-title">更新日志</h1>
-      <p class="changelog-subtitle">最近发生了什么 — 新功能、调整、下线，都写在这里。</p>
+      <p data-visual-metric="subtitle" class="changelog-subtitle">最近发生了什么 — 新功能、调整、下线，都写在这里。</p>
     </div>
 
     <div x-show="loadError" class="mb-8 border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700" x-text="loadError"></div>
 
-    <div x-show="!loadError" class="changelog-groups">
+    <div x-show="!loadError" data-visual-metric="groups" class="changelog-groups">
       <template x-for="group in groupedEntries()" :key="group.date">
         <section :aria-label="formatGroupDate(group.date)">
-          <div class="changelog-date-header">
+          <div data-visual-metric="date-header" class="changelog-date-header">
             <h2 class="changelog-date-title">
               <time :datetime="group.date" x-text="formatGroupDate(group.date)"></time>
             </h2>
-            <span class="changelog-weekday" x-text="weekdayText(group.date)"></span>
+            <span data-visual-metric="weekday" class="changelog-weekday" x-text="weekdayText(group.date)"></span>
           </div>
           <div>
             <template x-for="entry in group.entries" :key="entry.date + entry.time + entry.title">
-              <article class="changelog-entry-grid">
-                <div class="changelog-entry-meta">
+              <article :aria-label="entry.title" class="changelog-entry-grid">
+                <div data-visual-metric="entry-meta" class="changelog-entry-meta">
                   <time
+                    data-visual-metric="time"
                     class="changelog-entry-time"
                     :datetime="entry.date + 'T' + entry.time"
                     x-text="entry.time"></time>
-                  <div class="changelog-entry-type" :class="typeTextClass(entry.type)">
-                    <span class="changelog-dot" :class="typeDotClass(entry.type)"></span>
+                  <div data-visual-metric="type" class="changelog-entry-type" :class="typeTextClass(entry.type)">
+                    <span aria-hidden="true" data-visual-metric="type-dot" class="changelog-dot" :class="typeDotClass(entry.type)"></span>
                     <span x-text="entry.type"></span>
                   </div>
                 </div>
-                <div class="changelog-entry-main">
+                <div data-visual-metric="entry-main" class="changelog-entry-main">
                   <h3 class="changelog-entry-title" x-text="entry.title"></h3>
-                  <p class="changelog-entry-body" x-text="entry.body"></p>
+                  <p data-visual-metric="entry-body" class="changelog-entry-body" x-text="entry.body"></p>
                 </div>
               </article>
             </template>
