@@ -1738,7 +1738,7 @@
               <div class="account-current-section-heading">
                 <div>
                   <h3>当前持仓</h3>
-                  <p>默认保留现有持仓；代码和数量是原始数据，名称、价格和市值由系统补全。</p>
+                  <p>默认保留现有持仓；列表按持仓市值从高到低排列，行情暂缺的证券排在最后。</p>
                 </div>
                 <button type="button" @click="addPosition()">＋ 添加证券</button>
               </div>
@@ -2842,22 +2842,36 @@
         const valuationByCode = Object.fromEntries(
           (account.valuation?.items || []).map(item => [item.code, item]),
         )
+        const positions = (account.raw_data?.positions || []).map(position => {
+          const derived = valuationByCode[position.code] || {}
+          return {
+            code: position.code,
+            quantity: position.quantity,
+            name: derived.name || '',
+            price: derived.price ?? null,
+            _key: ++this._uid,
+            isNew: false,
+          }
+        })
         return {
           amount: '',
           available_cash: account.raw_data?.available_cash ?? '',
           frozen_cash: account.raw_data?.frozen_cash ?? '',
-          positions: (account.raw_data?.positions || []).map(position => {
-            const derived = valuationByCode[position.code] || {}
-            return {
-              code: position.code,
-              quantity: position.quantity,
-              name: derived.name || '',
-              price: derived.price ?? null,
-              _key: ++this._uid,
-              isNew: false,
-            }
-          }),
+          positions: this.sortPositionsByMarketValue(positions),
         }
+      },
+      sortPositionsByMarketValue(positions) {
+        return [...positions].sort((left, right) => {
+          const leftValue = this.rowMarketValue(left)
+          const rightValue = this.rowMarketValue(right)
+          if (leftValue === null && rightValue === null) {
+            return String(left.code || '').localeCompare(String(right.code || ''))
+          }
+          if (leftValue === null) return 1
+          if (rightValue === null) return -1
+          if (rightValue !== leftValue) return rightValue - leftValue
+          return String(left.code || '').localeCompare(String(right.code || ''))
+        })
       },
       markEdited() {
         this.saveError = ''

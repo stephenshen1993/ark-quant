@@ -96,6 +96,8 @@ class TestUiSmokeScript(unittest.TestCase):
             "singleAccountSave",
             "unsavedNavigationGuard",
             "holdingsClearPayloads",
+            "account.holdingSortOrder",
+            "sortPositionsByMarketValue",
         ]:
             self.assertIn(literal, source)
 

@@ -696,6 +696,9 @@ def browser_check_code(
             await accountLayout.waitFor({{ state: 'visible', timeout: 10000 }});
             const accountShell = accountPage.locator('.account-current-workbench');
             const accountRailRows = accountPage.locator('.account-current-rail-row');
+            const accountRailById = accountId => accountPage
+              .locator(`.account-current-rail-row[data-account-id="${{accountId}}"]`)
+              .first();
             const selectedHeading = accountPage.locator('.account-current-editor h2');
             await selectedHeading.waitFor({{ state: 'visible', timeout: 10000 }});
             const [accountShellBox, accountLayoutBox] = await Promise.all([
@@ -740,6 +743,21 @@ def browser_check_code(
             }}
             if (accountMetrics.visibleFactDateInputs !== 0) {{
               accountDifferences.push(difference('account.globalFactDateInputs', 0, accountMetrics.visibleFactDateInputs));
+            }}
+            accountMetrics.holdingSortOrder = await accountPage.evaluate(element => {{
+              const component = window.Alpine.$data(element);
+              return component.sortPositionsByMarketValue([
+                {{ code: '000001', quantity: 10, price: 2 }},
+                {{ code: '000003', quantity: 10, price: null }},
+                {{ code: '000002', quantity: 5, price: 10 }},
+                {{ code: '000004', quantity: 2, price: 10 }},
+              ]).map(item => item.code);
+            }});
+            const expectedHoldingSortOrder = ['000002', '000001', '000004', '000003'];
+            if (JSON.stringify(accountMetrics.holdingSortOrder) !== JSON.stringify(expectedHoldingSortOrder)) {{
+              accountDifferences.push(difference(
+                'account.holdingSortOrder', expectedHoldingSortOrder, accountMetrics.holdingSortOrder,
+              ));
             }}
             assertNoDifferences('account.behavior', '账户页没有按单账户当前数据组织', accountDifferences);
 
@@ -792,6 +810,11 @@ def browser_check_code(
             await clearDialog.getByRole('button', {{ name: '确认清空持仓并保存', exact: true }}).click();
             await page.waitForFunction(() => !document.querySelector('.account-current-dialog')?.checkVisibility());
             await page.unroute('**/api/accounts/stock', holdingsClearHandler);
+            await page.waitForFunction(() => {{
+              const workspace = document.querySelector('[aria-label="账户数据工作台"]');
+              const component = window.Alpine?.$data(workspace);
+              return component?.selectedId === 'stock' && !component.saving && !component.isDirty?.();
+            }}, {{ timeout: 10000 }});
             const holdingsClearPayload = holdingsClearPayloads[0];
             if (
               holdingsClearPayloads.length !== 1
@@ -811,7 +834,7 @@ def browser_check_code(
               ));
             }}
 
-            const cashRail = accountRailRows.filter({{ hasText: '资金账户' }}).first();
+            const cashRail = accountRailById('cash');
             await cashRail.click();
             const cashHeading = accountPage.locator('.account-current-editor h2');
             await cashHeading.getByText('资金账户', {{ exact: true }}).waitFor({{ state: 'visible', timeout: 10000 }});
@@ -826,7 +849,7 @@ def browser_check_code(
               .waitFor({{ state: 'visible', timeout: 10000 }});
             const currentCashAmount = Number(await cashAmount.inputValue());
             await cashAmount.fill(String(currentCashAmount + 1));
-            await accountRailRows.filter({{ hasText: '华泰账户' }}).first().click();
+            await accountRailById('cb').click();
             const unsavedAlert = accountPage.getByRole('alert').filter({{ hasText: '当前账户有未保存修改' }});
             await unsavedAlert.waitFor({{ state: 'visible', timeout: 10000 }});
             await unsavedAlert.getByRole('button', {{ name: '继续编辑', exact: true }}).click();
@@ -1024,7 +1047,7 @@ def browser_check_code(
             const conflictWorkspace = conflictPage.getByRole('region', {{ name: '账户数据工作台' }});
             await conflictWorkspace.getByRole('heading', {{ name: '账户数据', level: 1 }})
               .waitFor({{ state: 'visible', timeout: 10000 }});
-            await conflictWorkspace.locator('.account-current-rail-row').filter({{ hasText: '资金账户' }}).first().click();
+            await conflictWorkspace.locator('.account-current-rail-row[data-account-id="cash"]').first().click();
             const conflictAmount = conflictWorkspace.getByLabel('资金余额', {{ exact: true }});
             const conflictCurrent = await conflictPage.request
               .get({json.dumps(base_url + '/api/accounts/cash')})
@@ -1057,7 +1080,7 @@ def browser_check_code(
               globalFactDateInputs: accountMetrics.visibleFactDateInputs,
               changedPayloads,
             }});
-            await accountRailRows.filter({{ hasText: '长钱投顾组合' }}).first().click();
+            await accountRailById('changqian').click();
             await cashRail.click();
             const accountIntegrity = await assertPageIntegrity('account', main);
             await main.evaluate(element => element.scrollTo({{ top: 0, left: 0 }}));

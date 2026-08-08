@@ -72,11 +72,24 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("function accountWorkspace()", self.html)
         self.assertIn("fetch('/api/accounts')", self.html)
         self.assertIn("available_cash: account.raw_data?.available_cash ?? ''", self.html)
-        self.assertIn("positions: (account.raw_data?.positions || []).map", self.html)
+        self.assertIn("const positions = (account.raw_data?.positions || []).map", self.html)
+        self.assertIn("positions: this.sortPositionsByMarketValue(positions)", self.html)
         self.assertIn("只会保存这个账户，其他账户保持原样。", self.html)
         self.assertNotIn("账户事实日", self.html)
         self.assertNotIn("function accountPage()", self.html)
         self.assertNotIn("saveAllAccountFacts", self.html)
+
+    def test_account_current_holdings_sort_by_market_value_descending(self):
+        self.assertIn("列表按持仓市值从高到低排列", self.html)
+        self.assertIn("sortPositionsByMarketValue(positions)", self.html)
+        sort_start = self.html.index("sortPositionsByMarketValue(positions)")
+        sort_end = self.html.index("markEdited()", sort_start)
+        body = self.html[sort_start:sort_end]
+        self.assertIn("return [...positions].sort", body)
+        self.assertIn("return rightValue - leftValue", body)
+        self.assertIn("if (leftValue === null) return 1", body)
+        self.assertIn("if (rightValue === null) return -1", body)
+        self.assertIn("localeCompare", body)
 
     def test_account_workspace_combines_current_data_with_plan_input_readiness(self):
         self.assertIn("workStatusStore().load({ force:", self.html)
