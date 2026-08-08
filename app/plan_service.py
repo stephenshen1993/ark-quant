@@ -5,7 +5,7 @@ from typing import Callable
 from zoneinfo import ZoneInfo
 
 from app.account_read_model import build_account_read_model
-from app import plan_lifecycle
+from app import account_current_state, plan_lifecycle
 from app.plan_execution_read_model import build_execution_read_model
 from datasource import db
 from datasource.youzhiyouxing import TemperatureFetchError, get_or_fetch_market_temperature
@@ -27,11 +27,16 @@ def build_plan_context(refresh_temperature: bool = False) -> dict:
     }
 
 
+def current_account_summary() -> dict | None:
+    """Return the valuation-aware account inputs used throughout planning."""
+    return account_current_state.build_current_account_summary()
+
+
 def build_plan_readiness() -> dict:
     market_temperature = _market_temperature(refresh=False)
     plan_date = market_temperature.updated_at[:10]
     input_end = account_transfer_window_end(plan_date)
-    account = db.get_current_account_summary()
+    account = current_account_summary()
     errors = validate_account_inputs(
         plan_date,
         account,
@@ -78,7 +83,7 @@ def build_plan_readiness() -> dict:
 def build_transfer_plan(refresh_temperature: bool = False) -> dict:
     market_temperature = _market_temperature(refresh=refresh_temperature)
     plan_date = resolve_plan_date(market_temperature.updated_at[:10])
-    account = db.get_current_account_summary()
+    account = current_account_summary()
     if account:
         account = dict(account)
         account["temperature"] = market_temperature.temperature
@@ -129,7 +134,7 @@ def build_current_plan(refresh_temperature: bool = False) -> dict:
     market_temperature = _market_temperature(refresh=refresh_temperature)
     plan_date = market_temperature.updated_at[:10]
 
-    account = db.get_current_account_summary()
+    account = current_account_summary()
     if account:
         account = dict(account)
         account["temperature"] = market_temperature.temperature

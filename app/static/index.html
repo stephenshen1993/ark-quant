@@ -1782,7 +1782,7 @@
         <aside x-show="selected" class="account-current-review" aria-label="保存检查">
           <div class="account-current-review-label">保存检查</div>
           <h2 x-text="isDirty() ? '确认本账户的变化' : '当前数据没有变化'"></h2>
-          <p x-text="isDirty() ? '只会保存这个账户，其他账户保持原样。' : '可以确认数据仍准确；确认时间会更新，但不会让当前计划失效。'"></p>
+          <p x-text="isDirty() ? '只会保存这个账户，其他账户保持原样。' : '可以确认数据仍准确；系统会同时刷新缺失的估值，只有计划输入未变化时才保持当前计划。'"></p>
           <ul>
             <template x-for="change in reviewChanges()" :key="change">
               <li x-text="change"></li>
@@ -2523,10 +2523,7 @@
         this._promise = (async () => {
           this.readinessError = ''
           this.lifecycleError = ''
-          const [readinessResponse, generationResponse] = await Promise.all([
-            fetch('/api/plan/readiness'),
-            fetch('/api/plan/generated'),
-          ])
+          const readinessResponse = await fetch('/api/plan/readiness')
           if (readinessResponse.ok) {
             this.readiness = await readinessResponse.json()
           } else {
@@ -2534,6 +2531,7 @@
             this.readiness = null
             this.readinessError = body.detail?.message || `账户数据校验失败 (${readinessResponse.status})`
           }
+          const generationResponse = await fetch('/api/plan/generated')
           if (generationResponse.ok) {
             this.generation = (await generationResponse.json()).generation || null
           } else {
@@ -3065,9 +3063,12 @@
           const index = this.accounts.findIndex(item => item.account_id === result.account_id)
           if (index >= 0) this.accounts.splice(index, 1, enrichedResult)
           this.openAccount(result.account_id)
+          const planIsStale = workStatus.generation?.status === 'stale'
           this.saveSuccess = changed
             ? '本账户数据已保存。若数值发生变化，当前计划已标记为需要重新生成。'
-            : '已确认本账户数据仍准确；当前计划保持原状态。'
+            : planIsStale
+              ? '已确认本账户数据；系统估值发生变化，当前计划已标记为需要重新生成。'
+              : '已确认本账户数据仍准确；当前计划保持原状态。'
           window.dispatchEvent(new CustomEvent('account-data-updated'))
         } catch (error) {
           this.saveError = error?.message || '账户数据保存失败'

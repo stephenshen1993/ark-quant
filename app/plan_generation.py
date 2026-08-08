@@ -62,6 +62,13 @@ def generate_complete_plan(
             cb_result=None,
             stock_result=None,
         )
+        if not plan_lifecycle.capture_inputs(plan_id, plan):
+            raise plan_service.PlanServiceError(409, {
+                "stage": "account",
+                "code": "PLAN_INPUTS_CHANGED",
+                "message": "生成期间账户数据已更新，本次计划已作废，请重新生成。",
+                "plan_id": plan_id,
+            })
         _, deltas, _ = plan_service.fund_transfer_compatibility(fund_transfer)
         cb_result = size_cb_orders(
             plan_service.strategy_cash_after_transfer("cb", account, deltas),
@@ -143,7 +150,7 @@ def _generation_in_progress_error(plan_date: str, generation: dict | None) -> pl
 
 def prepare_complete_plan_generation(plan_date: str | None = None) -> tuple[str, dict, object, dict]:
     plan_date = plan_date or plan_service.current_plan_date()
-    account = db.get_current_account_summary()
+    account = plan_service.current_account_summary()
     account_errors = plan_service.validate_account_inputs(
         plan_date,
         account,
@@ -257,7 +264,7 @@ def size_strategy_orders(
 
 def prepare_strategy_order_context() -> tuple[str, dict, dict]:
     plan_date = plan_service.current_plan_date()
-    account = db.get_current_account_summary()
+    account = plan_service.current_account_summary()
     errors = plan_service.validate_plan_inputs(plan_date, account)
     if errors:
         raise plan_service.PlanServiceError(

@@ -17,6 +17,13 @@ class TestUiSmokeScript(unittest.TestCase):
         self.assertTrue(SCRIPT.exists())
         self.assertTrue(os.access(SCRIPT, os.X_OK))
 
+    def test_isolated_server_uses_the_deterministic_quote_provider(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn('"scripts.ui_smoke_app:app"', source)
+        self.assertTrue((ROOT / "scripts" / "ui_smoke_app.py").exists())
+        self.assertTrue((ROOT / "scripts" / "ui_smoke_quotes.py").exists())
+
     def test_help_documents_the_single_browser_gate_entrypoint(self):
         result = subprocess.run(
             [str(SCRIPT), "--help"],

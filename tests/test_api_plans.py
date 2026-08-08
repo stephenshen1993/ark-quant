@@ -13,6 +13,24 @@ from datasource.youzhiyouxing import DATA_URL
 
 class TestPlansApi(unittest.TestCase):
     def setUp(self):
+        self.stock_quotes = patch(
+            "datasource.market.fetch_tencent_snapshot",
+            return_value=pd.DataFrame([{
+                "stock_code": "600051",
+                "stock_name_q": "宁波联合",
+                "price": (209555 - 274) / 1800,
+            }]),
+        )
+        self.cb_quotes = patch(
+            "datasource.market.fetch_cb_quotes_tencent",
+            return_value={
+                "113062": {"name": "常银转债", "price": (227183 - 110) / 10},
+            },
+        )
+        self.stock_quotes_mock = self.stock_quotes.start()
+        self.cb_quotes_mock = self.cb_quotes.start()
+        self.addCleanup(self.stock_quotes.stop)
+        self.addCleanup(self.cb_quotes.stop)
         self.temperature_clock = patch(
             "datasource.youzhiyouxing._now_shanghai",
             return_value=datetime(2026, 6, 29, 16, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
@@ -55,6 +73,9 @@ class TestPlansApi(unittest.TestCase):
         }]))
         db.insert_positions("cb", "2026-06-29", [{
             "code": "113062", "name": "常银转债", "shares": 10,
+        }])
+        db.insert_positions("stock", "2026-06-29", [{
+            "code": "600051", "name": "宁波联合", "shares": 1800,
         }])
         from app.main import app
         self.client = TestClient(app)
@@ -158,6 +179,20 @@ class TestPlansApi(unittest.TestCase):
             {"ready"},
         )
         self.assertEqual(readiness["errors"], [])
+
+    def test_plan_readiness_fails_closed_when_current_valuation_is_unavailable(self):
+        from app.plan_service import build_plan_readiness
+
+        self.stock_quotes_mock.return_value = pd.DataFrame()
+        readiness = build_plan_readiness()
+
+        stock = next(
+            item for item in readiness["accounts"]
+            if item["account_id"] == "stock"
+        )
+        self.assertEqual(readiness["status"], "needs_facts")
+        self.assertEqual(stock["status"], "valuation_unavailable")
+        self.assertIn("行情暂不可用", stock["message"])
 
     def test_plan_readiness_route_names_a_missing_overseas_account(self):
         db._TEST_CONN.execute(
@@ -614,6 +649,12 @@ class TestPlansApi(unittest.TestCase):
         db.insert_account_value_snapshot("changqian", "2026-06-30", 110606)
         db.insert_account_value_snapshot("cash", "2026-06-30", 59013)
         db.insert_account_value_snapshot("overseas", "2026-06-30", 93030)
+        db.insert_positions("cb", "2026-06-30", [{
+            "code": "113062", "name": "常银转债", "shares": 10,
+        }])
+        db.insert_positions("stock", "2026-06-30", [{
+            "code": "600051", "name": "宁波联合", "shares": 1800,
+        }])
         stock_run_id = db.create_complete_strategy_run("stock", date(2026, 6, 30), date(2026, 7, 1), pd.DataFrame([{
             "rank": 1, "stock_code": "600051", "stock_name": "宁波联合",
             "total_mv_yuan": 1000000000, "pe_ttm": 10.0, "roe_pct": 12.0,
@@ -854,6 +895,12 @@ class TestPlansApi(unittest.TestCase):
         db.insert_account_value_snapshot("changqian", "2026-07-13", 110606)
         db.insert_account_value_snapshot("cash", "2026-07-13", 59013)
         db.insert_account_value_snapshot("overseas", "2026-07-13", 93030)
+        db.insert_positions("cb", "2026-07-13", [{
+            "code": "113062", "name": "常银转债", "shares": 10,
+        }])
+        db.insert_positions("stock", "2026-07-13", [{
+            "code": "600051", "name": "宁波联合", "shares": 1800,
+        }])
         run_id = db.create_complete_strategy_run("cb", date(2026, 7, 10), date(2026, 7, 13), pd.DataFrame([{
             "bond_code": "113062", "bond_name": "常银转债",
             "cb_price": 126.80, "premium_rate": 10.0, "double_low": 136.8, "score": 0.9,

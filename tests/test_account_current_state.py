@@ -78,6 +78,90 @@ class TestAccountCurrentState(unittest.TestCase):
         self.assertIsNone(summary["total_assets"])
 
     @patch("datasource.market.fetch_tencent_snapshot")
+    def test_explicit_securities_state_refreshes_a_new_market_price(self, fetch):
+        fetch.return_value = pd.DataFrame([{
+            "stock_code": "000001", "stock_name_q": "平安银行", "price": 10.0,
+        }])
+        saved = self.client.put("/api/accounts/stock", json={
+            "expected_version": None,
+            "available_cash": 100,
+            "frozen_cash": 0,
+            "positions": [{"code": "1", "quantity": 10}],
+        }).json()
+
+        fetch.return_value = pd.DataFrame([{
+            "stock_code": "000001", "stock_name_q": "平安银行", "price": 20.0,
+        }])
+        refreshed = self.client.get("/api/accounts/stock").json()
+
+        self.assertEqual(refreshed["version"], saved["version"])
+        self.assertEqual(refreshed["valuation"]["total"], 300.0)
+        self.assertEqual(refreshed["valuation"]["items"][0]["price"], 20.0)
+
+    @patch("datasource.market.fetch_tencent_snapshot")
+    def test_explicit_securities_state_fails_closed_when_new_quotes_fail(self, fetch):
+        fetch.return_value = pd.DataFrame([{
+            "stock_code": "000001", "stock_name_q": "平安银行", "price": 10.0,
+        }])
+        self.client.put("/api/accounts/stock", json={
+            "expected_version": None,
+            "available_cash": 100,
+            "frozen_cash": 0,
+            "positions": [{"code": "1", "quantity": 10}],
+        })
+
+        fetch.return_value = pd.DataFrame()
+        refreshed = self.client.get("/api/accounts/stock").json()
+
+        self.assertEqual(refreshed["valuation"]["status"], "unavailable")
+        self.assertIsNone(refreshed["valuation"]["total"])
+        self.assertEqual(refreshed["readiness"], "waiting_for_valuation")
+
+    @patch("datasource.market.fetch_tencent_snapshot")
+    def test_current_valuation_change_stales_a_plan_with_old_inputs(self, fetch):
+        fetch.return_value = pd.DataFrame([{
+            "stock_code": "000001", "stock_name_q": "平安银行", "price": 10.0,
+        }])
+        self.client.put("/api/accounts/stock", json={
+            "expected_version": None,
+            "available_cash": 100,
+            "frozen_cash": 0,
+            "positions": [{"code": "1", "quantity": 10}],
+        })
+        db.insert_generated_plan("plan-1", "2026-08-08", "complete", {
+            "account": {"stock_total": 200.0, "bond_total": None},
+        })
+
+        fetch.return_value = pd.DataFrame([{
+            "stock_code": "000001", "stock_name_q": "平安银行", "price": 20.0,
+        }])
+        account_current_state.build_current_account_summary()
+
+        self.assertEqual(db.get_generated_plan("plan-1")["status"], "stale")
+
+    @patch("datasource.market.fetch_tencent_snapshot")
+    def test_running_plan_without_captured_inputs_is_not_staled_by_initial_refresh(self, fetch):
+        fetch.return_value = pd.DataFrame([{
+            "stock_code": "000001", "stock_name_q": "平安银行", "price": 10.0,
+        }])
+        self.client.put("/api/accounts/stock", json={
+            "expected_version": None,
+            "available_cash": 100,
+            "frozen_cash": 0,
+            "positions": [{"code": "1", "quantity": 10}],
+        })
+        db.insert_generated_plan("plan-1", "2026-08-08", "running", {
+            "generation": {"plan_id": "plan-1", "status": "running"},
+        })
+
+        fetch.return_value = pd.DataFrame([{
+            "stock_code": "000001", "stock_name_q": "平安银行", "price": 20.0,
+        }])
+        account_current_state.build_current_account_summary()
+
+        self.assertEqual(db.get_generated_plan("plan-1")["status"], "running")
+
+    @patch("datasource.market.fetch_tencent_snapshot")
     def test_confirm_retries_an_unavailable_derived_valuation(self, fetch):
         fetch.return_value = pd.DataFrame()
         saved = self.client.put("/api/accounts/stock", json={
@@ -237,6 +321,156 @@ class TestAccountCurrentState(unittest.TestCase):
         self.assertEqual(state["holding_state"], "recorded")
         self.assertIsNone(state["raw_data"]["available_cash"])
         self.assertEqual(state["raw_data"]["positions"][0]["code"], "000001")
+
+    @patch("datasource.market.fetch_tencent_snapshot")
+    def test_legacy_securities_read_derives_prices_without_reentering_holdings(self, fetch):
+        fetch.return_value = pd.DataFrame([{
+            "stock_code": "000001",
+            "stock_name_q": "平安银行",
+            "price": 10.0,
+        }])
+        db.insert_account_value_snapshot("stock", "2026-08-08", 200, 100)
+        db.append_position_snapshot("stock", "2026-08-08", [{
+            "code": "000001",
+            "name": "平安银行",
+            "shares": 10,
+        }])
+
+        state = self.client.get("/api/accounts/stock").json()
+
+        self.assertEqual(state["operation"], "migrated")
+        self.assertEqual(state["valuation"]["status"], "available")
+        self.assertEqual(state["valuation"]["total"], 200.0)
+        self.assertEqual(state["valuation"]["items"][0]["price"], 10.0)
+        self.assertEqual(state["valuation"]["items"][0]["market_value"], 100.0)
+        self.assertEqual(state["raw_data"]["positions"], [
+            {"code": "000001", "quantity": 10.0},
+        ])
+
+    @patch("datasource.market.fetch_tencent_snapshot")
+    def test_legacy_securities_read_reports_unavailable_when_quotes_fail(self, fetch):
+        fetch.return_value = pd.DataFrame()
+        db.insert_account_value_snapshot("stock", "2026-08-08", 200, 100)
+        db.append_position_snapshot("stock", "2026-08-08", [{
+            "code": "000001",
+            "name": "平安银行",
+            "shares": 10,
+        }])
+
+        state = self.client.get("/api/accounts/stock").json()
+
+        self.assertEqual(state["valuation"]["status"], "unavailable")
+        self.assertIsNone(state["valuation"]["total"])
+        self.assertEqual(state["valuation"]["missing_codes"], ["000001"])
+        self.assertEqual(state["valuation"]["items"][0]["name"], "平安银行")
+        self.assertEqual(state["readiness"], "waiting_for_valuation")
+
+    @patch("datasource.market.fetch_tencent_snapshot")
+    def test_plan_summary_uses_the_same_refreshed_legacy_valuation(self, fetch):
+        fetch.return_value = pd.DataFrame([{
+            "stock_code": "000001",
+            "stock_name_q": "平安银行",
+            "price": 20.0,
+        }])
+        db.insert_account_value_snapshot("stock", "2026-08-08", 200, 100)
+        db.append_position_snapshot("stock", "2026-08-08", [{
+            "code": "000001",
+            "name": "平安银行",
+            "shares": 10,
+        }])
+
+        summary = account_current_state.build_current_account_summary()
+
+        stock = {item["id"]: item for item in summary["accounts"]}["stock"]
+        self.assertEqual(summary["stock_total"], 300.0)
+        self.assertEqual(stock["total"], 300.0)
+
+    @patch("datasource.market.fetch_tencent_snapshot")
+    def test_plan_summary_fails_closed_when_legacy_quotes_are_unavailable(self, fetch):
+        fetch.return_value = pd.DataFrame()
+        db.insert_account_value_snapshot("stock", "2026-08-08", 200, 100)
+        db.append_position_snapshot("stock", "2026-08-08", [{
+            "code": "000001",
+            "name": "平安银行",
+            "shares": 10,
+        }])
+
+        summary = account_current_state.build_current_account_summary()
+
+        stock = {item["id"]: item for item in summary["accounts"]}["stock"]
+        self.assertIsNone(summary["stock_total"])
+        self.assertIsNone(stock["total"])
+        self.assertIsNone(summary["total_assets"])
+
+    @patch("datasource.market.fetch_tencent_snapshot")
+    def test_confirming_legacy_securities_data_persists_derived_prices(self, fetch):
+        fetch.return_value = pd.DataFrame([{
+            "stock_code": "000001",
+            "stock_name_q": "平安银行",
+            "price": 10.0,
+        }])
+        db.insert_account_value_snapshot("stock", "2026-08-08", 200, 100)
+        db.append_position_snapshot("stock", "2026-08-08", [{
+            "code": "000001",
+            "name": "平安银行",
+            "shares": 10,
+        }])
+        legacy = self.client.get("/api/accounts/stock").json()
+
+        confirmed = self.client.post("/api/accounts/stock/confirm", json={
+            "expected_version": legacy["version"],
+        })
+
+        self.assertEqual(confirmed.status_code, 200)
+        self.assertEqual(confirmed.json()["operation"], "confirm")
+        self.assertEqual(confirmed.json()["valuation"]["items"][0]["price"], 10.0)
+
+    @patch("datasource.market.fetch_tencent_snapshot")
+    def test_confirming_a_changed_legacy_valuation_invalidates_the_plan(self, fetch):
+        fetch.return_value = pd.DataFrame([{
+            "stock_code": "000001",
+            "stock_name_q": "平安银行",
+            "price": 20.0,
+        }])
+        db.insert_account_value_snapshot("stock", "2026-08-08", 200, 100)
+        db.append_position_snapshot("stock", "2026-08-08", [{
+            "code": "000001",
+            "name": "平安银行",
+            "shares": 10,
+        }])
+        legacy = self.client.get("/api/accounts/stock").json()
+        db.insert_generated_plan("plan-1", "2026-08-08", "complete", {"ok": True})
+
+        confirmed = self.client.post("/api/accounts/stock/confirm", json={
+            "expected_version": legacy["version"],
+        })
+
+        self.assertEqual(confirmed.status_code, 200)
+        self.assertEqual(confirmed.json()["valuation"]["total"], 300.0)
+        self.assertEqual(db.get_generated_plan("plan-1")["status"], "stale")
+
+    @patch("datasource.market.fetch_tencent_snapshot")
+    def test_confirming_the_same_legacy_valuation_preserves_the_plan(self, fetch):
+        fetch.return_value = pd.DataFrame([{
+            "stock_code": "000001",
+            "stock_name_q": "平安银行",
+            "price": 10.0,
+        }])
+        db.insert_account_value_snapshot("stock", "2026-08-08", 200, 100)
+        db.append_position_snapshot("stock", "2026-08-08", [{
+            "code": "000001",
+            "name": "平安银行",
+            "shares": 10,
+        }])
+        legacy = self.client.get("/api/accounts/stock").json()
+        db.insert_generated_plan("plan-1", "2026-08-08", "complete", {"ok": True})
+
+        confirmed = self.client.post("/api/accounts/stock/confirm", json={
+            "expected_version": legacy["version"],
+        })
+
+        self.assertEqual(confirmed.status_code, 200)
+        self.assertEqual(db.get_generated_plan("plan-1")["status"], "complete")
 
     def test_legacy_write_endpoint_is_blocked_after_current_state_activation(self):
         self.client.put("/api/accounts/cash", json={

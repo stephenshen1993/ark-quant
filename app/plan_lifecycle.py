@@ -38,6 +38,16 @@ def start(plan_id: str, plan_date: str, plan: dict) -> bool:
     )
 
 
+def capture_inputs(plan_id: str, plan: dict) -> bool:
+    """Persist the inputs protected by the running-plan lifecycle CAS."""
+    return db.update_generated_plan(
+        plan_id,
+        status=RUNNING,
+        plan=with_status(plan, RUNNING),
+        expected_status=RUNNING,
+    )
+
+
 def record_order_batch(
     plan_id: str,
     strategy: str,

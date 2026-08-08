@@ -32,13 +32,63 @@ class AccountVersionConflict(CurrentAccountError):
 
 def list_current_accounts() -> list[dict]:
     with db._conn() as conn:
-        return [_current_account(conn, account_id) for account_id in ACCOUNT_ORDER]
+        accounts = [_current_account(conn, account_id) for account_id in ACCOUNT_ORDER]
+    return [_refresh_current_valuation(account) for account in accounts]
 
 
 def get_current_account(account_id: str) -> dict:
     _validate_account(account_id)
     with db._conn() as conn:
-        return _current_account(conn, account_id)
+        account = _current_account(conn, account_id)
+    return _refresh_current_valuation(account)
+
+
+def build_current_account_summary() -> dict | None:
+    """Build the single account summary used by both the UI and plan generation."""
+    with db._conn() as conn:
+        summary = account_store.get_current_account_summary(conn)
+        accounts = [_current_account(conn, account_id) for account_id in ACCOUNT_ORDER]
+    accounts = [_refresh_current_valuation(account) for account in accounts]
+    if summary is None and all(account["record_state"] == "missing" for account in accounts):
+        return None
+
+    result = dict(summary or {})
+    updated_at = {}
+    snapshot_dates = {}
+    totals = []
+    for account in accounts:
+        account_id = account["account_id"]
+        total_key, cash_key = account_store.ACCOUNT_VALUE_FIELDS[account_id]
+        total = (
+            account["valuation"].get("total")
+            if account["record_state"] == "recorded"
+            else None
+        )
+        result[total_key] = total
+        totals.append(total)
+        if cash_key:
+            raw = account["raw_data"]
+            available_cash = raw.get("available_cash")
+            frozen_cash = raw.get("frozen_cash")
+            cash = (
+                None
+                if available_cash is None or frozen_cash is None
+                else available_cash + frozen_cash
+            )
+            result[cash_key] = cash
+            result[cash_key.replace("_cash", "_available_cash")] = available_cash
+            result[cash_key.replace("_cash", "_frozen_cash")] = frozen_cash
+        if account["as_of"] is not None:
+            snapshot_dates[account_id] = account["as_of"]
+        if account["updated_at"] is not None:
+            updated_at[account_id] = account["updated_at"]
+
+    result["account_snapshot_dates"] = snapshot_dates
+    result["account_updated_at"] = updated_at
+    result["accounts"] = account_store.build_account_items(result)
+    result["total_assets"] = None if any(total is None for total in totals) else sum(totals)
+    _invalidate_plans_with_different_valuation(result)
+    return result
 
 
 def has_explicit_current_state(account_id: str) -> bool:
@@ -78,8 +128,11 @@ def update_current_account(
             current = _current_account(conn, account_id)
             _check_version(current, expected_version)
             changed = current["record_state"] == "missing" or current["raw_data"] != raw
-            if not changed:
+            if not changed and not _valuation_needs_refresh(current):
                 valuation = current["valuation"]
+            plan_input_changed = changed or _plan_valuation_changed(
+                current["valuation"], valuation
+            )
             _insert_version(
                 conn,
                 account_id,
@@ -87,26 +140,25 @@ def update_current_account(
                 valuation,
                 operation="update" if changed else "confirm",
             )
-            if changed:
+            if plan_input_changed:
                 _invalidate_derived_plans(conn)
         return _current_account(conn, account_id)
 
 
 def confirm_current_account(account_id: str, *, expected_version: str) -> dict:
-    """Confirm the current raw data without invalidating an unchanged plan."""
+    """Confirm current raw data and invalidate plans only if effective inputs changed."""
     _validate_account(account_id)
     with db._conn() as conn:
         current = _current_account(conn, account_id)
         _check_version(current, expected_version)
         if current["record_state"] == "missing":
             raise CurrentAccountError("账户尚无可确认的数据")
-        valuation = current["valuation"]
-        if (
-            account_id in SECURITIES_ACCOUNTS
-            and valuation["status"] == "unavailable"
-        ):
-            valuation = _derive_valuation(account_id, current["raw_data"])
+    valuation = current["valuation"]
+    if _valuation_needs_refresh(current):
+        valuation = _derive_valuation(account_id, current["raw_data"])
+    plan_input_changed = _plan_valuation_changed(current["valuation"], valuation)
 
+    with db._conn() as conn:
         with _write_transaction(conn):
             current = _current_account(conn, account_id)
             _check_version(current, expected_version)
@@ -117,6 +169,8 @@ def confirm_current_account(account_id: str, *, expected_version: str) -> dict:
                 valuation,
                 operation="confirm",
             )
+            if plan_input_changed:
+                _invalidate_derived_plans(conn)
         return _current_account(conn, account_id)
 
 
@@ -251,6 +305,47 @@ def _derive_valuation(account_id: str, raw: dict) -> dict:
         "total": total,
         "missing_codes": missing_codes,
         "items": items,
+    }
+
+
+def _valuation_needs_refresh(account: dict) -> bool:
+    return (
+        account["account_id"] in SECURITIES_ACCOUNTS
+        and account["record_state"] == "recorded"
+        and bool(account["raw_data"]["positions"])
+    )
+
+
+def _plan_valuation_changed(previous: dict, current: dict) -> bool:
+    """Compare only derived values that are consumed by plan calculations."""
+    return previous.get("total") != current.get("total")
+
+
+def _refresh_current_valuation(account: dict) -> dict:
+    """Fill derived display values without changing raw data or its version."""
+    if not _valuation_needs_refresh(account):
+        return account
+    valuation = _derive_valuation(account["account_id"], account["raw_data"])
+    existing_names = {
+        item["code"]: item.get("name") or ""
+        for item in account["valuation"].get("items", [])
+    }
+    valuation = {
+        **valuation,
+        "items": [
+            {
+                **item,
+                "name": item.get("name") or existing_names.get(item["code"], ""),
+            }
+            for item in valuation["items"]
+        ],
+    }
+    return {
+        **account,
+        "valuation": valuation,
+        "readiness": (
+            "ready" if valuation["status"] == "available" else "waiting_for_valuation"
+        ),
     }
 
 
@@ -555,6 +650,39 @@ def _invalidate_derived_plans(conn: sqlite3.Connection) -> None:
            WHERE status IN ('running', 'complete')""",
         (_canonical_json(reason),),
     )
+
+
+def _invalidate_plans_with_different_valuation(summary: dict) -> None:
+    """Stale plans whose captured securities totals differ from current quotes."""
+    total_fields = ("stock_total", "bond_total")
+    with db._conn() as conn:
+        with _write_transaction(conn):
+            rows = conn.execute(
+                """SELECT plan_id, plan_json FROM generated_plans
+                   WHERE status IN ('running', 'complete')"""
+            ).fetchall()
+            stale_plan_ids = []
+            for row in rows:
+                try:
+                    plan = json.loads(row["plan_json"])
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                captured = plan.get("account")
+                if not isinstance(captured, dict):
+                    continue
+                if any(captured.get(field) != summary.get(field) for field in total_fields):
+                    stale_plan_ids.append(row["plan_id"])
+            if not stale_plan_ids:
+                return
+            strategy_store.clear_latest_orders(conn)
+            reason = _canonical_json({
+                "code": "PLAN_INPUTS_CHANGED",
+                "message": "账户估值已更新，既有计划需要重新生成。",
+            })
+            conn.executemany(
+                "UPDATE generated_plans SET status='stale', error_json=? WHERE plan_id=?",
+                [(reason, plan_id) for plan_id in stale_plan_ids],
+            )
 
 
 @contextmanager

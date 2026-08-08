@@ -14,12 +14,15 @@ import time
 import uuid
 from datetime import date, datetime
 from pathlib import Path
+from unittest.mock import patch
 from urllib.request import urlopen
 from zoneinfo import ZoneInfo
 
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+from scripts.ui_smoke_quotes import CB_QUOTES, STOCK_QUOTES  # noqa: E402
+
 PYTHON = ROOT / ".venv" / "bin" / "python"
 DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "ui-smoke"
 VISUAL_GATE_NAME = "方舟计划视觉回归闸门"
@@ -209,7 +212,28 @@ def seed_database(db_path: Path, plan_date: str) -> None:
     db.append_position_snapshot("stock", plan_date, [
         {"code": "600051", "name": "宁波联合", "shares": 100},
     ])
-    db.append_position_snapshot("cb", plan_date, [])
+    db.append_position_snapshot("cb", plan_date, [
+        {"code": "113062", "name": "常银转债", "shares": 1000},
+    ])
+
+    from app import account_current_state
+
+    stock_quotes = pd.DataFrame([{
+        "stock_code": code,
+        "stock_name_q": quote["name"],
+        "price": quote["price"],
+    } for code, quote in STOCK_QUOTES.items()])
+    with patch(
+        "datasource.market.fetch_tencent_snapshot", return_value=stock_quotes
+    ), patch(
+        "datasource.market.fetch_cb_quotes_tencent", return_value=CB_QUOTES
+    ):
+        for account_id in ("stock", "cb"):
+            current = account_current_state.get_current_account(account_id)
+            account_current_state.confirm_current_account(
+                account_id,
+                expected_version=current["version"],
+            )
 
     cb_run_id = db.insert_strategy_run("cb", data_date)
     db.insert_cb_rankings(
@@ -243,7 +267,12 @@ def seed_database(db_path: Path, plan_date: str) -> None:
     from app import plan_lifecycle
     from app.plan_service import build_current_plan
 
-    saved_plan = build_current_plan()
+    with patch(
+        "datasource.market.fetch_tencent_snapshot", return_value=stock_quotes
+    ), patch(
+        "datasource.market.fetch_cb_quotes_tencent", return_value=CB_QUOTES
+    ):
+        saved_plan = build_current_plan()
     plan_id = plan_lifecycle.new_plan_id(plan_date)
     saved_plan["generation"] = {
         "plan_id": plan_id,
@@ -268,7 +297,7 @@ def start_server(db_path: Path, port: int, log_file) -> subprocess.Popen:
             str(PYTHON if PYTHON.exists() else sys.executable),
             "-m",
             "uvicorn",
-            "app.main:app",
+            "scripts.ui_smoke_app:app",
             "--host",
             "127.0.0.1",
             "--port",
@@ -793,7 +822,7 @@ def browser_check_code(
             );
             await primaryAction.click();
             await confirmRequest;
-            await accountPage.getByText('已确认本账户数据仍准确', {{ exact: false }})
+            await accountPage.getByText('已确认本账户数据', {{ exact: false }})
               .waitFor({{ state: 'visible', timeout: 10000 }});
             const currentCashAmount = Number(await cashAmount.inputValue());
             await cashAmount.fill(String(currentCashAmount + 1));
