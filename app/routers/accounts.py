@@ -2,12 +2,14 @@ from __future__ import annotations
 from typing import Annotated, Literal, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from app import account_current_state
 from app.account_read_model import build_account_read_model
 from app import plan_lifecycle
 from datasource import db
 from investment_model import public_investment_model
 
 router = APIRouter(prefix="/api/account", tags=["account"])
+current_router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
 
 NonnegativeFinite = Annotated[float, Field(ge=0, allow_inf_nan=False)]
@@ -52,6 +54,23 @@ class AccountStateIn(StrictRequest):
     positions: list[PositionStateIn]
 
 
+class CurrentPositionIn(StrictRequest):
+    code: str
+    quantity: NonnegativeFinite
+
+
+class CurrentAccountUpdateIn(StrictRequest):
+    expected_version: Optional[str] = None
+    amount: Optional[NonnegativeFinite] = None
+    available_cash: Optional[NonnegativeFinite] = None
+    frozen_cash: Optional[NonnegativeFinite] = None
+    positions: Optional[list[CurrentPositionIn]] = None
+
+
+class CurrentAccountConfirmIn(StrictRequest):
+    expected_version: str
+
+
 ACCOUNT_IDS = set(db.ACCOUNT_VALUE_FIELDS)
 
 
@@ -83,7 +102,7 @@ def public_account_summary(summary: dict | None) -> dict | None:
             "b_purchase_limit": summary.get("b_purchase_limit", 0) or 0,
         }
     return {
-        "total_assets": summary.get("total_assets", 0) or 0,
+        "total_assets": summary.get("total_assets", 0),
         "context": context,
         "accounts": summary.get("accounts", []),
         "read_model": build_account_read_model(summary),
@@ -141,10 +160,17 @@ def post_account_snapshot(account_id: str, body: AccountValueSnapshotIn):
     try:
         cash = _resolve_cash_balance(body)
         db.insert_account_value_snapshot(
-            account_id, body.snapshot_date, body.total, cash, body.frozen_cash
+            account_id,
+            body.snapshot_date,
+            body.total,
+            cash,
+            body.frozen_cash,
+            require_legacy_write_allowed=True,
         )
         db.clear_latest_orders()
         plan_lifecycle.mark_stale()
+    except db.LegacyAccountWriteConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return public_account_summary(db.get_current_account_summary())
@@ -165,11 +191,64 @@ def post_account_state(account_id: str, body: AccountStateIn):
             cash,
             [position.model_dump() for position in body.positions],
             body.frozen_cash,
+            require_legacy_write_allowed=True,
         )
         db.clear_latest_orders()
         plan_lifecycle.mark_stale()
+    except db.LegacyAccountWriteConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     response = public_account_summary(db.get_current_account_summary())
     response["position_snapshot"] = saved["position_snapshot"]
     return response
+
+
+@current_router.get("")
+def list_current_accounts():
+    return {"accounts": account_current_state.list_current_accounts()}
+
+
+@current_router.get("/{account_id}")
+def get_current_account(account_id: str):
+    try:
+        return account_current_state.get_current_account(account_id)
+    except account_current_state.CurrentAccountError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@current_router.put("/{account_id}")
+def put_current_account(account_id: str, body: CurrentAccountUpdateIn):
+    try:
+        return account_current_state.update_current_account(
+            account_id,
+            expected_version=body.expected_version,
+            amount=body.amount,
+            available_cash=body.available_cash,
+            frozen_cash=body.frozen_cash,
+            positions=[item.model_dump() for item in body.positions]
+            if body.positions is not None
+            else None,
+        )
+    except account_current_state.AccountVersionConflict as exc:
+        raise HTTPException(status_code=409, detail={
+            "message": str(exc),
+            "latest": account_current_state.get_current_account(account_id),
+        }) from exc
+    except account_current_state.CurrentAccountError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@current_router.post("/{account_id}/confirm")
+def confirm_current_account(account_id: str, body: CurrentAccountConfirmIn):
+    try:
+        return account_current_state.confirm_current_account(
+            account_id, expected_version=body.expected_version
+        )
+    except account_current_state.AccountVersionConflict as exc:
+        raise HTTPException(status_code=409, detail={
+            "message": str(exc),
+            "latest": account_current_state.get_current_account(account_id),
+        }) from exc
+    except account_current_state.CurrentAccountError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

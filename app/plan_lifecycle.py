@@ -47,13 +47,24 @@ def record_order_batch(
     db.insert_plan_order_batch(plan_id, strategy, orders, summary)
 
 
-def complete(plan_id: str, plan: dict) -> None:
-    db.update_generated_plan(plan_id, status=COMPLETE, plan=with_status(plan, COMPLETE))
+def complete(plan_id: str, plan: dict) -> bool:
+    return db.update_generated_plan(
+        plan_id,
+        status=COMPLETE,
+        plan=with_status(plan, COMPLETE),
+        expected_status=RUNNING,
+    )
 
 
 def fail(plan_id: str, plan: dict, error: dict) -> dict:
     failed_plan = with_status(plan, FAILED)
-    db.update_generated_plan(plan_id, status=FAILED, plan=failed_plan, error=error)
+    db.update_generated_plan(
+        plan_id,
+        status=FAILED,
+        plan=failed_plan,
+        error=error,
+        expected_status=RUNNING,
+    )
     return failed_plan
 
 

@@ -433,7 +433,19 @@ class TestPlansApi(unittest.TestCase):
             plan_id,
             "2026-06-29",
             "complete",
-            {"plan_date": "2026-06-29", "orders": [{"action": "BUY"}]},
+            {
+                "plan_date": "2026-06-29",
+                "orders": [{"action": "BUY"}],
+                "execution_read_model": {
+                    "funding_plan": {
+                        "groups": [
+                            {"actions": [{"amount": 1}, {"amount": 2}]},
+                            {"actions": [{"amount": 3}]},
+                        ],
+                    },
+                    "account_trading_plans": [{"account_id": "stock"}, {"account_id": "cb"}],
+                },
+            },
         )
 
         response = self.client.get("/api/plan/generated")
@@ -444,6 +456,8 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(generation["status"], "complete")
         self.assertEqual(generation["plan_date"], "2026-06-29")
         self.assertIsNone(generation["error"])
+        self.assertEqual(generation["summary"]["funding_action_count"], 3)
+        self.assertEqual(generation["summary"]["account_trading_plan_count"], 2)
         self.assertNotIn("plan", generation)
         self.assertNotIn("orders", generation)
 
@@ -788,7 +802,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(r.status_code, 409)
         self.assertIn("account.overseas", {e["input"] for e in r.json()["detail"]["errors"]})
 
-    def test_account_fact_date_cannot_be_hidden_by_recent_entry_time(self):
+    def test_backfilled_account_fact_does_not_replace_newer_current_data(self):
         db.insert_account_value_snapshot("stock", "2026-06-01", 209555, 274)
         db._TEST_CONN.execute(
             """UPDATE account_value_snapshots
@@ -799,18 +813,12 @@ class TestPlansApi(unittest.TestCase):
 
         r = self.client.get("/api/plan")
 
-        self.assertEqual(r.status_code, 409)
-        stock_error = next(
-            item for item in r.json()["detail"]["errors"]
-            if item["input"] == "account.stock"
+        self.assertEqual(r.status_code, 200)
+        stock = next(
+            item for item in r.json()["account_read_model"]["accounts"]
+            if item["id"] == "stock"
         )
-        self.assertEqual(stock_error["date"], "2026-06-01")
-        self.assertEqual(stock_error["kind"], "account")
-        self.assertEqual(stock_error["account_id"], "stock")
-        self.assertEqual(stock_error["account_name"], "广发账户")
-        self.assertEqual(stock_error["account_role"], "A 组合小市值股票策略承载账户")
-        self.assertEqual(stock_error["portfolio_id"], "A")
-        self.assertNotIn("股票账户", stock_error["message"])
+        self.assertEqual(stock["snapshot_date"], "2026-06-29")
 
     def test_position_fact_date_cannot_be_hidden_by_recent_entry_time(self):
         db._TEST_CONN.execute("DELETE FROM position_snapshot_items")

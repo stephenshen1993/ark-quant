@@ -167,6 +167,42 @@ class TestPlanGeneration(unittest.TestCase):
         cb_size.assert_called_once()
         stock_size.assert_called_once()
 
+    def test_account_change_during_generation_returns_stale_instead_of_old_complete_plan(self):
+        def cb_size(*_args, **_kwargs):
+            plan_lifecycle.mark_stale()
+            return {
+                "orders": [],
+                "summary": {
+                    "starting_cash": 110,
+                    "transfer_delta": 0,
+                    "order_delta": 0,
+                    "cash_left": 110,
+                },
+            }
+
+        stock_size = Mock(return_value={
+            "orders": [],
+            "summary": {
+                "starting_cash": 274,
+                "transfer_delta": 0,
+                "order_delta": 0,
+                "cash_left": 274,
+            },
+        })
+
+        with self.assertRaises(PlanServiceError) as caught:
+            plan_generation.generate_complete_plan(
+                size_cb_orders=cb_size,
+                size_stock_orders=stock_size,
+            )
+
+        detail = caught.exception.detail
+        saved = plan_lifecycle.get_plan(detail["plan_id"])
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertEqual(detail["code"], "PLAN_INPUTS_CHANGED")
+        self.assertEqual(saved["status"], plan_lifecycle.STALE)
+        self.assertEqual(saved["error"]["code"], "PLAN_INPUTS_CHANGED")
+
     def test_strategy_ranking_date_mismatch_has_plan_generation_stage(self):
         self._clear_strategy_outputs()
 

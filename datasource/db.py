@@ -32,6 +32,10 @@ ACCOUNT_VALUE_FIELDS = account_store.ACCOUNT_VALUE_FIELDS
 ACCOUNT_METADATA = account_store.ACCOUNT_METADATA
 
 
+class LegacyAccountWriteConflict(ValueError):
+    """Raised when a legacy writer targets an account owned by the current-state model."""
+
+
 def get_connection() -> sqlite3.Connection:
     """Legacy getter for backward compatibility (used in test_db.py)."""
     if _TEST_CONN is not None:
@@ -59,6 +63,44 @@ def _conn():
             raise
         finally:
             conn.close()
+
+
+@contextmanager
+def _atomic_write(conn: sqlite3.Connection, name: str):
+    """Serialize a write while remaining compatible with injected test connections."""
+    if conn.in_transaction:
+        conn.execute(f"SAVEPOINT {name}")
+        try:
+            yield
+        except Exception:
+            conn.execute(f"ROLLBACK TO SAVEPOINT {name}")
+            conn.execute(f"RELEASE SAVEPOINT {name}")
+            raise
+        conn.execute(f"RELEASE SAVEPOINT {name}")
+        return
+
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        yield
+    except Exception:
+        conn.rollback()
+        raise
+    conn.commit()
+
+
+def _assert_legacy_account_write_allowed(
+    conn: sqlite3.Connection,
+    account_id: str,
+) -> None:
+    row = conn.execute(
+        """SELECT 1 FROM account_state_versions
+           WHERE account_id=? AND operation!='backfill' LIMIT 1""",
+        (account_id,),
+    ).fetchone()
+    if row is not None:
+        raise LegacyAccountWriteConflict(
+            "该账户已使用当前数据模型，请通过 /api/accounts 更新"
+        )
 
 
 def init_db() -> None:
@@ -142,10 +184,23 @@ def init_db() -> None:
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id    TEXT    NOT NULL,
             snapshot_date TEXT    NOT NULL,
-            total         REAL    NOT NULL,
+            total         REAL,
             cash          REAL,
             frozen_cash   REAL,
             created_at    TEXT    NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS account_state_versions (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id           TEXT    NOT NULL,
+            as_of                TEXT    NOT NULL,
+            raw_json             TEXT    NOT NULL,
+            valuation_json       TEXT,
+            account_snapshot_id  INTEGER REFERENCES account_value_snapshots(id),
+            position_snapshot_id INTEGER REFERENCES position_snapshots(id),
+            operation            TEXT    NOT NULL
+                CHECK(operation IN ('update', 'confirm', 'backfill')),
+            created_at           TEXT    NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS account_contexts (
@@ -201,6 +256,9 @@ def init_db() -> None:
 
         CREATE INDEX IF NOT EXISTS idx_position_snapshot_items_snapshot
         ON position_snapshot_items(snapshot_id, code);
+
+        CREATE INDEX IF NOT EXISTS idx_account_state_versions_current
+        ON account_state_versions(account_id, as_of DESC, id DESC);
 
         CREATE TABLE IF NOT EXISTS raw_snapshots (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -259,6 +317,7 @@ def init_db() -> None:
         if "frozen_cash" not in value_cols:
             conn.execute("ALTER TABLE account_value_snapshots ADD COLUMN frozen_cash REAL")
             conn.execute("UPDATE account_value_snapshots SET frozen_cash=0 WHERE frozen_cash IS NULL")
+        _migrate_nullable_account_totals(conn)
         context_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(account_contexts)").fetchall()
         }
@@ -289,6 +348,37 @@ def init_db() -> None:
         _migrate_strategy_run_status(conn)
         _migrate_legacy_account_snapshots(conn)
         _migrate_legacy_positions(conn)
+
+
+def _migrate_nullable_account_totals(conn: sqlite3.Connection) -> None:
+    """Let a saved raw account state exist while market valuation is unavailable."""
+    columns = {
+        row["name"]: row
+        for row in conn.execute("PRAGMA table_info(account_value_snapshots)").fetchall()
+    }
+    total = columns.get("total")
+    if total is None or not total["notnull"]:
+        return
+
+    conn.executescript(
+        """
+        CREATE TABLE account_value_snapshots_new (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id    TEXT    NOT NULL,
+            snapshot_date TEXT    NOT NULL,
+            total         REAL,
+            cash          REAL,
+            frozen_cash   REAL,
+            created_at    TEXT    NOT NULL
+        );
+        INSERT INTO account_value_snapshots_new
+            (id, account_id, snapshot_date, total, cash, frozen_cash, created_at)
+        SELECT id, account_id, snapshot_date, total, cash, frozen_cash, created_at
+        FROM account_value_snapshots;
+        DROP TABLE account_value_snapshots;
+        ALTER TABLE account_value_snapshots_new RENAME TO account_value_snapshots;
+        """
+    )
 
 
 def _migrate_strategy_run_status(conn: sqlite3.Connection) -> None:
@@ -505,21 +595,26 @@ def insert_account_snapshot(
 def insert_account_value_snapshot(
     account_id: str,
     snapshot_date: str,
-    total: float,
+    total: float | None,
     cash: float | None = None,
     frozen_cash: float | None = None,
+    *,
+    require_legacy_write_allowed: bool = False,
 ) -> int:
     with _conn() as conn:
-        return account_store.insert_account_value_snapshot(
-            conn, account_id, snapshot_date, total, cash, frozen_cash
-        )
+        with _atomic_write(conn, "insert_account_value_snapshot"):
+            if require_legacy_write_allowed:
+                _assert_legacy_account_write_allowed(conn, account_id)
+            return account_store.insert_account_value_snapshot(
+                conn, account_id, snapshot_date, total, cash, frozen_cash
+            )
 
 
 def _insert_account_value_snapshot(
     conn: sqlite3.Connection,
     account_id: str,
     snapshot_date: str,
-    total: float,
+    total: float | None,
     cash: float | None,
     frozen_cash: float,
 ) -> int:
@@ -640,15 +735,18 @@ def append_position_snapshot(strategy: str, position_date: str, rows: list[dict]
 def append_account_state_snapshot(
     account_id: str,
     snapshot_date: str,
-    total: float,
+    total: float | None,
     cash: float,
     positions: list[dict],
     frozen_cash: float | None = None,
+    *,
+    require_legacy_write_allowed: bool = False,
 ) -> dict:
     _validate_account_id(account_id)
     _validate_strategy(account_id)
     _validate_iso_date(snapshot_date)
-    total = _validate_nonnegative_finite(total, "total")
+    if total is not None:
+        total = _validate_nonnegative_finite(total, "total")
     cash = _validate_nonnegative_finite(cash, "cash")
     if frozen_cash is None:
         frozen_cash = 0.0
@@ -658,8 +756,9 @@ def append_account_state_snapshot(
     normalized = _normalize_position_rows(positions)
 
     with _conn() as conn:
-        conn.execute("SAVEPOINT append_account_state_snapshot")
-        try:
+        with _atomic_write(conn, "append_account_state_snapshot"):
+            if require_legacy_write_allowed:
+                _assert_legacy_account_write_allowed(conn, account_id)
             # The position snapshot is the account's source of truth.  Persist it
             # first, then save the cash and total that were reconciled against it.
             position_snapshot_id = position_store.insert_position_snapshot(
@@ -668,11 +767,6 @@ def append_account_state_snapshot(
             account_snapshot_id = _insert_account_value_snapshot(
                 conn, account_id, snapshot_date, total, cash, frozen_cash
             )
-        except Exception:
-            conn.execute("ROLLBACK TO SAVEPOINT append_account_state_snapshot")
-            conn.execute("RELEASE SAVEPOINT append_account_state_snapshot")
-            raise
-        conn.execute("RELEASE SAVEPOINT append_account_state_snapshot")
         return {
             "account_snapshot_id": account_snapshot_id,
             "position_snapshot": position_store.get_position_snapshot(
@@ -917,7 +1011,8 @@ def update_generated_plan(
     status: str,
     plan: dict | None = None,
     error: dict | None = None,
-) -> None:
+    expected_status: str | None = None,
+) -> bool:
     with _conn() as conn:
         existing = conn.execute(
             "SELECT plan_json FROM generated_plans WHERE plan_id=?",
@@ -926,12 +1021,18 @@ def update_generated_plan(
         if existing is None:
             raise ValueError(f"Unknown generated plan: {plan_id}")
         plan_json = _to_json(plan) if plan is not None else existing["plan_json"]
-        conn.execute(
+        predicate = "plan_id=?"
+        params: list = [status, plan_json, _to_json(error) if error else None, plan_id]
+        if expected_status is not None:
+            predicate += " AND status=?"
+            params.append(expected_status)
+        cursor = conn.execute(
             """UPDATE generated_plans
                SET status=?, plan_json=?, error_json=?
-               WHERE plan_id=?""",
-            (status, plan_json, _to_json(error) if error else None, plan_id),
+               WHERE """ + predicate,
+            params,
         )
+        return cursor.rowcount == 1
 
 
 def mark_generated_plans_stale(reason: dict | None = None) -> None:
@@ -941,7 +1042,8 @@ def mark_generated_plans_stale(reason: dict | None = None) -> None:
     }
     with _conn() as conn:
         conn.execute(
-            "UPDATE generated_plans SET status='stale', error_json=? WHERE status='complete'",
+            """UPDATE generated_plans SET status='stale', error_json=?
+               WHERE status IN ('running', 'complete')""",
             (_to_json(error),),
         )
 

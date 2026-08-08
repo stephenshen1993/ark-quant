@@ -11,8 +11,8 @@ class TestTradingPageInteraction(unittest.TestCase):
         cls.html = INDEX_HTML.read_text(encoding="utf-8")
 
     def test_navigation_only_exposes_available_destinations(self):
+        self.assertIn('aria-label="今日状态"', self.html)
         self.assertIn('aria-label="账户"', self.html)
-        self.assertIn('aria-label="今日计划"', self.html)
         self.assertIn('aria-label="更新日志"', self.html)
         self.assertNotIn('aria-label="关于，暂未开放"', self.html)
         self.assertNotIn('aria-label="反馈，暂未开放"', self.html)
@@ -22,23 +22,25 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("<title>方舟计划 · 个人投资系统</title>", self.html)
         self.assertIn("方舟计划", self.html)
         self.assertIn("个人投资系统", self.html)
-        self.assertIn('href="#trading"', self.html)
+        self.assertIn('href="#today"', self.html)
         self.assertIn('href="#account"', self.html)
         self.assertIn('href="#changelog"', self.html)
-        self.assertLess(self.html.index('href="#trading"'), self.html.index('href="#account"'))
-        self.assertIn("return ['account', 'trading', 'changelog'].includes(page) ? page : 'trading'", self.html)
+        self.assertLess(self.html.index('href="#today"'), self.html.index('href="#account"'))
+        self.assertIn("if (page === 'trading') return 'today'", self.html)
+        self.assertIn("return ['account', 'today', 'changelog'].includes(page) ? page : 'today'", self.html)
         self.assertIn("所有计划均需人工复核并在外部券商执行", self.html)
         self.assertNotIn("quant journal", self.html)
 
     def test_shared_shell_uses_the_selected_balanced_geometry_and_tokens(self):
-        self.assertIn("--ark-bg: #f3f5f6", self.html)
-        self.assertIn("--ark-text: #17212b", self.html)
-        self.assertIn("--ark-accent: #0d716f", self.html)
+        self.assertIn("--ark-bg: #f1f4f3", self.html)
+        self.assertIn("--ark-text: #14202a", self.html)
+        self.assertIn("--ark-accent: #087a78", self.html)
+        self.assertIn("--ark-font-display: \"Songti SC\"", self.html)
         self.assertIn("--ark-nav-width: 220px", self.html)
         self.assertIn("--ark-workspace-width: 1140px", self.html)
         self.assertIn("--ark-reading-width: 880px", self.html)
         self.assertIn("max-width: var(--ark-workspace-width)", self.html)
-        self.assertIn("padding: 54px 46px 96px", self.html)
+        self.assertIn("padding: 46px 46px 96px", self.html)
         self.assertIn("padding: 30px 18px 72px", self.html)
 
     def test_regular_flow_has_one_complete_plan_action(self):
@@ -65,44 +67,68 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn(">A 内部检查<", self.html)
         self.assertNotIn(">B 申购恢复<", self.html)
 
-    def test_account_facts_use_a_visible_date_that_is_not_reset_by_old_context(self):
-        self.assertIn("账户事实日", self.html)
-        self.assertIn(':value="factDateInputValue"', self.html)
-        self.assertIn("事实日 ", self.html)
-        self.assertIn("accountRole(acc)", self.html)
-        self.assertIn("summary.read_model?.accounts", self.html)
-        self.assertIn("acc.readModel?.role || ''", self.html)
-        self.assertNotIn("role: 'A 组合", self.html)
-        self.assertNotIn("role: 'B 组合", self.html)
-        self.assertNotIn("role: 'C 组合", self.html)
+    def test_account_workspace_updates_one_prefilled_account_without_global_fact_dates(self):
+        self.assertIn("打开一个账户，沿用现有数据，只更新发生变化的内容。", self.html)
+        self.assertIn("function accountWorkspace()", self.html)
+        self.assertIn("fetch('/api/accounts')", self.html)
+        self.assertIn("available_cash: account.raw_data?.available_cash ?? ''", self.html)
+        self.assertIn("positions: (account.raw_data?.positions || []).map", self.html)
+        self.assertIn("只会保存这个账户，其他账户保持原样。", self.html)
+        self.assertNotIn("账户事实日", self.html)
+        self.assertNotIn("function accountPage()", self.html)
+        self.assertNotIn("saveAllAccountFacts", self.html)
+
+    def test_account_workspace_combines_current_data_with_plan_input_readiness(self):
+        self.assertIn("workStatusStore().load({ force:", self.html)
+        self.assertIn("plan_readiness: readinessUnknown", self.html)
+        self.assertIn("当前数据需要为本次计划更新。", self.html)
+        self.assertIn("accountReadyForPlan(account)", self.html)
+
+    def test_account_workspace_fails_closed_when_plan_readiness_is_unknown(self):
+        self.assertIn("账户计划就绪度待确认", self.html)
+        self.assertIn("无法确认计划输入状态", self.html)
+        self.assertIn("plan_readiness: readinessUnknown", self.html)
+        self.assertIn("? 'unknown'", self.html)
+        ready_method = self.html.index("accountReadyForPlan(account)")
+        ready_method_end = self.html.index("statusClass(account)", ready_method)
+        self.assertIn(
+            "account.plan_readiness === 'ready'",
+            self.html[ready_method:ready_method_end],
+        )
         self.assertNotIn(
-            "this.form.snapshot_date = context.snapshot_date || this.form.snapshot_date",
-            self.html,
+            "!account.plan_readiness",
+            self.html[ready_method:ready_method_end],
         )
 
-    def test_account_date_switch_loads_a_single_confirmed_fact_identity_before_save(self):
-        self.assertIn('@change="requestFactDate($event.target.value)"', self.html)
-        self.assertIn('factDateInputValue: localDate()', self.html)
-        self.assertIn('x-ref="factDateInput"', self.html)
-        self.assertIn("async loadFactDate(factDate)", self.html)
-        self.assertIn("/api/account/summary?date=${encodeURIComponent(selectedDate)}", self.html)
-        self.assertIn("/api/positions/${strategy}?date=${encodeURIComponent(factDate)}", self.html)
-        self.assertIn("/api/positions/${strategy}/quotes?date=${encodeURIComponent(factDate)}", self.html)
-        self.assertIn("loadedFactDate: ''", self.html)
-        self.assertIn("canSaveFacts()", self.html)
-        self.assertIn(":disabled=\"!canSaveFacts() || saveInProgress\"", self.html)
-        self.assertIn("snapshot_date: this.loadedFactDate", self.html)
-        self.assertIn("保存前请先完成该事实日的数据读取", self.html)
-        self.assertIn("discardPendingFactDate()", self.html)
-        self.assertIn("this.factDateInputValue = this.form.snapshot_date", self.html)
-        self.assertIn("this.$refs.factDateInput.value = this.form.snapshot_date", self.html)
-        self.assertIn("有未保存编辑；切换事实日前请先保存或明确放弃这些编辑。", self.html)
-        self.assertIn("账户事实已保存，并已重新读取账户事实与计划就绪度。", self.html)
+    def test_account_clear_intents_keep_holdings_and_cash_separate(self):
+        self.assertIn("clearRequirement(raw = this.payloadRaw())", self.html)
+        self.assertIn("return 'holdings'", self.html)
+        self.assertIn("return 'account'", self.html)
+        self.assertIn("这只会把当前持仓记录为已确认空仓，可用资金和冻结资金保持不变", self.html)
+        holdings_branch = self.html.index("else if (mode === 'holdings')")
+        holdings_end = self.html.index("this.closeClearDialog(false)", holdings_branch)
+        self.assertIn("this.draft.positions = []", self.html[holdings_branch:holdings_end])
+        self.assertNotIn("this.draft.available_cash = 0", self.html[holdings_branch:holdings_end])
+
+    def test_global_status_uses_lightweight_shared_status_without_full_plan_fetch(self):
+        self.assertIn("Alpine.store('workStatus', createWorkStatusStore())", self.html)
+        self.assertIn("function createWorkStatusStore()", self.html)
+        self.assertIn("generation?.summary?.funding_action_count", self.html)
+        start = self.html.index("function globalStatusBar()")
+        end = self.html.index("function localDate()", start)
+        body = self.html[start:end]
+        self.assertNotIn("/api/plan/generated/${", body)
+        self.assertNotIn("generatedPlan", body)
+
+    def test_pending_plan_state_is_not_rendered_as_problem(self):
+        self.assertIn(".plan-decision-hero[data-state=\"pending\"]", self.html)
+        self.assertIn("if (!this.hasCurrentGeneratedPlan()) return 'pending'", self.html)
+        self.assertNotIn("if (!this.hasCurrentGeneratedPlan()) return 'problem'", self.html)
 
     def test_default_dates_use_browser_local_date_instead_of_utc_date(self):
         self.assertIn("function localDate()", self.html)
-        self.assertIn("snapshot_date: localDate()", self.html)
         self.assertIn("tDate: localDate()", self.html)
+        self.assertNotIn("factDateInputValue", self.html)
 
     def test_inputs_use_progressive_disclosure_and_explicit_b_status(self):
         self.assertIn('x-show="needsBCheck()"', self.html)
@@ -409,11 +435,11 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("planStateTitle()", self.html)
         self.assertIn("今日需要操作", self.html)
         self.assertIn("今日无需操作", self.html)
-        self.assertIn("今日计划待生成", self.html)
+        self.assertIn("计划待生成", self.html)
         self.assertIn("无法确认计划状态", self.html)
-        self.assertIn("无法确认账户事实", self.html)
+        self.assertIn("无法确认账户数据", self.html)
         self.assertIn("readinessError: ''", self.html)
-        self.assertIn("待补充账户事实", self.html)
+        self.assertIn("待更新账户数据", self.html)
         self.assertIn("计划已失效", self.html)
         self.assertIn("计划生成失败", self.html)
         self.assertIn("executionReadModel()", self.html)
@@ -438,57 +464,9 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("if (!this.canGenerateCompletePlan()) return", self.html)
         self.assertIn("async retryPlanReadiness()", self.html)
         self.assertIn("重新读取计划输入就绪度", self.html)
-        self.assertIn("goToMissingFactAccount()", self.html)
-        self.assertIn("navigateToAccountFact(accountId)", self.html)
-        self.assertIn("focusAccountFact(accountId)", self.html)
-        self.assertIn("account-fact-", self.html)
-        self.assertIn("requestAnimationFrame(() => input?.focus())", self.html)
-
-    def test_account_maintenance_controls_are_keyboard_reachable(self):
-        self.assertIn(":role=\"acc.posType ? 'button' : null\"", self.html)
-        self.assertIn(":tabindex=\"acc.posType ? 0 : null\"", self.html)
-        self.assertIn("@keydown.enter.prevent=\"acc.posType ? toggleExpand(acc.id) : null\"", self.html)
-        self.assertIn("@keydown.space.prevent=\"acc.posType ? toggleExpand(acc.id) : null\"", self.html)
-        self.assertIn('aria-label="编辑账户金额"', self.html)
-        self.assertIn("@keydown.enter.prevent.stop=\"editingSimple = acc.id\"", self.html)
-        self.assertIn("@keydown.space.prevent.stop=\"editingSimple = acc.id\"", self.html)
-        self.assertIn("window.matchMedia('(prefers-reduced-motion: reduce)').matches", self.html)
-
-    def test_account_page_prioritizes_fact_readiness_and_portfolio_structure(self):
-        self.assertIn("fetch('/api/plan/readiness')", self.html)
-        self.assertIn("accountReadinessTitle()", self.html)
-        self.assertIn("事实已就绪", self.html)
-        self.assertIn("项事实需要更新", self.html)
-        self.assertIn("查看并更新这些账户", self.html)
-        self.assertIn('id="account-facts"', self.html)
-        self.assertIn("portfolioSections()", self.html)
-        self.assertIn("summary?.read_model?.portfolios", self.html)
-        self.assertIn("summary?.read_model?.accounts", self.html)
-        readiness = self.html.index('class="account-readiness-hero')
-        structure = self.html.index('class="ark-panel account-portfolio-structure')
-        maintenance = self.html.index('id="account-facts"')
-        self.assertLess(readiness, structure)
-        self.assertLess(structure, maintenance)
-        self.assertIn("saveError: ''", self.html)
-        self.assertIn('role="alert"', self.html)
-        self.assertNotIn("alert(err.message", self.html)
-
-    def test_account_loading_keeps_failures_empty_accounts_and_loaded_facts_distinct(self):
-        self.assertIn("accountFactState: 'idle'", self.html)
-        self.assertIn("accountFactError: ''", self.html)
-        self.assertIn("async fetchAccountFact(url, label)", self.html)
-        self.assertIn("accountFactsFailed()", self.html)
-        self.assertIn("accountFactsEmpty()", self.html)
-        self.assertIn("accountFactsUsable()", self.html)
-        self.assertIn("async retryAccountFacts()", self.html)
-        self.assertIn("账户事实读取失败", self.html)
-        self.assertIn("重新读取账户事实", self.html)
-        self.assertIn("尚未录入账户事实", self.html)
-        self.assertIn("读取失败期间不显示资产数值或事实结论", self.html)
-        self.assertIn('x-show="accountFactsUsable()"', self.html)
-        self.assertIn("if (!this.accountFactsUsable()) return null", self.html)
-        self.assertIn('x-show="accountFactsUsable() || accountFactsEmpty()"', self.html)
-        self.assertIn("accountFactDisplayValue(acc.totalKey)", self.html)
+        self.assertIn("goToAccountNeedingUpdate()", self.html)
+        self.assertIn("navigateToAccount(accountId)", self.html)
+        self.assertIn("@account-focus.window=\"focusAccount($event.detail)\"", self.html)
 
 if __name__ == "__main__":
     unittest.main()

@@ -53,7 +53,7 @@ def generate_plan():
 @router.get("/generated")
 def get_latest_generated_plan():
     try:
-        return {"generation": plan_lifecycle.get_latest_plan_status()}
+        return {"generation": _with_generation_summary(plan_lifecycle.get_latest_plan_status())}
     except Exception as exc:
         raise HTTPException(
             status_code=503,
@@ -70,6 +70,27 @@ def get_generated_plan(plan_id: str):
     if plan is None:
         raise HTTPException(status_code=404, detail="计划不存在")
     return plan
+
+
+def _with_generation_summary(generation: dict | None) -> dict | None:
+    if generation is None:
+        return None
+    summary = {
+        "funding_action_count": 0,
+        "account_trading_plan_count": 0,
+    }
+    if generation.get("status") == "complete" and generation.get("plan_id"):
+        saved = plan_generation.get_generated_plan(generation["plan_id"]) or {}
+        plan = saved.get("plan") if isinstance(saved, dict) else {}
+        execution = plan.get("execution_read_model") if isinstance(plan, dict) else {}
+        funding_plan = execution.get("funding_plan") if isinstance(execution, dict) else {}
+        summary["funding_action_count"] = sum(
+            len(group.get("actions") or []) for group in funding_plan.get("groups") or []
+        )
+        summary["account_trading_plan_count"] = len(
+            execution.get("account_trading_plans") or []
+        )
+    return {**generation, "summary": summary}
 
 
 def _service_response(builder, *args, **kwargs):

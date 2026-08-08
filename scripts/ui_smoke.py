@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT))
 PYTHON = ROOT / ".venv" / "bin" / "python"
 DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "ui-smoke"
 VISUAL_GATE_NAME = "方舟计划视觉回归闸门"
+CLI_TIMEOUT_SECONDS = float(os.environ.get("ARK_UI_SMOKE_CLI_TIMEOUT_SECONDS", "60"))
 DESKTOP_NAV_WIDTH = 220
 WORKBENCH_WIDTH = 1140
 READING_WIDTH = 880
@@ -32,36 +33,36 @@ GEOMETRY_TOLERANCE = 2
 ARK_CHANGELOG_REFERENCE_METRICS = {
     "nav_width": DESKTOP_NAV_WIDTH,
     "shell_left": 426,
-    "content_top": 54,
+    "content_top": 124,
     "shell_width": READING_WIDTH,
-    "header_stream_gap": 48,
-    "date_group_gap": 46,
-    "date_header_height": 44,
-    "date_divider_y": 256.24,
+    "header_stream_gap": 44,
+    "date_group_gap": 50,
+    "date_header_height": 49,
+    "date_divider_y": 332.8,
     "meta_width": 96,
     "entry_column_gap": 24,
     "entry_divider_x": 546,
     "entry_copy_x": 546,
 }
 ARK_CHANGELOG_STYLE_METRICS = {
-    "canvas": "rgb(243, 245, 246)",
-    "surface": "rgb(255, 255, 255)",
-    "navBorder": "rgb(216, 223, 227)",
+    "canvas": "rgb(241, 244, 243)",
+    "surface": "rgb(255, 254, 250)",
+    "navBorder": "rgb(210, 220, 219)",
     "navBorderWidth": 1,
-    "ink": "rgb(23, 33, 43)",
-    "secondary": "rgb(101, 113, 124)",
-    "tertiary": "rgb(142, 153, 163)",
-    "line": "rgb(216, 223, 227)",
-    "navActive": "rgb(220, 236, 234)",
-    "accent": "rgb(13, 113, 111)",
-    "update": "rgb(40, 114, 79)",
-    "neutral": "rgb(101, 113, 124)",
+    "ink": "rgb(20, 32, 42)",
+    "secondary": "rgb(102, 116, 127)",
+    "tertiary": "rgb(154, 164, 171)",
+    "line": "rgb(210, 220, 219)",
+    "navActive": "rgb(220, 239, 235)",
+    "accent": "rgb(8, 122, 120)",
+    "update": "rgb(47, 118, 86)",
+    "neutral": "rgb(102, 116, 127)",
     "kicker": {"fontSize": 11, "lineHeight": 16, "fontWeight": 650},
-    "title": {"fontSize": 32, "lineHeight": 39.04, "fontWeight": 680},
-    "subtitle": {"fontSize": 17, "lineHeight": 27.2, "fontWeight": 400},
-    "date": {"fontSize": 24, "lineHeight": 31.2, "fontWeight": 650},
-    "entryTitle": {"fontSize": 18, "lineHeight": 25.2, "fontWeight": 650},
-    "body": {"fontSize": 16, "lineHeight": 28, "fontWeight": 400},
+    "title": {"fontSize": 40, "lineHeight": 44, "fontWeight": 680},
+    "subtitle": {"fontSize": 16, "lineHeight": 28, "fontWeight": 400},
+    "date": {"fontSize": 30, "lineHeight": 36, "fontWeight": 650},
+    "entryTitle": {"fontSize": 17, "lineHeight": 26, "fontWeight": 650},
+    "body": {"fontSize": 15, "lineHeight": 27, "fontWeight": 400},
     "time": {"fontSize": 16, "lineHeight": 20, "fontWeight": 500},
     "label": {"fontSize": 14, "lineHeight": 18.9, "fontWeight": 560},
     "dotSize": 8,
@@ -70,7 +71,7 @@ ARK_CHANGELOG_RESPONSIVE_METRICS = {
     "desktop": {
         "navWidth": DESKTOP_NAV_WIDTH,
         "shellLeft": 390,
-        "contentTop": 54,
+        "contentTop": 124,
         "shellWidth": READING_WIDTH,
     },
     "narrow": {
@@ -144,7 +145,7 @@ def main() -> int:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "运行方舟计划视觉回归闸门，检查账户、今日计划和更新日志。"
+            "运行方舟计划视觉回归闸门，检查账户数据、今日状态和更新日志。"
         ),
     )
     parser.add_argument(
@@ -205,7 +206,9 @@ def seed_database(db_path: Path, plan_date: str) -> None:
     db.insert_account_value_snapshot("cash", plan_date, 32078.24)
     db.insert_account_value_snapshot("overseas", plan_date, 93468.85)
     db.insert_account_value_snapshot("changqian", plan_date, 115632.73)
-    db.append_position_snapshot("stock", plan_date, [])
+    db.append_position_snapshot("stock", plan_date, [
+        {"code": "600051", "name": "宁波联合", "shares": 100},
+    ])
     db.append_position_snapshot("cb", plan_date, [])
 
     cb_run_id = db.insert_strategy_run("cb", data_date)
@@ -452,6 +455,7 @@ def browser_check_code(
         async page => {{
           const consoleErrors = [];
           const pageErrors = [];
+          let smokeStep = 'bootstrap';
           page.on('console', msg => {{
             if (msg.type() === 'error') consoleErrors.push(msg.text());
           }});
@@ -513,6 +517,7 @@ def browser_check_code(
                 .filter(item => item.tableBeyondRoot && (!item.hasScroller || item.scrollerBeyondRoot));
               const clippedControls = Array.from(rootElement.querySelectorAll('button, input, select, summary, a[href]'))
                 .filter(element => isVisible(element))
+                .filter(element => !horizontalScroller(element))
                 .map(element => {{
                   const rect = element.getBoundingClientRect();
                   return {{
@@ -581,17 +586,28 @@ def browser_check_code(
             const navigation = page.getByRole('navigation', {{ name: '主导航' }});
             const main = page.getByRole('main', {{ name: '工作台内容' }});
             const accountNav = navigation.getByRole('link', {{ name: '账户', exact: true }});
-            const planNav = navigation.getByRole('link', {{ name: '今日计划', exact: true }});
+            const planNav = navigation.getByRole('link', {{ name: '今日状态', exact: true }});
             const changelogNav = navigation.getByRole('link', {{ name: '更新日志', exact: true }});
             const assertActivePage = async (check, link, expectedHash) => {{
               await link.waitFor({{ state: 'visible', timeout: 10000 }});
               const label = await link.getAttribute('aria-label');
-              await page.waitForFunction(
-                ({{ label, expectedHash }}) => window.location.hash === expectedHash
-                  && document.querySelector(`a[aria-label="${{label}}"]`)?.getAttribute('aria-current') === 'page',
-                {{ label, expectedHash }},
-                {{ timeout: 10000 }},
-              );
+              try {{
+                await page.waitForFunction(
+                  ({{ label, expectedHash }}) => window.location.hash === expectedHash
+                    && document.querySelector(`a[aria-label="${{label}}"]`)?.getAttribute('aria-current') === 'page',
+                  {{ label, expectedHash }},
+                  {{ timeout: 10000 }},
+                );
+              }} catch (error) {{
+                fail(check, check + ' 导航状态等待超时', [difference(
+                  check + '.state',
+                  {{ hash: expectedHash, ariaCurrent: 'page' }},
+                  {{
+                    hash: await page.evaluate(() => window.location.hash),
+                    ariaCurrent: await link.getAttribute('aria-current'),
+                  }},
+                )]);
+              }}
               const actual = {{
                 hash: await page.evaluate(() => window.location.hash),
                 ariaCurrent: await link.getAttribute('aria-current'),
@@ -612,7 +628,7 @@ def browser_check_code(
               disabled: link.hasAttribute('disabled'),
               ariaDisabled: link.getAttribute('aria-disabled'),
             }})));
-            const expectedNavLabels = ['今日计划', '账户', '更新日志'];
+            const expectedNavLabels = ['今日状态', '账户', '更新日志'];
             const actualNavLabels = navItems.map(item => (item.ariaLabel || item.label).split('，')[0]);
             const navigationDifferences = [];
             if (JSON.stringify(actualNavLabels) !== JSON.stringify(expectedNavLabels)) {{
@@ -627,31 +643,35 @@ def browser_check_code(
               ));
             }}
             assertNoDifferences('navigation', '全站导航顺序或可用状态异常', navigationDifferences);
+            const globalStatus = main.getByRole('region', {{ name: '全局当前状态' }});
+            await globalStatus.waitFor({{ state: 'visible', timeout: 10000 }});
+            const globalStatusText = await globalStatus.innerText();
+            const globalStatusDifferences = [];
+            ['当前状态', '账户数据', '资金', '计划'].forEach(text => {{
+              if (!globalStatusText.includes(text)) {{
+                globalStatusDifferences.push(difference('globalStatus.text.' + text, true, false));
+              }}
+            }});
+            assertNoDifferences('globalStatus', '全局状态条缺少关键状态信息', globalStatusDifferences);
 
+            const accountMaintenanceNarrowChecks = [];
+            const accountDataIdentityChecks = [];
+            const accountDataScenarioChecks = [];
+            smokeStep = 'account.open';
             await accountNav.click();
             await assertActivePage('account.fromPlan', accountNav, '#account');
-            const accountPage = main.getByRole('region', {{ name: '账户工作台' }});
-            const accountHeading = accountPage.getByRole('heading', {{ name: '账户', level: 1 }});
+            const accountPage = main.getByRole('region', {{ name: '账户数据工作台' }});
+            const accountHeading = accountPage.getByRole('heading', {{ name: '账户数据', level: 1 }});
             await accountHeading.waitFor({{ state: 'visible', timeout: 10000 }});
-            const accountDate = accountPage.getByLabel('账户事实日', {{ exact: true }});
-            await accountDate.fill({json.dumps(expected_plan_date)});
-            const initialAccountDate = await accountDate.inputValue();
-            const accountReadiness = accountPage.getByRole('region', {{ name: '账户事实就绪度' }});
-            const accountStructure = accountPage.getByRole('region', {{ name: '资产结构' }});
-            await accountReadiness.waitFor({{ state: 'visible', timeout: 10000 }});
-            await accountStructure.waitFor({{ state: 'visible', timeout: 10000 }});
-            const maintenance = accountPage.locator('#account-facts');
-            const maintenanceSummary = maintenance.locator(':scope > summary');
-            await maintenanceSummary.focus();
-            await maintenanceSummary.click();
-            const accountLedger = accountPage.getByRole('table', {{ name: '账户明细' }});
-            await accountLedger.waitFor({{ state: 'visible', timeout: 10000 }});
-            const accountShell = accountPage.getByRole('region', {{ name: '账户内容区域' }});
-            const [accountShellBox, accountReadinessBox, accountStructureBox, accountLedgerBox] = await Promise.all([
+            const accountLayout = accountPage.locator('.account-current-layout');
+            await accountLayout.waitFor({{ state: 'visible', timeout: 10000 }});
+            const accountShell = accountPage.locator('.account-current-workbench');
+            const accountRailRows = accountPage.locator('.account-current-rail-row');
+            const selectedHeading = accountPage.locator('.account-current-editor h2');
+            await selectedHeading.waitFor({{ state: 'visible', timeout: 10000 }});
+            const [accountShellBox, accountLayoutBox] = await Promise.all([
               accountShell.boundingBox(),
-              accountReadiness.boundingBox(),
-              accountStructure.boundingBox(),
-              accountLedger.boundingBox(),
+              accountLayout.boundingBox(),
             ]);
             const accountShellStyle = await accountShell.evaluate(element => {{
               const style = window.getComputedStyle(element);
@@ -662,25 +682,17 @@ def browser_check_code(
             }});
             const accountMetrics = {{
               shellWidth: accountShellBox?.width || 0,
-              readinessWidth: accountReadinessBox?.width || 0,
-              structureWidth: accountStructureBox?.width || 0,
-              ledgerWidth: accountLedgerBox?.width || 0,
-              rowCount: await accountLedger.getByRole('row').count(),
-              portfolioCount: await accountStructure.locator('.account-portfolio-card').count(),
-              readinessTitle: await accountReadiness.getByRole('heading', {{ level: 2 }}).innerText(),
-              issueEntryCount: await accountPage.locator('button', {{ hasText: '查看并更新这些账户' }}).count(),
-              maintenanceOpen: await maintenance.evaluate(element => element.open),
-              editableDate: await accountDate.inputValue(),
+              layoutWidth: accountLayoutBox?.width || 0,
+              accountCount: await accountRailRows.count(),
+              selectedAccount: await selectedHeading.innerText(),
+              visibleFactDateInputs: await accountPage.locator('input[type="date"]:visible').count(),
               shellStyle: accountShellStyle,
             }};
             const accountDifferences = [];
             if ({json.dumps(viewport_name)} !== 'narrow') {{
               if (Math.abs(accountMetrics.shellWidth - {WORKBENCH_WIDTH}) > {GEOMETRY_TOLERANCE}) {{
                 accountDifferences.push(difference(
-                  'account.shellWidth',
-                  {WORKBENCH_WIDTH},
-                  accountMetrics.shellWidth,
-                  {GEOMETRY_TOLERANCE},
+                  'account.shellWidth', {WORKBENCH_WIDTH}, accountMetrics.shellWidth, {GEOMETRY_TOLERANCE},
                 ));
               }}
             }} else if (
@@ -688,84 +700,189 @@ def browser_check_code(
               || Math.abs(accountMetrics.shellStyle.paddingRight - {NARROW_GUTTER}) > {GEOMETRY_TOLERANCE}
             ) {{
               accountDifferences.push(difference(
-                'account.narrowGutter',
-                {NARROW_GUTTER},
-                accountMetrics.shellStyle,
-                {GEOMETRY_TOLERANCE},
+                'account.narrowGutter', {NARROW_GUTTER}, accountMetrics.shellStyle, {GEOMETRY_TOLERANCE},
               ));
             }}
-            for (const [metric, actual] of [
-              ['readinessWidth', accountMetrics.readinessWidth],
-              ['structureWidth', accountMetrics.structureWidth],
-              ['ledgerWidth', accountMetrics.ledgerWidth],
-            ]) {{
-              if (Math.abs(accountMetrics.structureWidth - actual) > {GEOMETRY_TOLERANCE}) {{
-                accountDifferences.push(difference(
-                  'account.' + metric,
-                  accountMetrics.structureWidth,
-                  actual,
-                  {GEOMETRY_TOLERANCE},
-                ));
-              }}
+            if (accountMetrics.accountCount !== 5) {{
+              accountDifferences.push(difference('account.accountCount', 5, accountMetrics.accountCount));
             }}
-            if (accountMetrics.editableDate !== {json.dumps(expected_plan_date)}) {{
+            if (accountMetrics.selectedAccount !== '广发账户') {{
+              accountDifferences.push(difference('account.defaultSelection', '广发账户', accountMetrics.selectedAccount));
+            }}
+            if (accountMetrics.visibleFactDateInputs !== 0) {{
+              accountDifferences.push(difference('account.globalFactDateInputs', 0, accountMetrics.visibleFactDateInputs));
+            }}
+            assertNoDifferences('account.behavior', '账户页没有按单账户当前数据组织', accountDifferences);
+
+            const primaryAction = accountPage.locator('.account-current-primary');
+            const currentStockState = await page.request
+              .get({json.dumps(base_url + '/api/accounts/stock')})
+              .then(response => response.json());
+            const stockCashBefore = {{
+              available_cash: currentStockState.raw_data.available_cash,
+              frozen_cash: currentStockState.raw_data.frozen_cash,
+            }};
+            const holdingsClearPayloads = [];
+            const holdingsClearHandler = route => {{
+              if (route.request().method() !== 'PUT') return route.continue();
+              const payload = JSON.parse(route.request().postData() || '{{}}');
+              holdingsClearPayloads.push(payload);
+              return route.fulfill({{
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({{
+                  ...currentStockState,
+                  version: 'ui-smoke-holdings-clear-version',
+                  operation: 'update',
+                  raw_data: {{
+                    available_cash: payload.available_cash,
+                    frozen_cash: payload.frozen_cash,
+                    positions: payload.positions,
+                  }},
+                  valuation: {{
+                    status: 'available',
+                    total: payload.available_cash + payload.frozen_cash,
+                    missing_codes: [],
+                    items: [],
+                  }},
+                  holding_state: 'confirmed_empty',
+                  updated_at: new Date().toISOString(),
+                }}),
+              }});
+            }};
+            await page.route('**/api/accounts/stock', holdingsClearHandler);
+            await accountPage.locator('.account-current-remove').first().click();
+            await primaryAction.click();
+            const clearDialog = accountPage.getByRole('dialog');
+            await clearDialog.getByRole('heading', {{ name: '确认清空当前持仓？', exact: true }})
+              .waitFor({{ state: 'visible', timeout: 10000 }});
+            const focusedClearButton = await page.evaluate(() => document.activeElement?.textContent?.trim());
+            if (focusedClearButton !== '取消') {{
+              accountDifferences.push(difference('account.clearDialog.initialFocus', '取消', focusedClearButton));
+            }}
+            await clearDialog.getByRole('button', {{ name: '确认清空持仓并保存', exact: true }}).click();
+            await page.waitForFunction(() => !document.querySelector('.account-current-dialog')?.checkVisibility());
+            await page.unroute('**/api/accounts/stock', holdingsClearHandler);
+            const holdingsClearPayload = holdingsClearPayloads[0];
+            if (
+              holdingsClearPayloads.length !== 1
+              || holdingsClearPayload?.available_cash !== stockCashBefore.available_cash
+              || holdingsClearPayload?.frozen_cash !== stockCashBefore.frozen_cash
+              || (holdingsClearPayload?.positions || []).length !== 0
+            ) {{
               accountDifferences.push(difference(
-                'account.editableDate',
-                {json.dumps(expected_plan_date)},
-                accountMetrics.editableDate,
+                'account.clearHoldingsPreservesCash',
+                {{ count: 1, ...stockCashBefore, positions: [] }},
+                {{
+                  count: holdingsClearPayloads.length,
+                  available_cash: holdingsClearPayload?.available_cash,
+                  frozen_cash: holdingsClearPayload?.frozen_cash,
+                  positions: holdingsClearPayload?.positions,
+                }},
               ));
             }}
-            if (accountMetrics.rowCount < 1) {{
-              accountDifferences.push(difference('account.rowCount', {{ min: 1 }}, accountMetrics.rowCount));
+
+            const cashRail = accountRailRows.filter({{ hasText: '资金账户' }}).first();
+            await cashRail.click();
+            const cashHeading = accountPage.locator('.account-current-editor h2');
+            await cashHeading.getByText('资金账户', {{ exact: true }}).waitFor({{ state: 'visible', timeout: 10000 }});
+            const cashAmount = accountPage.getByLabel('资金余额', {{ exact: true }});
+            const confirmRequest = page.waitForRequest(
+              request => request.url().includes('/api/accounts/cash/confirm') && request.method() === 'POST',
+              {{ timeout: 10000 }},
+            );
+            await primaryAction.click();
+            await confirmRequest;
+            await accountPage.getByText('已确认本账户数据仍准确', {{ exact: false }})
+              .waitFor({{ state: 'visible', timeout: 10000 }});
+            const currentCashAmount = Number(await cashAmount.inputValue());
+            await cashAmount.fill(String(currentCashAmount + 1));
+            await accountRailRows.filter({{ hasText: '华泰账户' }}).first().click();
+            const unsavedAlert = accountPage.getByRole('alert').filter({{ hasText: '当前账户有未保存修改' }});
+            await unsavedAlert.waitFor({{ state: 'visible', timeout: 10000 }});
+            await unsavedAlert.getByRole('button', {{ name: '继续编辑', exact: true }}).click();
+            if ((await cashHeading.innerText()) !== '资金账户') {{
+              accountDifferences.push(difference('account.unsavedSwitchGuard', '资金账户', await cashHeading.innerText()));
             }}
-            if (accountMetrics.portfolioCount !== 3) {{
-              accountDifferences.push(difference('account.portfolioCount', 3, accountMetrics.portfolioCount));
-            }}
-            if (accountMetrics.readinessTitle !== '事实已就绪') {{
-              accountDifferences.push(difference('account.readinessTitle', '事实已就绪', accountMetrics.readinessTitle));
-            }}
-            if (accountMetrics.issueEntryCount !== 1 || !accountMetrics.maintenanceOpen) {{
+            await planNav.click();
+            const unsavedNavigationAlert = accountPage.getByRole('alert').filter({{ hasText: '离开账户页不会自动保存' }});
+            await unsavedNavigationAlert.waitFor({{ state: 'visible', timeout: 10000 }});
+            if ((await accountNav.getAttribute('aria-current')) !== 'page' || !page.url().endsWith('#account')) {{
               accountDifferences.push(difference(
-                'account.maintenanceEntry',
-                {{ issueEntryCount: 1, maintenanceOpen: true }},
-                {{ issueEntryCount: accountMetrics.issueEntryCount, maintenanceOpen: accountMetrics.maintenanceOpen }},
+                'account.unsavedNavigationGuard',
+                {{ activePage: 'account', hash: '#account' }},
+                {{ activePage: await accountNav.getAttribute('aria-current'), url: page.url() }},
               ));
             }}
-            assertNoDifferences('account.behavior', '账户页关键可见行为异常', accountDifferences);
-            const accountMaintenanceNarrowChecks = [];
+            await unsavedNavigationAlert.getByRole('button', {{ name: '继续编辑', exact: true }}).click();
+            const currentCashState = await page.request.get({json.dumps(base_url + '/api/accounts/cash')}).then(r => r.json());
+            const changedPayloads = [];
+            const changedSaveHandler = route => {{
+              changedPayloads.push(JSON.parse(route.request().postData() || '{{}}'));
+              const amount = changedPayloads[0]?.amount;
+              route.fulfill({{
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({{
+                  ...currentCashState,
+                  version: 'ui-smoke-current-version',
+                  operation: 'update',
+                  raw_data: {{ amount }},
+                  valuation: {{ status: 'available', total: amount, missing_codes: [], items: [] }},
+                  updated_at: new Date().toISOString(),
+                }}),
+              }});
+            }};
+            await page.route('**/api/accounts/cash', changedSaveHandler);
+            smokeStep = 'account.changed-save';
+            await primaryAction.click();
+            await page.waitForFunction(() => document.querySelector('.account-current-primary')?.textContent.includes('确认数据仍准确'));
+            await page.unroute('**/api/accounts/cash', changedSaveHandler);
+            const readinessAfterAccount = await page.request
+              .get({json.dumps(base_url + '/api/plan/readiness')})
+              .then(response => response.json());
+            accountMetrics.readinessAfterAccount = readinessAfterAccount;
+            accountMetrics.holdingsClearPayloads = holdingsClearPayloads;
+            if (readinessAfterAccount.status !== 'ready') {{
+              accountDifferences.push(difference(
+                'account.confirmDoesNotChangeReadiness',
+                {{ status: 'ready', errors: [] }},
+                readinessAfterAccount,
+              ));
+            }}
+            if (changedPayloads.length !== 1 || changedPayloads[0]?.amount !== currentCashAmount + 1) {{
+              accountDifferences.push(difference(
+                'account.singleAccountSave',
+                {{ count: 1, amount: currentCashAmount + 1 }},
+                {{ count: changedPayloads.length, amount: changedPayloads[0]?.amount }},
+              ));
+            }}
+            if ((await cashHeading.innerText()) !== '资金账户') {{
+              accountDifferences.push(difference('account.staysInEditorAfterSave', '资金账户', await cashHeading.innerText()));
+            }}
+            assertNoDifferences('account.interaction', '单账户更新、未保存保护或保存完成态异常', accountDifferences);
+
             if ({json.dumps(viewport_name)} === 'narrow') {{
               const narrowAccountPage = await page.context().newPage();
-              await narrowAccountPage.setViewportSize({json.dumps(VIEWPORTS["narrow"])});
-              await narrowAccountPage.goto(
-                {json.dumps(base_url + '#account')},
-                {{ waitUntil: 'domcontentloaded', timeout: 15000 }},
-              );
+              await narrowAccountPage.setViewportSize({json.dumps(VIEWPORTS['narrow'])});
+              await narrowAccountPage.route('**/api/positions/stock/quote?code=*', route => route.fulfill({{
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({{ code: '000001', name: '平安银行', price: 10 }}),
+              }}));
+              await narrowAccountPage.goto({json.dumps(base_url + '#account')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
               await narrowAccountPage.waitForFunction(() => window.Alpine, {{ timeout: 10000 }});
-              const narrowAccount = narrowAccountPage.getByRole('region', {{ name: '账户工作台' }});
-              const narrowMaintenance = narrowAccount.locator('#account-facts');
-              await narrowMaintenance.locator(':scope > summary').click();
-              const narrowLedger = narrowAccount.getByRole('table', {{ name: '账户明细' }});
-              await narrowLedger.waitFor({{ state: 'visible', timeout: 10000 }});
-              const narrowStockLedgerRow = narrowLedger.locator('tr').filter({{ hasText: '广发账户' }}).first();
-              await narrowStockLedgerRow.focus();
-              await narrowStockLedgerRow.press('Space');
-              const stockMaintenance = narrowAccount.locator('tr.account-position-row:visible');
-              await stockMaintenance.waitFor({{ state: 'visible', timeout: 10000 }});
-              const addRow = stockMaintenance.locator('button', {{ hasText: '添加行' }});
-              await addRow.focus();
-              await addRow.press('Enter');
-              const codeInput = stockMaintenance.getByLabel('股票持仓代码 新行', {{ exact: true }});
-              const quantityInput = stockMaintenance.getByLabel('股票持仓数量 新行', {{ exact: true }});
-              const availableCash = stockMaintenance.getByLabel('股票可用现金', {{ exact: true }});
-              const deleteRow = stockMaintenance.getByRole('button', {{ name: '删除股票持仓 新行', exact: true }});
-              const save = stockMaintenance.getByRole('button', {{ name: '保存', exact: true }});
-              await Promise.all([
-                codeInput.waitFor({{ state: 'visible', timeout: 10000 }}),
-                quantityInput.waitFor({{ state: 'visible', timeout: 10000 }}),
-                deleteRow.waitFor({{ state: 'visible', timeout: 10000 }}),
-              ]);
+              const narrowAccount = narrowAccountPage.getByRole('region', {{ name: '账户数据工作台' }});
+              await narrowAccount.getByRole('heading', {{ name: '账户数据', level: 1 }}).waitFor({{ state: 'visible', timeout: 10000 }});
+              const addSecurity = narrowAccount.getByRole('button', {{ name: '＋ 添加证券', exact: true }});
+              await addSecurity.click();
+              const codeInput = narrowAccount.getByLabel('证券代码').last();
+              const quantityInput = narrowAccount.getByLabel('持仓数量').last();
+              await codeInput.fill('000001');
+              await codeInput.dispatchEvent('change');
+              await quantityInput.fill('100');
               await codeInput.focus();
-              const [scrollMetrics, focusMetrics, targetMetrics, entryDisplay] = await Promise.all([
+              const [scrollMetrics, focusMetrics, targetMetrics] = await Promise.all([
                 narrowAccount.evaluate(element => ({{
                   clientWidth: element.clientWidth,
                   scrollWidth: element.scrollWidth,
@@ -780,378 +897,191 @@ def browser_check_code(
                     outlineWidth: Number.parseFloat(style.outlineWidth),
                   }};
                 }}),
-                Promise.all([availableCash, codeInput, quantityInput, deleteRow, save].map(async control => {{
+                Promise.all([addSecurity, codeInput, quantityInput, narrowAccount.locator('.account-current-primary')].map(async control => {{
                   const box = await control.boundingBox();
                   return {{ label: await control.getAttribute('aria-label') || await control.innerText(), height: box?.height || 0 }};
                 }})),
-                stockMaintenance.locator('tr.account-position-entry:visible').first().evaluate(
-                  element => window.getComputedStyle(element).display,
-                ),
               ]);
               const narrowDifferences = [];
               if (scrollMetrics.scrollWidth > scrollMetrics.clientWidth + 2
                   || scrollMetrics.documentScrollWidth > scrollMetrics.documentClientWidth + 2) {{
-                narrowDifferences.push(difference(
-                  'account.narrow.maintenance.scrollWidth',
-                  {{ account: 'no overflow', document: 'no overflow' }},
-                  scrollMetrics,
-                ));
+                narrowDifferences.push(difference('account.narrow.scrollWidth', 'no overflow', scrollMetrics));
               }}
               if (!focusMetrics.focused || focusMetrics.outlineStyle === 'none' || focusMetrics.outlineWidth < 2) {{
                 narrowDifferences.push(difference(
-                  'account.narrow.maintenance.focusVisible',
-                  {{ focused: true, outline: {{ minWidth: 2 }} }},
-                  focusMetrics,
-                ));
-              }}
-              if (entryDisplay !== 'grid') {{
-                narrowDifferences.push(difference(
-                  'account.narrow.maintenance.verticalEntry', 'grid', entryDisplay,
+                  'account.narrow.focusVisible', {{ focused: true, outline: {{ minWidth: 2 }} }}, focusMetrics,
                 ));
               }}
               targetMetrics.forEach(target => {{
-                const minimum = target.label.startsWith('删除') ? 36 : 42;
-                if (target.height < minimum) {{
-                  narrowDifferences.push(difference(
-                    'account.narrow.maintenance.touchTarget',
-                    {{ control: target.label, minHeight: minimum }},
-                    target,
-                  ));
-                }}
-              }});
-              await codeInput.press('Tab');
-              const focusedAfterTab = await narrowAccountPage.evaluate(
-                () => document.activeElement?.getAttribute('aria-label') || '',
-              );
-              if (focusedAfterTab !== '股票持仓数量 新行') {{
-                narrowDifferences.push(difference(
-                  'account.narrow.maintenance.keyboardTab',
-                  '股票持仓数量 新行',
-                  focusedAfterTab,
+                if (target.height < 36) narrowDifferences.push(difference(
+                  'account.narrow.touchTarget', {{ control: target.label, minHeight: 36 }}, target,
                 ));
-              }}
-              await deleteRow.focus();
-              await deleteRow.press('Enter');
-              if (await stockMaintenance.getByLabel('股票持仓代码 新行', {{ exact: true }}).count()) {{
-                narrowDifferences.push(difference(
-                  'account.narrow.maintenance.keyboardDelete', 0,
-                  await stockMaintenance.getByLabel('股票持仓代码 新行', {{ exact: true }}).count(),
-                ));
-              }}
-              await save.focus();
-              const keyboardSaveHandler = route => route.fulfill({{
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({{ accounts: [] }}),
               }});
-              await narrowAccountPage.route('**/api/account/stock/state', keyboardSaveHandler);
-              const keyboardSaveRequest = narrowAccountPage.waitForRequest(
-                request => request.url().includes('/api/account/stock/state') && request.method() === 'POST',
-                {{ timeout: 10000 }},
-              );
-              await save.press('Enter');
-              await keyboardSaveRequest;
-              await narrowAccountPage.unroute('**/api/account/stock/state', keyboardSaveHandler);
-              assertNoDifferences(
-                'account.narrow.maintenance',
-                '390px 账户维护存在横向裁切、焦点或触达尺寸问题',
-                narrowDifferences,
-              );
-              accountMaintenanceNarrowChecks.push({{
-                name: 'expanded-account-maintenance',
-                scrollMetrics,
-                focusMetrics,
-                targetMetrics,
-                entryDisplay,
-                focusedAfterTab,
-                savedByKeyboard: true,
-              }});
+              assertNoDifferences('account.narrow', '390px 账户编辑存在裁切、焦点或触达尺寸问题', narrowDifferences);
+              accountMaintenanceNarrowChecks.push({{ scrollMetrics, focusMetrics, targetMetrics }});
               await narrowAccountPage.close();
             }}
-            const accountFactDateIdentityChecks = [];
-            const dateIdentityConsoleErrorStart = consoleErrors.length;
-            await accountDate.fill('');
-            await accountDate.dispatchEvent('change');
-            await page.waitForFunction(
-              expected => document.querySelector('input[aria-label="账户事实日"]')?.value === expected,
-              initialAccountDate,
-            );
-            const restoredEmptyDate = await accountDate.inputValue();
-            if (restoredEmptyDate !== initialAccountDate) {{
-              fail('account.date-identity', '清空事实日后未恢复当前数据身份', [
-                difference('date-clear-restores-current-fact', initialAccountDate, restoredEmptyDate),
-              ]);
-            }}
-            const alternateFactDate = '2026-01-02';
-            const datedRequests = [];
-            const readinessRequests = [];
-            const recordDatedRequest = request => {{
-              if (request.url().includes(`date=${{alternateFactDate}}`)) datedRequests.push(request.url());
-              if (request.url().includes('/api/plan/readiness')) readinessRequests.push(request.url());
-            }};
-            page.on('request', recordDatedRequest);
-            const savedPayloads = [];
-            let releaseStateSave;
-            let markStateSaveReceived;
-            const stateSavePending = new Promise(resolve => {{ releaseStateSave = resolve; }});
-            const stateSaveReceived = new Promise(resolve => {{ markStateSaveReceived = resolve; }});
-            const stateSaveHandler = async route => {{
-              savedPayloads.push(JSON.parse(route.request().postData() || '{{}}'));
-              markStateSaveReceived();
-              await stateSavePending;
-              await route.fulfill({{
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({{ accounts: [] }}),
-              }});
-            }};
-            const quoteHandler = route => route.fulfill({{
-              status: 200,
-              contentType: 'application/json',
-              body: JSON.stringify({{ code: '000001', name: '旧日期持仓', price: 10 }}),
-            }});
-            await page.route('**/api/account/stock/state', stateSaveHandler);
-            await page.route('**/api/positions/stock/quote?code=000001', quoteHandler);
-            await accountLedger.locator('tr').filter({{ hasText: '广发账户' }}).first().click();
-            const addOldFactRow = accountPage.locator('button', {{ hasText: '添加行' }}).first();
-            await addOldFactRow.click();
-            const oldFactCode = accountPage.locator('input[placeholder="代码"]').first();
-            await oldFactCode.fill('000001');
-            await oldFactCode.dispatchEvent('change');
-            await accountDate.fill(alternateFactDate);
-            const dirtyGate = accountPage.getByRole('alert').filter({{ hasText: '当前事实日有未保存编辑' }});
-            await dirtyGate.waitFor({{ state: 'visible', timeout: 10000 }});
-            const blockedSave = accountPage.locator('button', {{ hasText: '保存' }}).first();
-            const dateIdentityDifferences = [];
-            if (!await blockedSave.isDisabled()) {{
-              dateIdentityDifferences.push(difference('date-switch-dirty-gate.saveDisabled', true, false));
-            }}
-            if (savedPayloads.length) {{
-              dateIdentityDifferences.push(difference('date-switch-dirty-gate.requestsBeforeConfirm', 0, savedPayloads.length));
-            }}
-            await dirtyGate.getByRole('button', {{ name: '保留当前日期', exact: true }}).click();
-            const retainedFactDate = await accountDate.inputValue();
-            if (retainedFactDate !== initialAccountDate) {{
-              dateIdentityDifferences.push(difference('date-switch-dirty-gate.retainedDate', initialAccountDate, retainedFactDate));
-            }}
-            await accountDate.fill(alternateFactDate);
-            await dirtyGate.waitFor({{ state: 'visible', timeout: 10000 }});
-            let releaseAlternateSummary;
-            let markAlternateSummaryStarted;
-            const alternateSummaryPending = new Promise(resolve => {{ releaseAlternateSummary = resolve; }});
-            const alternateSummaryStarted = new Promise(resolve => {{ markAlternateSummaryStarted = resolve; }});
-            const alternateSummaryHandler = async route => {{
-              markAlternateSummaryStarted();
-              await alternateSummaryPending;
-              await route.continue();
-            }};
-            await page.route(`**/api/account/summary?date=${{alternateFactDate}}`, alternateSummaryHandler);
-            await dirtyGate.getByRole('button', {{ name: '放弃编辑并读取新日期', exact: true }}).click();
-            await alternateSummaryStarted;
-            if (!await blockedSave.isDisabled()) {{
-              dateIdentityDifferences.push(difference('date-switch-loading-gate.saveDisabled', true, false));
-            }}
-            if (savedPayloads.length) {{
-              dateIdentityDifferences.push(difference('date-switch-loading-gate.requestsBeforeLoad', 0, savedPayloads.length));
-            }}
-            releaseAlternateSummary();
-            await page.waitForFunction(
-              expected => document.querySelector('input[aria-label="账户事实日"]')?.value === expected,
-              alternateFactDate,
-            );
-            await accountReadiness.getByRole('heading', {{ name: '尚未录入账户事实', level: 2 }})
-              .waitFor({{ state: 'visible', timeout: 10000 }});
-            await page.unroute(`**/api/account/summary?date=${{alternateFactDate}}`, alternateSummaryHandler);
-            if (!await maintenance.evaluate(element => element.open)) {{
-              await maintenanceSummary.click();
-            }}
-            await accountLedger.waitFor({{ state: 'visible', timeout: 10000 }});
-            await accountLedger.locator('tr').filter({{ hasText: '广发账户' }}).first().click();
-            const stockSave = accountPage.locator('button', {{ hasText: '保存' }}).first();
-            const readinessBeforeSuccessfulSave = readinessRequests.length;
-            await stockSave.click();
-            await stateSaveReceived;
-            if (savedPayloads.length !== 1) {{
-              dateIdentityDifferences.push(difference('save-in-progress.firstRequestCount', 1, savedPayloads.length));
-            }}
-            if (!await stockSave.isDisabled()) {{
-              dateIdentityDifferences.push(difference('save-in-progress.saveDisabled', true, false));
-            }}
-            await stockSave.evaluate(button => button.click());
-            if (savedPayloads.length !== 1) {{
-              dateIdentityDifferences.push(difference('save-in-progress.duplicateRequestCount', 1, savedPayloads.length));
-            }}
-            releaseStateSave();
-            await page.waitForTimeout(350);
-            const requiredDateRequests = [
-              `/api/account/summary?date=${{alternateFactDate}}`,
-              `/api/positions/stock?date=${{alternateFactDate}}`,
-              `/api/positions/cb?date=${{alternateFactDate}}`,
-              `/api/positions/stock/quotes?date=${{alternateFactDate}}`,
-              `/api/positions/cb/quotes?date=${{alternateFactDate}}`,
-            ];
-            requiredDateRequests.forEach(path => {{
-              if (!datedRequests.some(url => url.includes(path))) {{
-                dateIdentityDifferences.push(difference(`date-switch-loads.${{path}}`, true, false));
-              }}
-            }});
-            const savedPayload = savedPayloads[0];
-            if (!savedPayload || savedPayload.snapshot_date !== alternateFactDate) {{
-              dateIdentityDifferences.push(difference(
-                'date-switch-save-date', alternateFactDate, savedPayload?.snapshot_date || null,
-              ));
-            }}
-            if ((savedPayload?.positions || []).some(row => row.code === '000001')) {{
-              dateIdentityDifferences.push(difference('old fact rows', false, true));
-            }}
-            requiredDateRequests.forEach(path => {{
-              const requestCount = datedRequests.filter(url => url.includes(path)).length;
-              if (requestCount < 2) {{
-                dateIdentityDifferences.push(difference(`save-success-refresh.${{path}}`, {{ min: 2 }}, requestCount));
-              }}
-            }});
-            if (readinessRequests.length < readinessBeforeSuccessfulSave + 2) {{
-              dateIdentityDifferences.push(difference(
-                'save-success-refresh.readiness',
-                {{ min: readinessBeforeSuccessfulSave + 2 }},
-                readinessRequests.length,
-              ));
-            }}
-            await page.unroute('**/api/account/stock/state', stateSaveHandler);
 
-            const failedFactDate = '2026-01-03';
-            const failedSummaryHandler = route => route.fulfill({{
-              status: 503,
-              contentType: 'application/json',
-              body: JSON.stringify({{ detail: '模拟事实日读取失败' }}),
-            }});
-            await page.route(`**/api/account/summary?date=${{failedFactDate}}`, failedSummaryHandler);
-            await accountDate.fill(failedFactDate);
-            await accountReadiness.getByRole('heading', {{ name: '无法确认账户事实', level: 2 }})
-              .waitFor({{ state: 'visible', timeout: 10000 }});
-            if (!await stockSave.isDisabled()) {{
-              dateIdentityDifferences.push(difference('date-switch-error-gate.saveDisabled', true, false));
-            }}
-            if (savedPayloads.length !== 1) {{
-              dateIdentityDifferences.push(difference('date-switch-error-gate.requestsBeforeRecovery', 1, savedPayloads.length));
-            }}
-            await page.unroute(`**/api/account/summary?date=${{failedFactDate}}`, failedSummaryHandler);
-            await accountDate.fill(alternateFactDate);
-            await page.waitForFunction(
-              expected => document.querySelector('input[aria-label="账户事实日"]')?.value === expected,
-              alternateFactDate,
-            );
-            if (!await maintenance.evaluate(element => element.open)) {{
-              await maintenanceSummary.click();
-            }}
-            await accountLedger.waitFor({{ state: 'visible', timeout: 10000 }});
-            await accountLedger.locator('tr').filter({{ hasText: '广发账户' }}).first().click();
-            const availableCash = accountPage.locator('tr.account-position-row input[placeholder="0"]').first();
-            await availableCash.fill('4321');
-            const failedSavePayloads = [];
-            const failedStateSaveHandler = route => {{
-              failedSavePayloads.push(JSON.parse(route.request().postData() || '{{}}'));
+            smokeStep = 'account.error-retry';
+            const scenarioPage = await page.context().newPage();
+            await scenarioPage.setViewportSize({json.dumps(viewport)});
+            let failAccountRead = true;
+            await scenarioPage.route('**/api/accounts', route => {{
+              if (!failAccountRead) return route.continue();
+              failAccountRead = false;
               return route.fulfill({{
                 status: 503,
                 contentType: 'application/json',
-                body: JSON.stringify({{ detail: '模拟保存失败' }}),
+                body: JSON.stringify({{ detail: '账户数据服务暂不可用' }}),
               }});
-            }};
-            await page.route('**/api/account/stock/state', failedStateSaveHandler);
-            await stockSave.click();
-            await accountPage.getByRole('alert').filter({{ hasText: '模拟保存失败' }})
-              .waitFor({{ state: 'visible', timeout: 10000 }});
-            if (await availableCash.inputValue() !== '4321') {{
-              dateIdentityDifferences.push(difference('save-error-preserves-input', '4321', await availableCash.inputValue()));
-            }}
-            const stockSaveError = accountPage.locator('#stock-save-error');
-            const describedBy = await availableCash.getAttribute('aria-describedby');
-            const focusedErrorInput = await page.evaluate(
-              () => document.activeElement?.getAttribute('aria-label') || '',
-            );
-            if (!await stockSaveError.isVisible() || describedBy !== 'stock-save-error'
-                || focusedErrorInput !== '股票可用现金') {{
-              dateIdentityDifferences.push(difference(
-                'save-error-locates-input',
-                {{ errorVisible: true, describedBy: 'stock-save-error', focused: '股票可用现金' }},
-                {{ errorVisible: await stockSaveError.isVisible(), describedBy, focused: focusedErrorInput }},
-              ));
-            }}
-            if (failedSavePayloads.length !== 1 || failedSavePayloads[0]?.snapshot_date !== alternateFactDate) {{
-              dateIdentityDifferences.push(difference(
-                'save-error-payload',
-                {{ count: 1, snapshot_date: alternateFactDate }},
-                {{ count: failedSavePayloads.length, snapshot_date: failedSavePayloads[0]?.snapshot_date || null }},
-              ));
-            }}
-            await page.unroute('**/api/account/stock/state', failedStateSaveHandler);
-            const dateIdentityConsoleErrors = consoleErrors.splice(dateIdentityConsoleErrorStart);
-            const unexpectedDateIdentityConsoleErrors = dateIdentityConsoleErrors.filter(
-              message => !message.includes('status of 503') && !message.includes('模拟保存失败'),
-            );
-            if (unexpectedDateIdentityConsoleErrors.length) {{
-              dateIdentityDifferences.push(difference(
-                'date-switch.unexpectedConsoleErrors', [], unexpectedDateIdentityConsoleErrors,
-              ));
-            }}
-            assertNoDifferences(
-              'account.date-identity',
-              '事实日切换没有保持加载与保存的同一数据身份',
-              dateIdentityDifferences,
-            );
-            accountFactDateIdentityChecks.push({{
-              name: 'date-switch-dirty-gate',
-              savedPayloads,
-              datedRequests,
-              consoleErrors: dateIdentityConsoleErrors,
             }});
-            await page.unroute('**/api/positions/stock/quote?code=000001', quoteHandler);
+            await scenarioPage.goto({json.dumps(base_url + '#account')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
+            await scenarioPage.waitForFunction(() => window.Alpine, {{ timeout: 10000 }});
+            const failedAccountPage = scenarioPage.getByRole('region', {{ name: '账户数据工作台' }});
+            const failedAlert = failedAccountPage.getByRole('alert').filter({{ hasText: '账户数据读取失败' }});
+            await failedAlert.waitFor({{ state: 'visible', timeout: 10000 }});
+            await failedAlert.getByRole('button', {{ name: '重新读取', exact: true }}).click();
+            await failedAccountPage.locator('.account-current-layout').waitFor({{ state: 'visible', timeout: 10000 }});
+            accountDataScenarioChecks.push({{ name: 'accounts-http-error', retryVisible: true, recovered: true }});
+            await scenarioPage.close();
+
+            smokeStep = 'account.readiness-error';
+            const readinessErrorPage = await page.context().newPage();
+            await readinessErrorPage.setViewportSize({json.dumps(viewport)});
+            let failReadiness = true;
+            await readinessErrorPage.route('**/api/plan/readiness', route => {{
+              if (!failReadiness) return route.continue();
+              failReadiness = false;
+              return route.fulfill({{
+                status: 503,
+                contentType: 'application/json',
+                body: JSON.stringify({{ detail: {{ message: '计划输入校验暂不可用' }} }}),
+              }});
+            }});
+            await readinessErrorPage.goto({json.dumps(base_url + '#account')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
+            await readinessErrorPage.waitForFunction(() => window.Alpine, {{ timeout: 10000 }});
+            const readinessErrorWorkspace = readinessErrorPage.getByRole('region', {{ name: '账户数据工作台' }});
+            const readinessAlert = readinessErrorWorkspace.getByRole('alert')
+              .filter({{ hasText: '无法确认计划输入状态' }});
+            await readinessAlert.waitFor({{ state: 'visible', timeout: 10000 }});
+            const unknownOverview = await readinessErrorWorkspace.locator('.account-current-overview').innerText();
+            const unknownStatuses = await readinessErrorWorkspace.locator('.account-current-rail-meta > span').allTextContents();
+            if (unknownOverview.includes('已就绪') || unknownStatuses.filter(text => text.trim() === '待确认').length !== 5) {{
+              fail('account.readiness-error', '计划就绪度失败时账户页仍然 fail-open', [
+                difference(
+                  'account.readinessUnknown',
+                  {{ overviewIncludesReady: false, pendingStatusCount: 5 }},
+                  {{ overview: unknownOverview, statuses: unknownStatuses }},
+                ),
+              ]);
+            }}
+            await readinessAlert.getByRole('button', {{ name: '重新确认', exact: true }}).click();
+            await readinessErrorWorkspace.locator('.account-current-overview')
+              .filter({{ hasText: '5 / 5 个账户已就绪' }})
+              .waitFor({{ state: 'visible', timeout: 10000 }});
+            accountDataScenarioChecks.push({{
+              name: 'readiness-error',
+              failClosed: true,
+              retryVisible: true,
+              recovered: true,
+            }});
+            await readinessErrorPage.close();
+
+            smokeStep = 'account.version-conflict';
+            const conflictPage = await page.context().newPage();
+            await conflictPage.setViewportSize({json.dumps(viewport)});
+            await conflictPage.goto({json.dumps(base_url + '#account')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
+            await conflictPage.waitForFunction(() => window.Alpine, {{ timeout: 10000 }});
+            const conflictWorkspace = conflictPage.getByRole('region', {{ name: '账户数据工作台' }});
+            await conflictWorkspace.getByRole('heading', {{ name: '账户数据', level: 1 }})
+              .waitFor({{ state: 'visible', timeout: 10000 }});
+            await conflictWorkspace.locator('.account-current-rail-row').filter({{ hasText: '资金账户' }}).first().click();
+            const conflictAmount = conflictWorkspace.getByLabel('资金余额', {{ exact: true }});
+            const conflictCurrent = await conflictPage.request
+              .get({json.dumps(base_url + '/api/accounts/cash')})
+              .then(response => response.json());
+            await conflictAmount.fill(String(Number(await conflictAmount.inputValue()) + 2));
+            const conflictHandler = route => route.fulfill({{
+              status: 409,
+              contentType: 'application/json',
+              body: JSON.stringify({{
+                detail: {{
+                  message: '账户数据已在别处更新，请刷新后合并你的修改',
+                  latest: conflictCurrent,
+                }},
+              }}),
+            }});
+            await conflictPage.route('**/api/accounts/cash', conflictHandler);
+            await conflictWorkspace.locator('.account-current-primary').click();
+            const conflictNotice = conflictWorkspace.getByRole('alert').filter({{ hasText: '账户数据已经在别处更新' }});
+            await conflictNotice.waitFor({{ state: 'visible', timeout: 10000 }});
+            if (!await conflictNotice.getByRole('button', {{ name: '重新读取最新数据', exact: true }}).isVisible()) {{
+              fail('account.version-conflict', '版本冲突没有提供恢复入口', [
+                difference('account.versionConflict.reloadAction', true, false),
+              ]);
+            }}
+            await conflictPage.unroute('**/api/accounts/cash', conflictHandler);
+            accountDataScenarioChecks.push({{ name: 'version-conflict', draftPreserved: true, reloadActionVisible: true }});
+            await conflictPage.close();
+            accountDataIdentityChecks.push({{
+              name: 'account-scoped-current-state',
+              globalFactDateInputs: accountMetrics.visibleFactDateInputs,
+              changedPayloads,
+            }});
+            await accountRailRows.filter({{ hasText: '长钱投顾组合' }}).first().click();
+            await cashRail.click();
             const accountIntegrity = await assertPageIntegrity('account', main);
             await main.evaluate(element => element.scrollTo({{ top: 0, left: 0 }}));
-            await page.evaluate(() => window.scrollTo({{ top: 0, left: 0 }}));
             await accountHeading.scrollIntoViewIfNeeded();
             await page.waitForTimeout(100);
             await page.screenshot({{ path: {json.dumps(account_screenshot)}, fullPage: true }});
+            smokeStep = 'account.reload';
             await page.reload({{ waitUntil: 'domcontentloaded', timeout: 15000 }});
             await assertActivePage('account.reload', accountNav, '#account');
-            await planNav.click();
-            await assertActivePage('plan.fromAccount', planNav, '#trading');
-            await page.goBack();
-            await assertActivePage('account.back', accountNav, '#account');
 
-            await page.goto({json.dumps(base_url + '#changelog')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
-            await assertActivePage('changelog.direct', changelogNav, '#changelog');
-            await main.getByRole('heading', {{ name: '更新日志', level: 1 }}).waitFor({{ state: 'visible', timeout: 10000 }});
-            await page.reload({{ waitUntil: 'domcontentloaded', timeout: 15000 }});
-            await assertActivePage('changelog.reload', changelogNav, '#changelog');
-            await accountNav.click();
-            await assertActivePage('account.fromChangelog', accountNav, '#account');
-            await page.goBack();
-            await assertActivePage('changelog.back', changelogNav, '#changelog');
-
-            await page.goto({json.dumps(base_url + '#trading')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
-            await assertActivePage('plan.direct', planNav, '#trading');
-            await page.reload({{ waitUntil: 'domcontentloaded', timeout: 15000 }});
-            await assertActivePage('plan.reload', planNav, '#trading');
-            await accountNav.click();
-            await assertActivePage('account.fromPlan', accountNav, '#account');
-            await page.goBack();
-            await assertActivePage('plan.back', planNav, '#trading');
-            const planPage = main.getByRole('region', {{ name: '计划工作台' }});
-            await planPage.waitFor({{ state: 'visible', timeout: 10000 }});
+            smokeStep = 'plan.direct-after-account';
+            await page.goto({json.dumps(base_url + '#today')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
             await page.waitForFunction(
-              label => Array.from(document.querySelectorAll(`[role="region"][aria-label="${{label}}"]`))
-                .find(element => element.checkVisibility())
-                ?.getAttribute('aria-busy') === 'false',
-              '计划工作台',
+              () => window.Alpine?.store('page') === 'today'
+                && document.querySelector('a[aria-label="今日状态"]')?.getAttribute('aria-current') === 'page',
+              null,
               {{ timeout: 10000 }},
             );
-            const planHeading = planPage.getByRole('heading', {{ name: '今日计划', level: 1 }});
+            const planPage = main.getByRole('region', {{ name: '今日状态工作台' }});
+            await planPage.waitFor({{ state: 'visible', timeout: 10000 }});
+            smokeStep = 'plan.ready';
+            try {{
+              await page.waitForFunction(
+                label => Array.from(document.querySelectorAll(`[role="region"][aria-label="${{label}}"]`))
+                  .find(element => element.checkVisibility())
+                  ?.getAttribute('aria-busy') === 'false',
+                '今日状态工作台',
+                {{ timeout: 10000 }},
+              );
+            }} catch (error) {{
+              const debug = await page.evaluate(() => ({{
+                url: window.location.href,
+                hash: window.location.hash,
+                pageStore: window.Alpine?.store('page'),
+                activeNav: document.querySelector('a[aria-current="page"]')?.getAttribute('aria-label'),
+                accountVisible: Array.from(document.querySelectorAll('[aria-label="账户数据工作台"]')).some(element => element.checkVisibility()),
+                todayRegions: Array.from(document.querySelectorAll('[aria-label="今日状态工作台"]')).map(element => ({{
+                  visible: element.checkVisibility(),
+                  busy: element.getAttribute('aria-busy'),
+                }})),
+              }}));
+              throw new Error(`今日状态未就绪：${{JSON.stringify(debug)}}`);
+            }}
+            const planHeading = planPage.getByRole('heading', {{ name: '今日状态', level: 1 }});
             await planHeading.waitFor({{ state: 'visible', timeout: 10000 }});
             const decisionHero = planPage.locator('.plan-decision-hero');
+            const planGeneratePanel = planPage.locator('.plan-hero-panel');
+            const stateChain = planPage.getByRole('region', {{ name: '今日状态链' }});
             const executionDossier = planPage.locator('.plan-execution-dossier');
             const readinessPanel = planPage.locator('.plan-readiness-panel');
             await decisionHero.waitFor({{ state: 'visible', timeout: 10000 }});
+            await planGeneratePanel.waitFor({{ state: 'visible', timeout: 10000 }});
+            await stateChain.waitFor({{ state: 'visible', timeout: 10000 }});
             await executionDossier.waitFor({{ state: 'visible', timeout: 10000 }});
             await readinessPanel.waitFor({{ state: 'visible', timeout: 10000 }});
             const fundingPlanPanel = executionDossier.locator('.plan-funding-plan');
@@ -1216,17 +1146,22 @@ def browser_check_code(
             const restoredResult = await clickAndReadDetailsState();
             const toggledOpen = toggledResult.open;
             const restoredOpen = restoredResult.open;
-            const [planShellBox, decisionBox, dossierBox, readinessBox] = await Promise.all([
+            const [planShellBox, decisionBox, chainBox, generateBox, dossierBox, readinessBox] = await Promise.all([
               planPage.boundingBox(),
               decisionHero.boundingBox(),
+              stateChain.boundingBox(),
+              planGeneratePanel.boundingBox(),
               executionDossier.boundingBox(),
               readinessPanel.boundingBox(),
             ]);
             const planStateTitle = await decisionHero.getByRole('heading', {{ level: 2 }}).innerText();
             const planSectionOrder = await planPage.evaluate(element => {{
-              const selectors = ['.plan-decision-hero', '.plan-execution-dossier', '.plan-readiness-panel'];
+              const selectors = ['.plan-decision-hero', '.plan-state-chain', '.plan-hero-panel', '.plan-execution-dossier', '.plan-readiness-panel'];
               return selectors.map(selector => Array.from(element.children).findIndex(child => child.matches(selector)));
             }});
+            const stateChainLabels = await stateChain.locator('.plan-state-chain-title').evaluateAll(
+              nodes => nodes.map(node => node.innerText.trim()),
+            );
             const fundingBeforeAccounts = await executionDossier.evaluate(element => {{
               const funding = element.querySelector('.plan-funding-plan');
               const accounts = element.querySelector('[aria-label="账户交易计划"]');
@@ -1240,10 +1175,13 @@ def browser_check_code(
             const planMetrics = {{
               shellWidth: planShellBox?.width || 0,
               decisionWidth: decisionBox?.width || 0,
+              generateWidth: generateBox?.width || 0,
+              chainWidth: chainBox?.width || 0,
               dossierWidth: dossierBox?.width || 0,
               readinessWidth: readinessBox?.width || 0,
               stateTitle: planStateTitle,
               sectionOrder: planSectionOrder,
+              stateChainLabels,
               fundingBeforeAccounts,
               accountsCollapsedByDefault,
               fundingActionCount: await fundingPlanPanel.locator('.plan-funding-action').count(),
@@ -1274,6 +1212,8 @@ def browser_check_code(
               }}
             }}
             for (const [metric, actual] of [
+              ['generateWidth', planMetrics.generateWidth],
+              ['chainWidth', planMetrics.chainWidth],
               ['dossierWidth', planMetrics.dossierWidth],
               ['readinessWidth', planMetrics.readinessWidth],
             ]) {{
@@ -1288,9 +1228,10 @@ def browser_check_code(
             }}
             const validPlanStates = [
               '正在生成完整计划',
-              '待补充账户事实',
+              '待更新账户数据',
               '计划已失效',
               '计划生成失败',
+              '计划待生成',
               '今日无需操作',
             ];
             if (!validPlanStates.includes(planMetrics.stateTitle)
@@ -1303,9 +1244,13 @@ def browser_check_code(
             if (!sectionOrderIsValid) {{
               planDifferences.push(difference(
                 'plan.sectionOrder',
-                'decision < actions < readiness',
+                'decision < state-chain < generation < actions < readiness',
                 planMetrics.sectionOrder,
               ));
+            }}
+            const expectedChainLabels = ['账户数据', '资金调拨', '账户交易计划', '执行窗口'];
+            if (JSON.stringify(planMetrics.stateChainLabels) !== JSON.stringify(expectedChainLabels)) {{
+              planDifferences.push(difference('plan.stateChain', expectedChainLabels, planMetrics.stateChainLabels));
             }}
             if (!planMetrics.fundingBeforeAccounts || !planMetrics.accountsCollapsedByDefault) {{
               planDifferences.push(difference(
@@ -1579,7 +1524,7 @@ def browser_check_code(
             }};
             needsFactsReadiness.errors = [{{
               account_id: needsFactsReadiness.accounts[0].account_id,
-              message: '缺少账户事实',
+              message: '缺少账户数据',
             }}];
             const planScenarios = [
               {{
@@ -1587,7 +1532,7 @@ def browser_check_code(
                 readiness: needsFactsReadiness,
                 generation: completeGeneration('scenario-action'),
                 plan: actionPlan,
-                expectedTitle: '待补充账户事实',
+                expectedTitle: '待更新账户数据',
                 executionDossierVisible: false,
                 fundingPlanVisible: false,
                 expectedAccountPlanCount: 0,
@@ -1654,7 +1599,7 @@ def browser_check_code(
                 }},
                 generation: completeGeneration('scenario-action'),
                 plan: actionPlan,
-                expectedTitle: '无法确认账户事实',
+                expectedTitle: '无法确认账户数据',
                 executionDossierVisible: false,
                 fundingPlanVisible: false,
                 expectedAccountPlanCount: 0,
@@ -1696,6 +1641,7 @@ def browser_check_code(
             ];
             const planScenarioChecks = [];
             for (const scenario of planScenarios) {{
+              smokeStep = `plan.scenario.${{scenario.name}}`;
               const consoleErrorStart = consoleErrors.length;
               const scenarioRequests = [];
               const readinessHandler = route => {{
@@ -1728,21 +1674,22 @@ def browser_check_code(
               await page.route('**/api/plan/readiness', readinessHandler);
               await page.route('**/api/plan/generated**', generationHandler);
               await page.goto(
-                {json.dumps(base_url)} + `?ui_scenario=${{scenario.name}}#trading`,
+                {json.dumps(base_url)} + `?ui_scenario=${{scenario.name}}#today`,
                 {{ waitUntil: 'domcontentloaded', timeout: 15000 }},
               );
               await page.waitForFunction(
-                () => Array.from(document.querySelectorAll('[role="region"][aria-label="计划工作台"]'))
+                () => Array.from(document.querySelectorAll('[role="region"][aria-label="今日状态工作台"]'))
                   .find(element => element.checkVisibility())
                   ?.getAttribute('aria-busy') === 'false',
                 {{ timeout: 10000 }},
               );
-              const scenarioPage = main.getByRole('region', {{ name: '计划工作台' }});
+              const scenarioPage = main.getByRole('region', {{ name: '今日状态工作台' }});
               const scenarioHero = scenarioPage.locator('.plan-decision-hero');
               const scenarioDossier = scenarioPage.locator('.plan-execution-dossier');
               const scenarioFundingPlan = scenarioPage.locator('.plan-funding-plan');
               const scenarioAccountPlans = scenarioPage.locator('.plan-account-card');
               const scenarioExecutionBadge = scenarioPage.locator('.plan-execution-badge');
+              const scenarioStateChain = scenarioPage.getByRole('region', {{ name: '今日状态链' }});
               const generateButton = scenarioPage.getByRole('button', {{ name: '生成完整计划' }});
               const actualTitle = await scenarioHero.getByRole('heading', {{ level: 2 }}).innerText();
               const executionDossierVisible = await scenarioDossier.isVisible();
@@ -1854,6 +1801,14 @@ def browser_check_code(
                   `plan.scenarios.${{scenario.name}}.executionBadgeVisible`,
                   expectedExecutionBadge,
                   executionBadgeVisible,
+                ));
+              }}
+              const stateChainExecutionReady = (await scenarioStateChain.innerText()).includes('适用 ');
+              if (stateChainExecutionReady !== expectedExecutionBadge) {{
+                scenarioDifferences.push(difference(
+                  `plan.scenarios.${{scenario.name}}.stateChainExecutionReady`,
+                  expectedExecutionBadge,
+                  stateChainExecutionReady,
                 ));
               }}
               if (generateDisabled !== scenario.generateDisabled) {{
@@ -1980,37 +1935,35 @@ def browser_check_code(
                 }}
               }}
               if (scenario.focusAccountId) {{
-                await scenarioHero.getByRole('button', {{ name: '前往账户页补充事实' }}).click();
+                await scenarioHero.getByRole('button', {{ name: '前往账户页更新数据' }}).click();
                 const accountId = scenario.focusAccountId;
                 await page.waitForFunction(
                   expected => {{
-                    const target = document.getElementById(`account-fact-${{expected}}`);
-                    const inputLabel = expected === 'stock' ? '股票可用现金' : '转债可用现金';
-                    const input = document.querySelector(
-                      `#account-facts input[aria-label="${{inputLabel}}"]`,
+                    const target = document.querySelector(
+                      `.account-current-rail-row[data-account-id="${{expected}}"][aria-current="true"]`,
                     );
+                    const editor = document.querySelector('.account-current-editor');
                     return window.location.hash === '#account'
                       && Boolean(target?.checkVisibility())
-                      && document.activeElement === input;
+                      && Boolean(editor?.checkVisibility());
                   }},
                   accountId,
                   {{ timeout: 10000 }},
                 );
                 const focusResult = await page.evaluate(expected => {{
-                  const target = document.getElementById(`account-fact-${{expected}}`);
-                  const inputLabel = expected === 'stock' ? '股票可用现金' : '转债可用现金';
-                  const input = document.querySelector(
-                    `#account-facts input[aria-label="${{inputLabel}}"]`,
+                  const target = document.querySelector(
+                    `.account-current-rail-row[data-account-id="${{expected}}"][aria-current="true"]`,
                   );
+                  const editor = document.querySelector('.account-current-editor');
                   return {{
                     visible: Boolean(target?.checkVisibility()),
-                    focused: document.activeElement === input,
+                    editorVisible: Boolean(editor?.checkVisibility()),
                   }};
                 }}, accountId);
-                if (!focusResult.visible || !focusResult.focused) {{
+                if (!focusResult.visible || !focusResult.editorVisible) {{
                   scenarioDifferences.push(difference(
                     `plan.scenarios.${{scenario.name}}.accountFocus`,
-                    {{ visible: true, focused: true }},
+                    {{ visible: true, editorVisible: true }},
                     focusResult,
                   ));
                 }}
@@ -2051,6 +2004,7 @@ def browser_check_code(
                 noActionConclusion,
                 legacyPanelsVisible,
                 executionBadgeVisible,
+                stateChainExecutionReady,
                 fundingDatesVisible,
                 generateDisabled,
                 requests: scenarioRequests,
@@ -2060,133 +2014,6 @@ def browser_check_code(
               await page.unroute('**/api/plan/generated**', generationHandler);
             }}
 
-            const accountFactScenarios = [
-              {{ name: 'summary-http-error', path: '**/api/account/summary?date=*', mode: 'http' }},
-              {{ name: 'positions-http-error', path: '**/api/positions/stock?**', mode: 'http' }},
-              {{ name: 'quotes-http-error', path: '**/api/positions/cb/quotes?**', mode: 'http' }},
-              {{ name: 'summary-network-error', path: '**/api/account/summary?date=*', mode: 'network' }},
-              {{ name: 'positions-network-error', path: '**/api/positions/stock?**', mode: 'network' }},
-              {{ name: 'quotes-network-error', path: '**/api/positions/cb/quotes?**', mode: 'network' }},
-            ];
-            const accountFactScenarioChecks = [];
-            for (const scenario of accountFactScenarios) {{
-              let shouldFail = true;
-              const failureHandler = route => {{
-                if (!shouldFail) return route.continue();
-                shouldFail = false;
-                if (scenario.mode === 'network') return route.abort('failed');
-                return route.fulfill({{
-                  status: 503,
-                  contentType: 'application/json',
-                  body: JSON.stringify({{ detail: '账户事实服务暂不可用' }}),
-                }});
-              }};
-              await page.route(scenario.path, failureHandler);
-              const consoleErrorStart = consoleErrors.length;
-              await page.goto(
-                {json.dumps(base_url)} + `?account_fact_scenario=${{scenario.name}}#account`,
-                {{ waitUntil: 'domcontentloaded', timeout: 15000 }},
-              );
-              const scenarioAccountPage = main.getByRole('region', {{ name: '账户工作台' }});
-              const scenarioReadiness = scenarioAccountPage.getByRole('region', {{ name: '账户事实就绪度' }});
-              await scenarioReadiness.getByRole('heading', {{ name: '无法确认账户事实', level: 2 }})
-                .waitFor({{ state: 'visible', timeout: 10000 }});
-              const retry = scenarioAccountPage.getByRole('button', {{ name: '重新读取账户事实', exact: true }});
-              const failurePanel = scenarioAccountPage.getByRole('alert');
-              const scenarioStructure = scenarioAccountPage.getByRole('region', {{ name: '资产结构' }});
-              const scenarioMaintenance = scenarioAccountPage.locator('#account-facts');
-              const scenarioDifferences = [];
-              if (!await retry.isVisible()) {{
-                scenarioDifferences.push(difference(`account.scenarios.${{scenario.name}}.retry`, true, false));
-              }}
-              if (!await failurePanel.isVisible()) {{
-                scenarioDifferences.push(difference(`account.scenarios.${{scenario.name}}.failure`, true, false));
-              }}
-              if (await scenarioStructure.isVisible()) {{
-                scenarioDifferences.push(difference(`account.scenarios.${{scenario.name}}.assetValues`, false, true));
-              }}
-              if (await scenarioMaintenance.isVisible()) {{
-                scenarioDifferences.push(difference(
-                  `account.scenarios.${{scenario.name}}.maintenanceVisibleDuringFailure`, false, true,
-                ));
-              }}
-              await retry.click();
-              await scenarioReadiness.getByRole('heading', {{ name: '事实已就绪', level: 2 }})
-                .waitFor({{ state: 'visible', timeout: 10000 }});
-              if (!await scenarioStructure.isVisible()) {{
-                scenarioDifferences.push(difference(`account.scenarios.${{scenario.name}}.retryRecovery`, true, false));
-              }}
-              const scenarioConsoleErrors = consoleErrors.splice(consoleErrorStart);
-              const expectedConsoleMessage = scenario.mode === 'network'
-                ? 'net::ERR_FAILED'
-                : 'status of 503';
-              const unexpectedConsoleErrors = scenarioConsoleErrors.filter(
-                message => !message.includes(expectedConsoleMessage),
-              );
-              if (unexpectedConsoleErrors.length) {{
-                scenarioDifferences.push(difference(
-                  `account.scenarios.${{scenario.name}}.unexpectedConsoleErrors`, [], unexpectedConsoleErrors,
-                ));
-              }}
-              if (pageErrors.length) {{
-                scenarioDifferences.push(difference(
-                  `account.scenarios.${{scenario.name}}.pageErrors`, [], pageErrors,
-                ));
-              }}
-              consoleErrors.splice(consoleErrorStart, scenarioConsoleErrors.length);
-              assertNoDifferences(
-                `account.scenarios.${{scenario.name}}`,
-                `账户事实失败场景 ${{scenario.name}} 行为异常`,
-                scenarioDifferences,
-              );
-              accountFactScenarioChecks.push({{
-                name: scenario.name,
-                retryVisible: true,
-                assetValuesVisibleDuringFailure: false,
-                recovered: true,
-                consoleErrors: scenarioConsoleErrors,
-              }});
-              await page.unroute(scenario.path, failureHandler);
-            }}
-
-            const emptyAccountHandler = route => route.fulfill({{
-              status: 200,
-              contentType: 'application/json',
-              body: 'null',
-            }});
-            await page.route('**/api/account/summary?date=*', emptyAccountHandler);
-            await page.goto(
-              {json.dumps(base_url)} + '?account_fact_scenario=empty-account#account',
-              {{ waitUntil: 'domcontentloaded', timeout: 15000 }},
-            );
-            const emptyAccountPage = main.getByRole('region', {{ name: '账户工作台' }});
-            const emptyReadiness = emptyAccountPage.getByRole('region', {{ name: '账户事实就绪度' }});
-            await emptyReadiness.getByRole('heading', {{ name: '尚未录入账户事实', level: 2 }})
-              .waitFor({{ state: 'visible', timeout: 10000 }});
-            const emptyDifferences = [];
-            if (!await emptyAccountPage.getByLabel('空账户状态').isVisible()) {{
-              emptyDifferences.push(difference('account.scenarios.empty-account.message', true, false));
-            }}
-            if (await emptyAccountPage.getByRole('alert').isVisible()) {{
-              emptyDifferences.push(difference('account.scenarios.empty-account.failure', false, true));
-            }}
-            if (await emptyAccountPage.getByRole('button', {{ name: '重新读取账户事实', exact: true }}).isVisible()) {{
-              emptyDifferences.push(difference('account.scenarios.empty-account.retry', false, true));
-            }}
-            if (await emptyAccountPage.getByRole('region', {{ name: '资产结构' }}).isVisible()) {{
-              emptyDifferences.push(difference('account.scenarios.empty-account.assetValues', false, true));
-            }}
-            assertNoDifferences(
-              'account.scenarios.empty-account',
-              '真实空账户场景与读取失败混淆',
-              emptyDifferences,
-            );
-            accountFactScenarioChecks.push({{
-              name: 'empty-account',
-              retryVisible: false,
-              assetValuesVisible: false,
-            }});
-            await page.unroute('**/api/account/summary?date=*', emptyAccountHandler);
 
             await changelogNav.click();
             await assertActivePage('changelog.fromPlan', changelogNav, '#changelog');
@@ -2201,6 +2028,7 @@ def browser_check_code(
               hasDatedTime: Boolean(article.querySelector('time[datetime]')),
               hasHeading: Boolean(article.querySelector('h3')?.innerText.trim()),
               hasBody: Boolean(article.querySelector('p')?.innerText.trim()),
+              scopeTagCount: article.querySelectorAll('.changelog-scope-tag').length,
             }}));
             const changelogBehavior = {{
               h1Count: await changelogHeading.count(),
@@ -2222,10 +2050,13 @@ def browser_check_code(
                 ));
               }}
             }});
-            if (Object.values(firstArticleContract).some(value => !value)) {{
+            if (!firstArticleContract.hasDatedTime
+                || !firstArticleContract.hasHeading
+                || !firstArticleContract.hasBody
+                || firstArticleContract.scopeTagCount < 1) {{
               changelogBehaviorDifferences.push(difference(
                 'changelog.firstArticle',
-                {{ hasDatedTime: true, hasHeading: true, hasBody: true }},
+                {{ hasDatedTime: true, hasHeading: true, hasBody: true, scopeTagCount: {{ min: 1 }} }},
                 firstArticleContract,
               ));
             }}
@@ -2437,8 +2268,10 @@ def browser_check_code(
               .map(([key, value]) => difference(key, value, actual[key], tolerance));
             const expectedStyleMetrics = {json.dumps(ARK_CHANGELOG_STYLE_METRICS)};
             if ({json.dumps(viewport_name)} === 'narrow') {{
-              expectedStyleMetrics.subtitle = {{ fontSize: 15, lineHeight: 27.2, fontWeight: 400 }};
-              expectedStyleMetrics.entryTitle = {{ fontSize: 19, lineHeight: 25.2, fontWeight: 650 }};
+              expectedStyleMetrics.title = {{ fontSize: 32, lineHeight: 44, fontWeight: 680 }};
+              expectedStyleMetrics.subtitle = {{ fontSize: 15, lineHeight: 28, fontWeight: 400 }};
+              expectedStyleMetrics.date = {{ fontSize: 24, lineHeight: 36, fontWeight: 650 }};
+              expectedStyleMetrics.entryTitle = {{ fontSize: 19, lineHeight: 26, fontWeight: 650 }};
               expectedStyleMetrics.body = {{ fontSize: 15, lineHeight: 25.5, fontWeight: 400 }};
             }}
             const styleDrift = [];
@@ -2620,8 +2453,8 @@ def browser_check_code(
                 account: {{
                   metrics: accountMetrics,
                   integrity: accountIntegrity,
-                  scenarios: accountFactScenarioChecks,
-                  dateIdentity: accountFactDateIdentityChecks,
+                  scenarios: accountDataScenarioChecks,
+                  dataIdentity: accountDataIdentityChecks,
                   narrowMaintenance: accountMaintenanceNarrowChecks,
                 }},
                 plan: {{
@@ -2644,7 +2477,7 @@ def browser_check_code(
             const caughtDifferences = error.differences?.length
               ? error.differences
               : [difference(
-                  error.check || 'browser.execution',
+                  error.check || smokeStep,
                   'check completed without exception',
                   String(error),
                 )];
@@ -2652,7 +2485,7 @@ def browser_check_code(
               ok: false,
               visualGate: {json.dumps(VISUAL_GATE_NAME)},
               viewport: {json.dumps(viewport_name)},
-              check: error.check || 'browser.execution',
+              check: error.check || smokeStep,
               error: String(error),
               differences: caughtDifferences,
               failureScreenshot: {json.dumps(failure_screenshot)},
@@ -2668,12 +2501,19 @@ def browser_check_code(
 
 
 def run_cli(session: str, args: list[str]) -> str:
-    result = subprocess.run(
-        ["playwright-cli", f"-s={session}", *args],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
+    command = ["playwright-cli", f"-s={session}", *args]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=CLI_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise SmokeFailure(
+            f"playwright-cli timed out after {CLI_TIMEOUT_SECONDS:g}s: {' '.join(command)}"
+        ) from exc
     if result.returncode != 0:
         raise SmokeFailure((result.stderr or result.stdout).strip())
     return result.stdout.strip()

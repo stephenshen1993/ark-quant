@@ -1,0 +1,838 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>方舟计划｜计划层级原型</title>
+  <!-- PROTOTYPE — 运行 `.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000`，通过 ?variant=A|B|C 切换；不得直接进入生产。 -->
+  <style>
+    :root {
+      --bg: #f3f5f6;
+      --paper: #ffffff;
+      --ink: #17212b;
+      --muted: #65717c;
+      --soft: #8e99a3;
+      --line: #d8dfe3;
+      --faint: #e8edef;
+      --teal: #0d716f;
+      --teal-soft: #dcecea;
+      --amber: #9a6108;
+      --amber-soft: #f6ead6;
+      --green: #28724f;
+      --green-soft: #e5f2ea;
+      --blue: #315e86;
+      --blue-soft: #e5edf4;
+      --red: #a24343;
+      --red-soft: #f7e9e9;
+      --sans: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+      --display: "Avenir Next", "PingFang SC", sans-serif;
+      --data: "DIN Alternate", "SFMono-Regular", Menlo, Consolas, monospace;
+      --nav: 220px;
+      --content: 1140px;
+    }
+
+    * { box-sizing: border-box; }
+    html { color-scheme: light; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    button { font: inherit; }
+    button:focus-visible, a:focus-visible, summary:focus-visible {
+      outline: 2px solid var(--teal);
+      outline-offset: 3px;
+    }
+    [hidden] { display: none !important; }
+
+    .prototype-ribbon {
+      position: fixed;
+      top: 10px;
+      right: 12px;
+      z-index: 40;
+      padding: 5px 9px;
+      border: 1px solid #64707a;
+      background: rgba(23, 33, 43, .92);
+      color: #fff;
+      font-family: var(--data);
+      font-size: 10px;
+      letter-spacing: .08em;
+    }
+    .app-shell { min-height: 100vh; }
+    .side-nav {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 20;
+      width: var(--nav);
+      padding: 32px 22px;
+      border-right: 1px solid var(--line);
+      background: var(--paper);
+    }
+    .brand-name {
+      font-family: var(--display);
+      font-size: 23px;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+    .brand-sub { margin-top: 2px; color: var(--soft); font-size: 12px; }
+    .nav-rule { height: 1px; margin: 30px 0 24px; background: var(--line); }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 42px;
+      margin-bottom: 6px;
+      padding: 0 12px;
+      border-radius: 7px;
+      color: var(--muted);
+      text-decoration: none;
+    }
+    .nav-item.active { background: var(--teal-soft); color: var(--teal); font-weight: 650; }
+    .nav-mark {
+      display: inline-grid;
+      width: 18px;
+      height: 18px;
+      place-items: center;
+      border: 1px solid currentColor;
+      border-radius: 4px;
+      font-family: var(--data);
+      font-size: 9px;
+    }
+    .nav-note {
+      position: absolute;
+      right: 22px;
+      bottom: 30px;
+      left: 22px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+      color: var(--soft);
+      font-size: 11px;
+      line-height: 1.65;
+    }
+    .mobile-nav { display: none; }
+    .main { min-height: 100vh; margin-left: var(--nav); }
+    .screen {
+      width: min(var(--content), calc(100% - 64px));
+      margin: 0 auto;
+      padding: 52px 0 128px;
+    }
+    .page-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 26px;
+      padding-bottom: 22px;
+      border-bottom: 1px solid var(--line);
+    }
+    .eyebrow {
+      color: var(--teal);
+      font-family: var(--data);
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    .page-title {
+      margin: 7px 0 2px;
+      font-family: var(--display);
+      font-size: clamp(34px, 4vw, 45px);
+      line-height: 1.18;
+      letter-spacing: -.025em;
+    }
+    .page-meta { margin: 0; color: var(--muted); font-weight: 600; }
+    .trade-date {
+      flex: 0 0 auto;
+      margin-top: 3px;
+      padding: 6px 11px;
+      border-radius: 999px;
+      background: #edf8f1;
+      color: #1d9b4a;
+      font-size: 12px;
+    }
+    .decision-line {
+      margin-bottom: 24px;
+      padding: 17px 0 17px 18px;
+      border-left: 4px solid var(--amber);
+    }
+    .decision-kicker { margin-bottom: 2px; color: var(--muted); font-size: 12px; }
+    .decision-title {
+      margin: 0;
+      font-family: var(--display);
+      font-size: 27px;
+      line-height: 1.25;
+    }
+    .decision-copy { margin: 5px 0 0; color: var(--muted); }
+
+    .section-label {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-family: var(--data);
+      font-size: 11px;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .tag.ready { background: var(--green-soft); color: var(--green); }
+    .tag.funding { background: var(--amber-soft); color: var(--amber); }
+    .tag.wait { background: var(--blue-soft); color: var(--blue); }
+    .tag.neutral { background: #eef1f3; color: var(--muted); }
+    .data { font-family: var(--data); font-variant-numeric: tabular-nums; }
+
+    .fund-action {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      padding: 16px 0;
+      border-top: 1px solid var(--faint);
+    }
+    .fund-action:first-child { border-top: 0; }
+    .fund-action-title { margin: 0; font-weight: 700; }
+    .fund-action-copy { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+    .fund-action-amount { text-align: right; font-family: var(--data); font-weight: 700; }
+    .fund-action-time { margin-top: 3px; color: var(--muted); font-size: 11px; text-align: right; }
+
+    .account-summary {
+      display: grid;
+      grid-template-columns: minmax(180px, 1.1fr) repeat(2, minmax(108px, .45fr)) minmax(180px, .9fr) auto;
+      gap: 18px;
+      align-items: center;
+    }
+    .account-name {
+      margin: 0;
+      font-family: var(--display);
+      font-size: 20px;
+      line-height: 1.25;
+    }
+    .account-sub { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .metric-label { color: var(--soft); font-size: 10px; letter-spacing: .06em; }
+    .metric-value { margin-top: 2px; font-family: var(--data); font-size: 14px; font-weight: 700; }
+    .metric-value.sell { color: var(--green); }
+    .metric-value.buy { color: var(--red); }
+    .funding-state { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 36px;
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .toggle:hover { border-color: var(--teal); color: var(--teal); }
+    .toggle::after { content: "＋"; font-family: var(--data); }
+    .toggle[aria-expanded="true"]::after { content: "－"; }
+
+    .cash-equation {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      justify-content: start;
+      gap: 9px;
+      margin-top: 15px;
+      padding-top: 14px;
+      border-top: 1px solid var(--faint);
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .equation-part { white-space: nowrap; }
+    .equation-part strong {
+      display: block;
+      margin-top: 2px;
+      color: var(--ink);
+      font-family: var(--data);
+      font-size: 13px;
+    }
+    .equation-symbol { padding-bottom: 2px; color: var(--soft); font-family: var(--data); }
+    .equation-result {
+      padding-left: 12px;
+      border-left: 2px solid var(--teal);
+    }
+    .equation-result strong { color: var(--teal); }
+
+    .account-detail { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+    .phase + .phase { margin-top: 24px; }
+    .phase-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+    .phase-title { margin: 0; font-size: 14px; }
+    .phase-total { color: var(--muted); font-family: var(--data); font-size: 11px; }
+    .trade-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .trade-table th {
+      padding: 8px 9px;
+      border-bottom: 1px solid var(--line);
+      color: var(--soft);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-align: left;
+    }
+    .trade-table td {
+      padding: 10px 9px;
+      border-bottom: 1px solid var(--faint);
+      vertical-align: middle;
+    }
+    .trade-table th:nth-child(n+3), .trade-table td:nth-child(n+3) { text-align: right; }
+    .trade-table .security { width: 31%; }
+    .security-name { font-weight: 650; }
+    .security-code { margin-top: 2px; color: var(--soft); font-family: var(--data); font-size: 11px; }
+    .action-word { font-weight: 700; }
+    .action-word.sell { color: var(--green); }
+    .action-word.buy { color: var(--red); }
+
+    /* A — 纵向执行卷宗 */
+    .a-stack { display: grid; gap: 16px; }
+    .a-panel {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--paper);
+    }
+    .a-funding { padding: 22px 24px; border-top: 4px solid var(--teal); }
+    .a-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 12px; }
+    .a-panel-title { margin: 0; font-family: var(--display); font-size: 22px; }
+    .a-panel-copy { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+    .a-time-group + .a-time-group { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .a-time-label { color: var(--teal); font-family: var(--data); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+    .a-accounts-head { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin: 14px 0 2px; }
+    .a-accounts-title { margin: 0; font-family: var(--display); font-size: 22px; }
+    .a-accounts-copy { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+    .a-account { padding: 20px 22px; }
+    .a-account[data-state="funding"] { border-left: 3px solid var(--amber); }
+    .a-account[data-state="ready"] { border-left: 3px solid var(--green); }
+
+    /* B — 左右资金工作台 */
+    .b-screen { max-width: 1260px; }
+    .b-workspace {
+      display: grid;
+      grid-template-columns: minmax(300px, .72fr) minmax(520px, 1.55fr);
+      gap: 24px;
+      align-items: start;
+    }
+    .b-funds {
+      position: sticky;
+      top: 24px;
+      overflow: hidden;
+      border: 1px solid #b9c8ca;
+      background: #eaf0f0;
+    }
+    .b-funds-head { padding: 22px; background: #163d3d; color: #fff; }
+    .b-funds-head .section-label { color: #a9cbca; }
+    .b-funds-title { margin: 0; font-family: var(--display); font-size: 23px; }
+    .b-funds-copy { margin: 6px 0 0; color: #c6d9d8; font-size: 12px; }
+    .b-fund-body { padding: 12px 20px 20px; }
+    .b-time-block { position: relative; padding-left: 24px; }
+    .b-time-block + .b-time-block { margin-top: 18px; padding-top: 18px; border-top: 1px solid #c5d3d4; }
+    .b-time-dot { position: absolute; top: 4px; left: 0; width: 11px; height: 11px; border: 3px solid #eaf0f0; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 1px var(--teal); }
+    .b-time-title { margin: 0 0 5px; color: var(--teal); font-family: var(--data); font-size: 11px; font-weight: 700; }
+    .b-fund-item { margin-top: 10px; padding: 12px; border: 1px solid #cedadb; background: rgba(255,255,255,.72); }
+    .b-fund-item strong { display: block; }
+    .b-fund-item .data { display: block; margin-top: 5px; color: var(--teal); }
+    .b-column-head { margin-bottom: 14px; }
+    .b-column-title { margin: 0; font-family: var(--display); font-size: 25px; }
+    .b-column-copy { margin: 4px 0 0; color: var(--muted); }
+    .b-account {
+      margin-bottom: 14px;
+      padding: 18px 20px;
+      border-top: 1px solid var(--ink);
+      border-bottom: 1px solid var(--line);
+      background: var(--paper);
+    }
+    .b-account .account-summary { grid-template-columns: minmax(180px, 1fr) repeat(2, minmax(100px, .42fr)) minmax(168px, .85fr) auto; }
+    .b-priority {
+      display: inline-block;
+      margin-bottom: 11px;
+      color: var(--soft);
+      font-family: var(--data);
+      font-size: 10px;
+      letter-spacing: .1em;
+    }
+
+    /* C — 无卡片计划台账 */
+    .c-screen { max-width: 1060px; }
+    .c-docket { border: 1px solid var(--line); background: var(--paper); }
+    .c-docket-head {
+      display: grid;
+      grid-template-columns: 1.4fr .6fr;
+      gap: 24px;
+      padding: 28px 30px 24px;
+      border-bottom: 3px double var(--ink);
+    }
+    .c-docket-title { margin: 0; font-family: var(--display); font-size: 29px; }
+    .c-docket-copy { margin: 5px 0 0; color: var(--muted); }
+    .c-docket-meta { text-align: right; }
+    .c-docket-meta strong { display: block; margin-top: 4px; font-family: var(--data); }
+    .c-section { padding: 24px 30px; border-bottom: 1px solid var(--line); }
+    .c-section:last-child { border-bottom: 0; }
+    .c-section-head {
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr);
+      gap: 24px;
+      margin-bottom: 16px;
+    }
+    .c-index { color: var(--teal); font-family: var(--data); font-size: 11px; font-weight: 700; letter-spacing: .12em; }
+    .c-title { margin: 0; font-family: var(--display); font-size: 22px; }
+    .c-copy { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+    .c-ledger-row {
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr) 140px 150px;
+      gap: 24px;
+      align-items: baseline;
+      padding: 13px 0;
+      border-top: 1px solid var(--faint);
+    }
+    .c-ledger-row:first-of-type { border-top-color: var(--line); }
+    .c-ledger-time { color: var(--muted); font-family: var(--data); font-size: 11px; }
+    .c-ledger-title { font-weight: 700; }
+    .c-ledger-reason { color: var(--muted); font-size: 12px; }
+    .c-ledger-amount { text-align: right; font-family: var(--data); font-weight: 700; }
+    .c-account {
+      border-top: 1px solid var(--ink);
+    }
+    .c-account + .c-account { margin-top: 20px; }
+    .c-account .account-summary { padding: 16px 0; }
+    .c-account .account-detail { padding-bottom: 8px; }
+
+    .prototype-switcher {
+      position: fixed;
+      bottom: 18px;
+      left: 50%;
+      z-index: 60;
+      display: grid;
+      grid-template-columns: 42px minmax(190px, auto) 42px;
+      align-items: center;
+      overflow: hidden;
+      transform: translateX(-50%);
+      border: 1px solid #45515d;
+      border-radius: 999px;
+      background: #17212b;
+      color: #fff;
+      box-shadow: 0 14px 34px rgba(23, 33, 43, .24);
+    }
+    .prototype-switcher button {
+      height: 42px;
+      border: 0;
+      background: transparent;
+      color: #fff;
+      cursor: pointer;
+    }
+    .prototype-switcher button:hover { background: #2a3641; }
+    .switcher-label { padding: 0 12px; font-family: var(--data); font-size: 11px; text-align: center; }
+
+    @media (max-width: 1050px) {
+      .account-summary { grid-template-columns: minmax(180px, 1fr) repeat(2, 110px) auto; }
+      .funding-state { grid-column: 1 / -2; flex-direction: row; align-items: center; }
+      .b-workspace { grid-template-columns: 1fr; }
+      .b-funds { position: static; }
+      .b-account .account-summary { grid-template-columns: minmax(180px, 1fr) repeat(2, 110px) auto; }
+    }
+
+    @media (max-width: 760px) {
+      .prototype-ribbon { display: none; }
+      .side-nav { display: none; }
+      .mobile-nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 63px;
+        padding: 0 18px;
+        border-bottom: 1px solid var(--line);
+        background: var(--paper);
+      }
+      .mobile-brand { font-family: var(--display); font-size: 16px; font-weight: 700; }
+      .mobile-links { display: flex; gap: 4px; }
+      .mobile-links span { padding: 7px 8px; color: var(--muted); font-size: 11px; }
+      .mobile-links .active { border-radius: 6px; background: var(--teal-soft); color: var(--teal); }
+      .main { margin-left: 0; }
+      .screen { width: auto; padding: 30px 18px 112px; }
+      .page-head { display: block; margin-bottom: 20px; padding-bottom: 20px; }
+      .page-title { font-size: 34px; }
+      .trade-date { display: inline-block; margin-top: 18px; }
+      .decision-line { padding-left: 14px; }
+      .decision-title { font-size: 24px; }
+      .a-funding, .a-account { padding: 18px; }
+      .a-panel-head { display: block; }
+      .a-panel-head .tag { margin-top: 9px; }
+      .account-summary, .b-account .account-summary {
+        grid-template-columns: 1fr 1fr;
+        gap: 14px 12px;
+      }
+      .account-summary > :first-child { grid-column: 1 / -1; }
+      .funding-state { grid-column: 1 / -1; }
+      .toggle { grid-column: 1 / -1; width: 100%; justify-content: space-between; }
+      .cash-equation {
+        display: block;
+      }
+      .cash-equation .equation-symbol { display: none; }
+      .cash-equation .equation-part {
+        display: grid;
+        grid-template-columns: 18px minmax(0, 1fr) auto;
+        gap: 6px;
+        align-items: baseline;
+        padding: 5px 0;
+        white-space: normal;
+      }
+      .cash-equation .equation-part::before { content: attr(data-sign); color: var(--soft); font-family: var(--data); }
+      .cash-equation .equation-part strong { grid-column: 3; margin-top: 0; }
+      .cash-equation .equation-result { margin-top: 4px; padding: 9px 0 0; border-top: 1px solid var(--line); border-left: 0; }
+      .fund-action { grid-template-columns: 1fr; gap: 7px; }
+      .fund-action-amount, .fund-action-time { text-align: left; }
+      .trade-table, .trade-table tbody { display: block; }
+      .trade-table thead { display: none; }
+      .trade-table tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 6px 14px;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--faint);
+      }
+      .trade-table td {
+        display: block;
+        padding: 0;
+        border: 0;
+        text-align: left !important;
+      }
+      .trade-table td:nth-child(1) { grid-column: 1; grid-row: 1; }
+      .trade-table td:nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
+      .trade-table td:nth-child(3) { grid-column: 2; grid-row: 1; font-family: var(--data); }
+      .trade-table td:nth-child(4), .trade-table td:nth-child(5) { color: var(--muted); font-family: var(--data); font-size: 11px; }
+      .trade-table td:nth-child(4)::before { content: "参考价 "; font-family: var(--sans); }
+      .trade-table td:nth-child(5)::before { content: "估算 "; font-family: var(--sans); }
+      .trade-table .security { width: auto; }
+      .b-funds-head, .b-fund-body, .b-account { padding-right: 18px; padding-left: 18px; }
+      .c-docket-head { grid-template-columns: 1fr; padding: 22px 18px; }
+      .c-docket-meta { text-align: left; }
+      .c-section { padding: 20px 18px; }
+      .c-section-head { grid-template-columns: 1fr; gap: 4px; }
+      .c-ledger-row { grid-template-columns: 1fr auto; gap: 6px 12px; }
+      .c-ledger-time { grid-column: 1 / -1; }
+      .c-ledger-reason { grid-column: 1 / -1; }
+      .c-account .account-summary { padding: 15px 0; }
+      .prototype-switcher { width: calc(100% - 32px); grid-template-columns: 42px minmax(0, 1fr) 42px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="prototype-ribbon">THROWAWAY PROTOTYPE</div>
+  <div class="app-shell">
+    <aside class="side-nav" aria-label="主导航">
+      <div class="brand-name">方舟计划</div>
+      <div class="brand-sub">个人投资系统</div>
+      <div class="nav-rule"></div>
+      <a class="nav-item active" href="#"><span class="nav-mark">今</span>今日计划</a>
+      <a class="nav-item" href="#"><span class="nav-mark">账</span>账户</a>
+      <a class="nav-item" href="#"><span class="nav-mark">更</span>更新日志</a>
+      <div class="nav-note">所有计划均需人工复核并在外部券商执行。<br>系统不代表已经下单或成交。</div>
+    </aside>
+    <header class="mobile-nav">
+      <div class="mobile-brand">方舟计划</div>
+      <div class="mobile-links" aria-label="主导航"><span class="active">今日计划</span><span>账户</span><span>更新日志</span></div>
+    </header>
+    <main class="main" id="prototype-root"></main>
+  </div>
+  <div class="prototype-switcher" aria-label="原型方向切换">
+    <button type="button" id="previous-variant" aria-label="上一个方向">←</button>
+    <div class="switcher-label" id="variant-label" aria-live="polite"></div>
+    <button type="button" id="next-variant" aria-label="下一个方向">→</button>
+  </div>
+
+  <script>
+    const variants = [
+      { key: 'A', name: '纵向执行卷宗' },
+      { key: 'B', name: '左右资金工作台' },
+      { key: 'C', name: '无卡片计划台账' },
+    ]
+
+    const scenario = new URLSearchParams(window.location.search).get('scenario') || 'default'
+
+    const plan = {
+      basedOn: '2026-08-05 收盘数据',
+      tradeDate: '适用 2026-08-06 开盘执行',
+      factWindow: '事实窗口 2026-08-05 — 2026-08-06',
+      funding: [
+        { group: '今日可执行', from: '资金账户', to: '华泰账户', amount: 3285.23, reason: '补足多因子转债计划的买入资金', timing: '当日调入后可用' },
+        { group: '下一交易日可执行', from: '广发账户', to: '资金账户', amount: 3892.75, reason: '账户交易计划完成卖出后回收多余资金', timing: '卖出资金下一交易日可转出' },
+      ],
+      accounts: [
+        {
+          id: 'stock',
+          account: '广发账户交易计划',
+          subtitle: '主动组合 · 小市值股票策略',
+          date: '2026-08-06 开盘',
+          state: 'ready',
+          stateLabel: '资金已具备',
+          stateCopy: '计划内部先卖出，再使用释放资金买入',
+          start: 0,
+          inflow: 0,
+          outflow: 3892.75,
+          sellCount: 4,
+          sellAmount: 24736,
+          buyCount: 4,
+          buyAmount: 20201,
+          end: 642.25,
+          sells: [
+            ['清仓卖出', '002778', '中晟高科', '1,000 股', '15.080', '15,080.00'],
+            ['减仓', '600455', '博通股份', '200 股', '23.530', '4,706.00'],
+            ['减仓', '001336', '楚环科技', '100 股', '17.460', '1,746.00'],
+            ['减仓', '603073', '彩蝶实业', '200 股', '16.020', '3,204.00'],
+          ],
+          buys: [
+            ['加仓', '600137', '浪莎股份', '100 股', '17.460', '1,746.00'],
+            ['加仓', '603860', '中公高科', '100 股', '25.590', '2,559.00'],
+            ['加仓', '603029', '天鹅股份', '100 股', '14.800', '1,480.00'],
+            ['新买入', '600099', '林海股份', '1,700 股', '8.480', '14,416.00'],
+          ],
+        },
+        {
+          id: 'bond',
+          account: '华泰账户交易计划',
+          subtitle: '主动组合 · 多因子转债策略',
+          date: '2026-08-06 开盘',
+          state: 'funding',
+          stateLabel: '需先完成当日调入',
+          stateCopy: '资金账户调入 ¥3,285.23 后可正常执行',
+          start: 674.05,
+          inflow: 3285.23,
+          outflow: 0,
+          sellCount: 6,
+          sellAmount: 44917.16,
+          buyCount: 7,
+          buyAmount: 48172.92,
+          end: 703.52,
+          sells: [
+            ['清仓卖出', '111014', '李子转债', '70 张', '126.467', '8,852.69'],
+            ['清仓卖出', '111018', '华康转债', '70 张', '128.926', '9,024.82'],
+            ['清仓卖出', '113666', '爱玛转债', '70 张', '126.172', '8,832.04'],
+            ['清仓卖出', '113694', '清源转债', '60 张', '129.792', '7,787.52'],
+            ['清仓卖出', '127060', '湘佳转债', '70 张', '130.550', '9,138.50'],
+            ['减仓', '113054', '绿动转债', '10 张', '128.159', '1,281.59'],
+          ],
+          buys: [
+            ['加仓', '110087', '天业转债', '10 张', '127.906', '1,279.06'],
+            ['加仓', '110093', '神马转债', '10 张', '124.795', '1,247.95'],
+            ['新买入', '113062', '常银转债', '80 张', '129.699', '10,375.92'],
+            ['新买入', '111015', '东亚转债', '70 张', '129.909', '9,093.63'],
+            ['新买入', '118034', '晶能转债', '70 张', '118.736', '8,311.52'],
+            ['新买入', '113665', '汇通转债', '70 张', '127.331', '8,913.17'],
+            ['新买入', '127054', '双箭转债', '70 张', '127.881', '8,951.67'],
+          ],
+        },
+      ],
+    }
+
+    if (scenario === 'future') {
+      plan.funding[0].group = '下一交易日可执行'
+      plan.funding[0].timing = '2026-08-07 资金可用后转入'
+      plan.accounts[1].state = 'wait'
+      plan.accounts[1].stateLabel = '等待未来资金可用'
+      plan.accounts[1].stateCopy = '等待 2026-08-07 资金可用后执行'
+      plan.accounts[1].date = '2026-08-07 资金可用后'
+    }
+
+    const money = value => `¥${Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+    function pageHead() {
+      return `
+        <header class="page-head">
+          <div>
+            <div class="eyebrow">Today / Decision</div>
+            <h1 class="page-title">今日计划</h1>
+            <p class="page-meta">基于 ${plan.basedOn}</p>
+          </div>
+          <div class="trade-date">${plan.tradeDate}</div>
+        </header>
+        <section class="decision-line" aria-label="今日判断">
+          <div class="decision-kicker">今日判断</div>
+          <h2 class="decision-title">今日需要操作</h2>
+          <p class="decision-copy">先审阅资金调拨计划，再确认各账户交易计划的资金前提与逐笔明细。</p>
+        </section>`
+    }
+
+    function summary(account) {
+      return `
+        <div class="account-summary">
+          <div>
+            <h3 class="account-name">${account.account}</h3>
+            <p class="account-sub">${account.subtitle} · ${account.date}</p>
+          </div>
+          <div><div class="metric-label">预计卖出 · ${account.sellCount} 笔</div><div class="metric-value sell">${money(account.sellAmount)}</div></div>
+          <div><div class="metric-label">预计买入 · ${account.buyCount} 笔</div><div class="metric-value buy">${money(account.buyAmount)}</div></div>
+          <div class="funding-state"><span class="tag ${account.state}">${account.stateLabel}</span><span class="account-sub">${account.stateCopy}</span></div>
+          <button class="toggle" type="button" data-toggle="${account.id}" aria-expanded="false" aria-controls="detail-${account.id}">查看逐笔明细</button>
+        </div>
+        ${equation(account)}`
+    }
+
+    function equation(account) {
+      return `
+        <div class="cash-equation" aria-label="账户计划资金算式">
+          <div class="equation-part" data-sign=""><span>起始可用资金</span><strong>${money(account.start)}</strong></div>
+          <div class="equation-symbol">＋</div><div class="equation-part" data-sign="＋"><span>调入</span><strong>${money(account.inflow)}</strong></div>
+          <div class="equation-symbol">－</div><div class="equation-part" data-sign="－"><span>调出</span><strong>${money(account.outflow)}</strong></div>
+          <div class="equation-symbol">＋</div><div class="equation-part" data-sign="＋"><span>预计卖出</span><strong>${money(account.sellAmount)}</strong></div>
+          <div class="equation-symbol">－</div><div class="equation-part" data-sign="－"><span>预计买入</span><strong>${money(account.buyAmount)}</strong></div>
+          <div class="equation-symbol">＝</div><div class="equation-part equation-result" data-sign="＝"><span>计划后预计资金余额</span><strong>${money(account.end)}</strong></div>
+        </div>`
+    }
+
+    function tradeRows(rows, side) {
+      return rows.map(row => `
+        <tr>
+          <td><span class="action-word ${side}">${row[0]}</span></td>
+          <td class="security"><div class="security-name">${row[2]}</div><div class="security-code">${row[1]}</div></td>
+          <td class="data">${row[3]}</td>
+          <td class="data">${row[4]}</td>
+          <td class="data">${money(row[5].replaceAll(',', ''))}</td>
+        </tr>`).join('')
+    }
+
+    function phase(title, rows, side) {
+      const total = rows.reduce((sum, row) => sum + Number(row[5].replaceAll(',', '')), 0)
+      return `
+        <section class="phase">
+          <div class="phase-head"><h4 class="phase-title">${title}</h4><div class="phase-total">${rows.length} 笔 · ${money(total)}</div></div>
+          <table class="trade-table">
+            <thead><tr><th>动作</th><th class="security">证券</th><th>数量</th><th>参考价</th><th>估算金额</th></tr></thead>
+            <tbody>${tradeRows(rows, side)}</tbody>
+          </table>
+        </section>`
+    }
+
+    function detail(account) {
+      return `<div class="account-detail" id="detail-${account.id}" data-detail="${account.id}" hidden>${phase('卖出阶段', account.sells, 'sell')}${phase('买入阶段', account.buys, 'buy')}</div>`
+    }
+
+    function fundAction(action) {
+      return `
+        <div class="fund-action">
+          <div><p class="fund-action-title">${action.from} → ${action.to}</p><p class="fund-action-copy">${action.reason}</p></div>
+          <div><div class="fund-action-amount">${money(action.amount)}</div><div class="fund-action-time">${action.timing}</div></div>
+        </div>`
+    }
+
+    function renderA() {
+      const groups = [...new Set(plan.funding.map(item => item.group))]
+      return `
+        <div class="screen">
+          ${pageHead()}
+          <div class="a-stack">
+            <section class="a-panel a-funding" aria-label="资金调拨计划">
+              <div class="a-panel-head">
+                <div><div class="section-label">先审阅资金安排</div><h2 class="a-panel-title">资金调拨计划</h2><p class="a-panel-copy">各动作只描述与资金账户之间的一段调拨，不追踪资金来源去向链。</p></div>
+                <span class="tag neutral">${plan.factWindow}</span>
+              </div>
+              ${groups.map(group => `<div class="a-time-group"><div class="a-time-label">${group}</div>${plan.funding.filter(item => item.group === group).map(fundAction).join('')}</div>`).join('')}
+            </section>
+            <div class="a-accounts-head"><div><div class="section-label">再审阅账户执行</div><h2 class="a-accounts-title">账户交易计划</h2><p class="a-accounts-copy">按资金可执行性排序；逐笔交易默认收起。</p></div></div>
+            ${plan.accounts.map(account => `<article class="a-panel a-account" data-state="${account.state}">${summary(account)}${detail(account)}</article>`).join('')}
+          </div>
+        </div>`
+    }
+
+    function renderB() {
+      const groups = [...new Set(plan.funding.map(item => item.group))]
+      return `
+        <div class="screen b-screen">
+          ${pageHead()}
+          <div class="b-workspace">
+            <aside class="b-funds" aria-label="资金调拨计划">
+              <div class="b-funds-head"><div class="section-label">Review first</div><h2 class="b-funds-title">资金调拨计划</h2><p class="b-funds-copy">先确认资金安排，再进入右侧账户计划。</p></div>
+              <div class="b-fund-body">
+                ${groups.map(group => `<section class="b-time-block"><span class="b-time-dot" aria-hidden="true"></span><h3 class="b-time-title">${group}</h3>${plan.funding.filter(item => item.group === group).map(action => `<div class="b-fund-item"><strong>${action.from} → ${action.to}</strong><span class="data">${money(action.amount)}</span><p class="fund-action-copy">${action.timing}<br>${action.reason}</p></div>`).join('')}</section>`).join('')}
+              </div>
+            </aside>
+            <section aria-label="账户交易计划">
+              <div class="b-column-head"><div class="section-label">Account plans</div><h2 class="b-column-title">账户交易计划</h2><p class="b-column-copy">当前可执行计划在前，需要调入资金的计划随后。</p></div>
+              ${plan.accounts.map((account, index) => `<article class="b-account"><div class="b-priority">${index === 0 ? '可直接执行' : '完成当日调入后执行'}</div>${summary(account)}${detail(account)}</article>`).join('')}
+            </section>
+          </div>
+        </div>`
+    }
+
+    function renderC() {
+      return `
+        <div class="screen c-screen">
+          ${pageHead()}
+          <article class="c-docket">
+            <header class="c-docket-head">
+              <div><div class="section-label">Execution docket</div><h2 class="c-docket-title">计划台账</h2><p class="c-docket-copy">一份按审阅次序编排的计划台账，不使用全局步骤编号。</p></div>
+              <div class="c-docket-meta"><span class="tag neutral">${plan.factWindow}</span><strong>${plan.tradeDate.replace('适用 ', '')}</strong></div>
+            </header>
+            <section class="c-section" aria-label="资金调拨计划">
+              <div class="c-section-head"><div class="c-index">资金调拨计划</div><div><h3 class="c-title">先确认资金安排</h3><p class="c-copy">按可用时点排列；调入与调出互不匹配来源。</p></div></div>
+              ${plan.funding.map(action => `<div class="c-ledger-row"><div class="c-ledger-time">${action.group}<br>${action.timing}</div><div class="c-ledger-title">${action.from} → ${action.to}</div><div class="c-ledger-reason">${action.reason}</div><div class="c-ledger-amount">${money(action.amount)}</div></div>`).join('')}
+            </section>
+            <section class="c-section" aria-label="账户交易计划">
+              <div class="c-section-head"><div class="c-index">账户交易计划</div><div><h3 class="c-title">再核对各账户交易</h3><p class="c-copy">按资金前提排序；展开后仍在所属账户内查看逐笔明细。</p></div></div>
+              ${plan.accounts.map(account => `<article class="c-account">${summary(account)}${detail(account)}</article>`).join('')}
+            </section>
+          </article>
+        </div>`
+    }
+
+    const renderers = { A: renderA, B: renderB, C: renderC }
+    const root = document.getElementById('prototype-root')
+    const label = document.getElementById('variant-label')
+
+    function currentVariant() {
+      const key = new URLSearchParams(window.location.search).get('variant')?.toUpperCase()
+      return variants.some(item => item.key === key) ? key : 'A'
+    }
+
+    function render() {
+      const key = currentVariant()
+      root.innerHTML = renderers[key]()
+      const item = variants.find(variant => variant.key === key)
+      label.textContent = `${item.key} — ${item.name}`
+      document.title = `方舟计划｜${item.name}（原型）`
+    }
+
+    function setVariant(offset) {
+      const current = variants.findIndex(item => item.key === currentVariant())
+      const next = variants[(current + offset + variants.length) % variants.length]
+      const params = new URLSearchParams(window.location.search)
+      params.set('variant', next.key)
+      history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`)
+      render()
+    }
+
+    document.getElementById('previous-variant').addEventListener('click', () => setVariant(-1))
+    document.getElementById('next-variant').addEventListener('click', () => setVariant(1))
+    document.addEventListener('keydown', event => {
+      const tag = event.target.tagName?.toLowerCase()
+      if (['input', 'textarea'].includes(tag) || event.target.isContentEditable) return
+      if (event.key === 'ArrowLeft') setVariant(-1)
+      if (event.key === 'ArrowRight') setVariant(1)
+    })
+    root.addEventListener('click', event => {
+      const button = event.target.closest('[data-toggle]')
+      if (!button) return
+      const id = button.dataset.toggle
+      const detail = root.querySelector(`[data-detail="${id}"]`)
+      const expanded = button.getAttribute('aria-expanded') === 'true'
+      button.setAttribute('aria-expanded', String(!expanded))
+      button.firstChild.textContent = expanded ? '查看逐笔明细' : '收起逐笔明细'
+      detail.hidden = expanded
+    })
+    window.addEventListener('popstate', render)
+    render()
+  </script>
+</body>
+</html>

@@ -49,9 +49,11 @@ def build_plan_readiness() -> dict:
         error = errors_by_account.get(fact["id"])
         if account is None:
             fact_status = "missing"
-            message = "缺少账户快照"
+            message = "缺少账户数据"
         elif error:
-            fact_status = "missing" if error.get("date") is None else "outside_window"
+            fact_status = error.get("status") or (
+                "missing" if error.get("date") is None else "outside_window"
+            )
             message = error["message"]
         else:
             fact_status = "ready"
@@ -356,7 +358,7 @@ def validate_account_inputs(
 ) -> list[dict]:
     errors = []
     if not account:
-        errors.append({"input": "account", "date": None, "expected": plan_date, "message": "缺少账户快照"})
+        errors.append({"input": "account", "date": None, "expected": plan_date, "message": "缺少账户数据"})
     else:
         read_model = build_account_read_model(account)
         account_facts = {
@@ -379,6 +381,19 @@ def validate_account_inputs(
                     "date": actual,
                     "expected": f"{plan_date} 至 {account_input_end}",
                     "message": f"{account_fact.get('name', account_id)}事实日期不在计划输入窗口内",
+                })
+            elif account_fact.get("total") is None:
+                errors.append({
+                    "input": f"account.{account_id}.valuation",
+                    "kind": "account",
+                    "account_id": account_id,
+                    "account_name": account_fact.get("name", account_id),
+                    "account_role": account_fact.get("role"),
+                    "portfolio_id": account_fact.get("portfolio_id"),
+                    "date": actual,
+                    "expected": "账户估值可用",
+                    "status": "valuation_unavailable",
+                    "message": f"{account_fact.get('name', account_id)}行情暂不可用，计划需等待估值完成",
                 })
 
     return errors

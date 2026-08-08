@@ -40,42 +40,52 @@
   }
   :root {
     color-scheme: light;
-    --ark-bg: #f3f5f6;
-    --ark-panel: #ffffff;
-    --ark-text: #17212b;
-    --ark-muted: #65717c;
-    --ark-soft: #8e99a3;
-    --ark-line: #d8dfe3;
-    --ark-faint: #e7ecee;
-    --ark-accent: #0d716f;
-    --ark-accent-soft: #dcecea;
-    --ark-changelog-canvas: #f3f5f6;
-    --ark-changelog-surface: #ffffff;
-    --ark-changelog-ink: #17212b;
-    --ark-changelog-secondary: #65717c;
-    --ark-changelog-tertiary: #8e99a3;
-    --ark-changelog-line: #d8dfe3;
-    --ark-changelog-nav-active: #dcecea;
-    --ark-changelog-accent: #0d716f;
-    --ark-changelog-update: #28724f;
-    --ark-changelog-neutral: #65717c;
+    --ark-bg: #f1f4f3;
+    --ark-panel: #fffefa;
+    --ark-paper: #fbfcf9;
+    --ark-text: #14202a;
+    --ark-muted: #66747f;
+    --ark-soft: #9aa4ab;
+    --ark-line: #d2dcdb;
+    --ark-faint: #e6ecea;
+    --ark-accent: #087a78;
+    --ark-accent-deep: #045f60;
+    --ark-accent-soft: #dcefeb;
+    --ark-warn: #9a640b;
+    --ark-problem: #a2443f;
+    --ark-info: #355f83;
+    --ark-changelog-canvas: #f1f4f3;
+    --ark-changelog-surface: #fffefa;
+    --ark-changelog-ink: #14202a;
+    --ark-changelog-secondary: #66747f;
+    --ark-changelog-tertiary: #9aa4ab;
+    --ark-changelog-line: #d2dcdb;
+    --ark-changelog-nav-active: #dcefeb;
+    --ark-changelog-accent: #087a78;
+    --ark-changelog-update: #2f7656;
+    --ark-changelog-neutral: #66747f;
     --ark-nav-width: 220px;
     --ark-workspace-width: 1140px;
     --ark-reading-width: 880px;
-    --ark-reading-top: 54px;
-    --ark-header-stream-gap: 48px;
-    --ark-date-group-gap: 46px;
+    --ark-reading-top: 46px;
+    --ark-header-stream-gap: 44px;
+    --ark-date-group-gap: 50px;
     --ark-reading-time-column: 96px;
     --ark-entry-column-gap: 24px;
     --ark-entry-copy-indent: 0px;
-    --ark-font-sans: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
-    --ark-font-display: "Avenir Next", "PingFang SC", sans-serif;
-    --ark-font-data: "DIN Alternate", "SFMono-Regular", Menlo, Consolas, monospace;
+    --ark-font-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    --ark-font-display: "Songti SC", "Noto Serif CJK SC", "STSong", serif;
+    --ark-font-label: "Avenir Next", "PingFang SC", sans-serif;
+    --ark-font-data: "SFMono-Regular", "DIN Alternate", Menlo, Consolas, monospace;
   }
   body.bg-gray-50 {
     background: var(--ark-bg);
     color: var(--ark-text);
     font-family: var(--ark-font-sans);
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
     -webkit-tap-highlight-color: transparent;
   }
   button:focus-visible,
@@ -89,30 +99,31 @@
   }
   .app-nav {
     width: var(--ark-nav-width);
-    padding: 36px 22px 28px;
+    padding: 38px 22px 30px;
     background: var(--ark-changelog-surface);
     border-right: 1px solid var(--ark-changelog-line);
     touch-action: manipulation;
   }
   .changelog-brand {
-    padding: 0 5px 30px;
+    padding: 0 5px 32px;
     border-bottom: 1px solid var(--ark-changelog-line);
     margin-bottom: 30px;
   }
   .changelog-brand-name {
     color: var(--ark-changelog-ink);
     font-family: var(--ark-font-display);
-    font-size: 22px;
+    font-size: 24px;
     font-weight: 700;
-    letter-spacing: 0.08em;
-    line-height: 1.2;
+    letter-spacing: 0.02em;
+    line-height: 1.15;
   }
   .changelog-brand-subtitle {
     margin-top: 8px;
     color: var(--ark-changelog-tertiary);
-    font-size: 12px;
+    font-family: var(--ark-font-label);
+    font-size: 11px;
     font-weight: 500;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
   }
   .app-nav-section {
@@ -122,24 +133,24 @@
     font-weight: 600;
   }
   .nav-item {
-    min-height: 42px;
-    border-radius: 6px;
+    min-height: 44px;
+    border-radius: 10px;
     color: var(--ark-changelog-secondary);
-    font-size: 15px;
-    font-weight: 500;
+    font-size: 14px;
+    font-weight: 600;
     line-height: 1;
     text-decoration: none;
   }
   .nav-item:hover {
-    background: #f3f4f6;
+    background: rgba(20, 32, 42, 0.04);
     color: var(--ark-changelog-ink);
   }
   .nav-item[aria-current="page"] {
     background: var(--ark-changelog-nav-active);
-    color: var(--ark-changelog-accent);
+    color: var(--ark-accent-deep);
   }
   .nav-item[aria-current="page"] .nav-icon {
-    color: var(--ark-changelog-accent);
+    color: var(--ark-accent-deep);
   }
   .nav-item:focus-visible {
     outline: 2px solid var(--ark-changelog-ink);
@@ -160,11 +171,11 @@
   }
   .app-nav-footer {
     margin-top: auto;
-    padding: 12px 10px 0;
+    padding: 14px 10px 0;
     border-top: 1px solid var(--ark-changelog-line);
     color: var(--ark-changelog-tertiary);
-    font-size: 11px;
-    line-height: 1.6;
+    font-size: 12px;
+    line-height: 1.75;
   }
   .app-main {
     background: var(--ark-bg);
@@ -178,7 +189,7 @@
     width: 100%;
     max-width: var(--ark-workspace-width);
     margin: 0 auto;
-    padding: 54px 46px 96px;
+    padding: 46px 46px 96px;
   }
   .workspace-shell-workbench {
     max-width: var(--ark-workspace-width);
@@ -187,85 +198,157 @@
     max-width: var(--ark-workspace-width);
   }
   .workspace-kicker {
-    margin-bottom: 14px;
+    margin-bottom: 13px;
     color: var(--ark-accent);
-    font-size: 12px;
+    font-family: var(--ark-font-label);
+    font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.24em;
+    letter-spacing: 0.2em;
   }
   .workspace-title-row {
     align-items: end;
     border-bottom: 1px solid var(--ark-line);
-    margin-bottom: 26px;
-    padding-bottom: 22px;
+    margin-bottom: 24px;
+    padding-bottom: 24px;
   }
   .workspace-title {
     color: var(--ark-text);
     font-family: var(--ark-font-display);
-    font-size: 38px;
+    font-size: 42px;
     font-weight: 700;
-    letter-spacing: -0.035em;
-    line-height: 1.15;
+    letter-spacing: -0.055em;
+    line-height: 1.08;
   }
   .workspace-meta {
     color: var(--ark-muted);
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 500;
   }
   .ark-panel {
     background: var(--ark-panel);
     border: 1px solid var(--ark-faint);
-    border-radius: 6px;
-    box-shadow: none;
+    border-radius: 10px;
+    box-shadow: 0 1px 0 rgba(20, 32, 42, 0.03), 0 12px 34px rgba(20, 32, 42, 0.025);
   }
   .ark-panel + .ark-panel {
     margin-top: 16px;
   }
   [x-cloak] { display: none !important; }
+  .global-status-shell {
+    width: 100%;
+    max-width: var(--ark-workspace-width);
+    margin: 0 auto;
+    padding: 28px 46px 0;
+  }
+  .global-status-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    gap: 10px;
+    align-items: center;
+    padding: 11px 14px;
+    border: 1px solid var(--ark-line);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--ark-panel) 88%, white);
+    color: var(--ark-muted);
+    font-size: 12px;
+    box-shadow: 0 1px 0 rgba(20, 32, 42, 0.03);
+  }
+  .global-status-bar strong {
+    color: var(--ark-text);
+    font-weight: 700;
+  }
+  .global-status-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 25px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .global-status-pill.is-ready { background: #dfeee7; color: #236846; }
+  .global-status-pill.is-warn { background: #f4e8d1; color: var(--ark-warn); }
+  .global-status-pill.is-info { background: #e2ebf1; color: var(--ark-info); }
+  .global-status-pill.is-problem { background: #f2e2df; color: var(--ark-problem); }
+  .global-status-pill.is-neutral { background: #eef1f3; color: var(--ark-muted); }
+  .plan-state-chain {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .plan-state-chain-item {
+    min-height: 76px;
+    padding: 14px 15px;
+    border: 1px solid var(--ark-line);
+    border-radius: 10px;
+    background: var(--ark-paper);
+  }
+  .plan-state-chain-item.is-ready { border-color: #cfe2d6; background: linear-gradient(180deg, #fbfffc, #f4faf6); }
+  .plan-state-chain-item.is-warn { border-color: #ead7b8; background: #fffaf0; }
+  .plan-state-chain-item.is-info { border-color: #ccdce7; background: #f6fafc; }
+  .plan-state-chain-item.is-problem { border-color: #e6cac6; background: #fbf2f0; }
+  .plan-state-chain-title {
+    color: var(--ark-text);
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .plan-state-chain-copy {
+    margin-top: 4px;
+    color: var(--ark-muted);
+    font-size: 13px;
+    line-height: 1.5;
+  }
   .plan-decision-hero {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 128px;
+    grid-template-columns: minmax(0, 1fr) 164px;
     gap: 28px;
-    margin-bottom: 18px;
-    padding: 24px 26px;
+    margin-bottom: 20px;
+    padding: 28px 30px;
     border: 1px solid var(--ark-line);
-    border-left: 4px solid var(--ark-accent);
-    border-radius: 6px;
-    background: var(--ark-panel);
+    border-left: 3px solid var(--ark-accent);
+    border-radius: 12px;
+    background: linear-gradient(180deg, var(--ark-panel), var(--ark-paper));
   }
   .plan-decision-hero[data-state="needs-facts"],
-  .plan-decision-hero[data-state="action"] { border-left-color: #9a6108; }
-  .plan-decision-hero[data-state="problem"] { border-left-color: #a24343; }
-  .plan-decision-hero[data-state="running"] { border-left-color: #315e86; }
+  .plan-decision-hero[data-state="action"] { border-left-color: var(--ark-warn); }
+  .plan-decision-hero[data-state="problem"] { border-left-color: var(--ark-problem); }
+  .plan-decision-hero[data-state="running"],
+  .plan-decision-hero[data-state="pending"] { border-left-color: var(--ark-info); }
   .plan-decision-label {
     color: var(--ark-muted);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.08em;
   }
   .plan-decision-title {
     margin: 7px 0 0;
     font-family: var(--ark-font-display);
-    font-size: 30px;
+    font-size: 32px;
     font-weight: 700;
-    letter-spacing: -0.03em;
-    line-height: 1.2;
+    letter-spacing: -0.045em;
+    line-height: 1.15;
   }
   .plan-decision-copy {
     max-width: 760px;
     margin: 10px 0 0;
     color: var(--ark-muted);
-    font-size: 14px;
+    font-size: 15px;
     line-height: 1.75;
   }
   .plan-decision-mark {
     align-self: start;
     padding: 12px;
     border: 1px solid var(--ark-line);
+    border-radius: 8px;
+    background: var(--ark-paper);
     color: var(--ark-muted);
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.7;
     text-align: right;
+    overflow-wrap: normal;
+    word-break: keep-all;
   }
   .plan-decision-mark strong {
     display: block;
@@ -295,7 +378,7 @@
   .plan-funding-group-title {
     color: var(--ark-muted);
     font-family: var(--ark-font-data);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.04em;
   }
@@ -308,12 +391,12 @@
   }
   .plan-funding-action:first-child { padding-top: 0; border-top: 0; }
   .plan-funding-action:last-child { padding-bottom: 0; }
-  .plan-funding-direction { font-size: 14px; font-weight: 650; }
-  .plan-funding-reason { margin-top: 4px; color: var(--ark-muted); font-size: 12px; line-height: 1.6; }
+  .plan-funding-direction { font-size: 15px; font-weight: 650; }
+  .plan-funding-reason { margin-top: 4px; color: var(--ark-muted); font-size: 13px; line-height: 1.65; }
   .plan-funding-amount {
     color: var(--ark-text);
     font-family: var(--ark-font-data);
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 700;
     white-space: nowrap;
   }
@@ -323,7 +406,7 @@
   }
   .plan-account-card {
     border: 1px solid var(--ark-line);
-    border-radius: 6px;
+    border-radius: 10px;
     background: var(--ark-panel);
   }
   .plan-account-card[data-state="blocked"] { border-left: 4px solid #a24343; }
@@ -341,7 +424,7 @@
     align-items: start;
   }
   .plan-account-title { font-size: 17px; font-weight: 700; }
-  .plan-account-subtitle { margin-top: 3px; color: var(--ark-muted); font-size: 12px; }
+  .plan-account-subtitle { margin-top: 3px; color: var(--ark-muted); font-size: 13px; }
   .plan-account-funding-state {
     padding: 4px 8px;
     border: 1px solid var(--ark-line);
@@ -473,70 +556,557 @@
     white-space: nowrap;
   }
   .plan-trade-amount { font-weight: 700; }
-  .account-readiness-hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 150px;
+  .account-current-workbench {
+    --account-rail: 250px;
+    --account-review: 238px;
+  }
+  .account-current-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
     gap: 28px;
-    padding: 24px 26px;
-    border: 1px solid var(--ark-line);
-    border-left: 4px solid var(--ark-accent);
-    border-radius: 6px;
-    background: var(--ark-panel);
   }
-  .account-readiness-hero[data-status="needs_facts"] { border-left-color: #9a6108; }
-  .account-readiness-hero[data-status="error"] { border-left-color: #a24343; }
-  .account-readiness-title {
-    margin-top: 7px;
-    font-family: var(--ark-font-display);
-    font-size: 27px;
-    font-weight: 700;
-    letter-spacing: -0.025em;
-  }
-  .account-readiness-copy {
-    margin-top: 9px;
+  .account-current-overview {
+    display: grid;
+    gap: 2px;
+    max-width: 310px;
+    padding-left: 18px;
+    border-left: 2px solid var(--ark-accent);
     color: var(--ark-muted);
-    font-size: 14px;
-    line-height: 1.7;
-  }
-  .account-readiness-window {
-    align-self: start;
-    color: var(--ark-muted);
-    font-family: var(--ark-font-data);
-    font-size: 11px;
-    line-height: 1.7;
+    font-size: 12px;
+    line-height: 1.55;
     text-align: right;
   }
-  .account-portfolio-grid {
+  .account-current-overview strong {
+    color: var(--ark-text);
+    font-family: var(--ark-font-display);
+    font-size: 18px;
+    line-height: 1.35;
+  }
+  .account-current-layout {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-  }
-  .account-portfolio-card {
-    min-width: 0;
-    padding: 16px;
+    grid-template-columns: var(--account-rail) minmax(0, 1fr) var(--account-review);
+    align-items: start;
+    min-height: 560px;
     border: 1px solid var(--ark-line);
-    border-radius: 4px;
+    border-radius: 14px;
+    background: var(--ark-panel);
+    box-shadow: 0 18px 48px rgba(20, 32, 42, 0.055);
+    overflow: hidden;
   }
-  .account-portfolio-id {
+  .account-current-rail {
+    align-self: stretch;
+    min-width: 0;
+    padding: 20px 0;
+    border-right: 1px solid var(--ark-line);
+    background: color-mix(in srgb, var(--ark-bg) 44%, var(--ark-panel));
+  }
+  .account-current-rail-heading {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 18px 13px;
+    color: var(--ark-soft);
+    font-family: var(--ark-font-label);
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: 0.12em;
+  }
+  .account-current-rail-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 7px 10px;
+    width: 100%;
+    min-height: 92px;
+    padding: 15px 18px;
+    border: 0;
+    border-top: 1px solid var(--ark-faint);
+    background: transparent;
+    color: inherit;
+    text-align: left;
+  }
+  .account-current-rail-row:last-of-type { border-bottom: 1px solid var(--ark-faint); }
+  .account-current-rail-row:hover { background: rgba(255, 255, 255, 0.68); }
+  .account-current-rail-row.is-active {
+    background: var(--ark-panel);
+  }
+  .account-current-rail-row.is-active::before {
+    position: absolute;
+    inset: 12px auto 12px 0;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--ark-accent);
+    content: "";
+  }
+  .account-current-rail-main { min-width: 0; }
+  .account-current-rail-main strong,
+  .account-current-rail-main small { display: block; }
+  .account-current-rail-main strong {
+    overflow: hidden;
+    color: var(--ark-text);
+    font-size: 13px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .account-current-rail-main small {
+    margin-top: 3px;
+    overflow: hidden;
+    color: var(--ark-muted);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .account-current-rail-value {
+    color: var(--ark-text);
+    font-family: var(--ark-font-data);
+    font-size: 11px;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+  .account-current-rail-meta {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--ark-soft);
+    font-size: 9px;
+  }
+  .account-current-rail-meta span:first-child {
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: var(--ark-accent-soft);
+    color: var(--ark-accent-deep);
+    font-weight: 650;
+  }
+  .account-current-rail-meta span.is-warning { background: #f4ead4; color: var(--ark-warn); }
+  .account-current-rail-meta span.is-missing { background: var(--ark-faint); color: var(--ark-muted); }
+  .account-current-loading {
+    padding: 18px;
+    color: var(--ark-muted);
+    font-size: 12px;
+  }
+  .account-current-editor {
+    min-width: 0;
+    padding: 30px 32px 36px;
+  }
+  .account-current-editor-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 22px;
+    margin-bottom: 26px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid var(--ark-line);
+  }
+  .account-current-eyebrow,
+  .account-current-review-label {
     color: var(--ark-accent);
+    font-family: var(--ark-font-label);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .account-current-editor-header h2 {
+    margin-top: 5px;
+    color: var(--ark-text);
+    font-family: var(--ark-font-display);
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.045em;
+    line-height: 1.2;
+  }
+  .account-current-editor-header p {
+    margin-top: 4px;
+    color: var(--ark-muted);
+    font-size: 12px;
+  }
+  .account-current-timestamp {
+    display: grid;
+    gap: 2px;
+    color: var(--ark-muted);
+    font-size: 10px;
+    text-align: right;
+  }
+  .account-current-timestamp strong {
+    color: var(--ark-text);
+    font-family: var(--ark-font-data);
+    font-size: 12px;
+  }
+  .account-current-timestamp small { color: var(--ark-soft); }
+  .account-current-note,
+  .account-current-alert {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    border: 1px solid var(--ark-line);
+    border-left: 3px solid var(--ark-info);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--ark-info) 5%, var(--ark-panel));
+    color: var(--ark-muted);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .account-current-note strong,
+  .account-current-alert strong { color: var(--ark-text); }
+  .account-current-note.is-warning,
+  .account-current-alert.is-warning { border-left-color: var(--ark-warn); background: #fffaf0; }
+  .account-current-note.is-error,
+  .account-current-alert.is-error { border-left-color: var(--ark-problem); background: #fff7f6; }
+  .account-current-note.is-success { border-left-color: #2f7656; background: #f5fbf7; }
+  .account-current-note button,
+  .account-current-alert button {
+    flex: none;
+    color: var(--ark-accent-deep);
+    font-size: 11px;
+    font-weight: 650;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .account-current-alert-actions { display: flex; gap: 10px; }
+  .account-current-alert-actions .is-secondary { color: var(--ark-muted); }
+  .account-current-balance-editor {
+    padding: 26px 0 34px;
+  }
+  .account-current-balance-editor > label,
+  .account-current-cash-row label > span {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--ark-muted);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .account-current-money-input {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    max-width: 360px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid var(--ark-text);
+  }
+  .account-current-money-input span { color: var(--ark-muted); font-family: var(--ark-font-data); }
+  .account-current-money-input input {
+    min-width: 0;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--ark-text);
+    font-family: var(--ark-font-data);
+    font-size: 30px;
+    font-weight: 650;
+    outline: none;
+  }
+  .account-current-balance-editor > p {
+    margin-top: 12px;
+    color: var(--ark-muted);
+    font-size: 12px;
+  }
+  .account-current-cash-row {
+    display: grid;
+    grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) minmax(140px, 0.8fr);
+    gap: 18px;
+    margin-bottom: 30px;
+    padding-bottom: 26px;
+    border-bottom: 1px solid var(--ark-line);
+  }
+  .account-current-field {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    padding: 10px 12px;
+    border: 1px solid var(--ark-line);
+    border-radius: 6px;
+    background: var(--ark-paper);
+  }
+  .account-current-field span { color: var(--ark-soft); font-family: var(--ark-font-data); }
+  .account-current-field input {
+    min-width: 0;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--ark-text);
+    font-family: var(--ark-font-data);
+    font-size: 14px;
+    font-weight: 650;
+    outline: none;
+  }
+  .account-current-derived-total {
+    display: grid;
+    align-content: center;
+    gap: 3px;
+    padding-left: 16px;
+    border-left: 1px solid var(--ark-line);
+  }
+  .account-current-derived-total span,
+  .account-current-derived-total small { color: var(--ark-muted); font-size: 10px; }
+  .account-current-derived-total strong {
+    color: var(--ark-text);
+    font-family: var(--ark-font-data);
+    font-size: 15px;
+  }
+  .account-current-section-heading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 14px;
+  }
+  .account-current-section-heading h3 {
+    color: var(--ark-text);
+    font-family: var(--ark-font-display);
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .account-current-section-heading p {
+    max-width: 510px;
+    margin-top: 3px;
+    color: var(--ark-muted);
+    font-size: 11px;
+    line-height: 1.55;
+  }
+  .account-current-section-heading button {
+    flex: none;
+    min-height: 36px;
+    padding: 7px 0;
+    color: var(--ark-accent-deep);
+    font-size: 11px;
+    font-weight: 650;
+  }
+  .account-current-holding-table { border-top: 1px solid var(--ark-text); }
+  .account-current-holding-head,
+  .account-current-holding-row {
+    display: grid;
+    grid-template-columns: minmax(150px, 1.55fr) minmax(84px, 0.68fr) minmax(76px, 0.6fr) minmax(94px, 0.75fr) 44px;
+    gap: 10px;
+    align-items: center;
+  }
+  .account-current-holding-head {
+    min-height: 34px;
+    color: var(--ark-muted);
+    font-size: 9px;
+    font-weight: 650;
+  }
+  .account-current-holding-head span:nth-child(n + 2) { text-align: right; }
+  .account-current-holding-row {
+    min-height: 58px;
+    border-top: 1px solid var(--ark-faint);
+  }
+  .account-current-security { min-width: 0; }
+  .account-current-security input {
+    display: block;
+    width: 86px;
+    border: 0;
+    border-bottom: 1px solid transparent;
+    background: transparent;
+    color: var(--ark-text);
     font-family: var(--ark-font-data);
     font-size: 11px;
     font-weight: 700;
+    outline: none;
+    min-height: 36px;
   }
-  .account-portfolio-account {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 12px;
-    padding-top: 10px;
-    border-top: 1px solid var(--ark-faint);
-  }
-  .account-total-card {
-    border-color: var(--ark-line);
-  }
-  .account-ledger {
-    border-collapse: separate;
-    border-spacing: 0;
+  .account-current-security input:not([readonly]) { border-bottom-color: var(--ark-line); }
+  .account-current-security span {
+    display: block;
+    margin-top: 2px;
     overflow: hidden;
+    color: var(--ark-muted);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .account-current-holding-row label { text-align: right; }
+  .account-current-holding-row label > span { display: none; }
+  .account-current-holding-row label input {
+    width: 78px;
+    min-height: 36px;
+    padding: 5px 7px;
+    border: 1px solid var(--ark-line);
+    border-radius: 4px;
+    background: var(--ark-paper);
+    color: var(--ark-text);
+    font-family: var(--ark-font-data);
+    font-size: 11px;
+    text-align: right;
+  }
+  .account-current-derived {
+    color: var(--ark-muted);
+    font-family: var(--ark-font-data);
+    font-size: 10px;
+    text-align: right;
+  }
+  .account-current-remove {
+    min-height: 36px;
+    color: var(--ark-muted);
+    font-size: 10px;
+  }
+  .account-current-remove:hover { color: var(--ark-problem); }
+  .account-current-empty-holdings {
+    padding: 22px 4px;
+    border-bottom: 1px solid var(--ark-faint);
+    color: var(--ark-muted);
+    font-size: 11px;
+  }
+  .account-current-clear-link {
+    margin-top: 30px;
+    color: var(--ark-muted);
+    font-size: 11px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .account-current-clear-link:hover { color: var(--ark-problem); }
+  .account-current-review {
+    align-self: stretch;
+    min-width: 0;
+    padding: 28px 22px;
+    border-left: 1px solid var(--ark-line);
+    background: var(--ark-paper);
+  }
+  .account-current-review h2 {
+    margin-top: 8px;
+    color: var(--ark-text);
+    font-family: var(--ark-font-display);
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1.3;
+  }
+  .account-current-review > p {
+    margin-top: 9px;
+    color: var(--ark-muted);
+    font-size: 11px;
+    line-height: 1.65;
+  }
+  .account-current-review ul {
+    display: grid;
+    gap: 8px;
+    margin: 22px 0;
+    padding: 16px 0;
+    border-top: 1px solid var(--ark-line);
+    border-bottom: 1px solid var(--ark-line);
+  }
+  .account-current-review li {
+    position: relative;
+    padding-left: 12px;
+    color: var(--ark-text);
+    font-size: 10px;
+    line-height: 1.5;
+  }
+  .account-current-review li::before {
+    position: absolute;
+    top: 0.65em;
+    left: 0;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--ark-accent);
+    content: "";
+  }
+  .account-current-primary {
+    width: 100%;
+    min-height: 42px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    background: var(--ark-text);
+    color: var(--ark-panel);
+    font-size: 12px;
+    font-weight: 650;
+  }
+  .account-current-primary:hover { background: #263541; }
+  .account-current-primary:disabled { cursor: not-allowed; opacity: 0.42; }
+  .account-current-validation { color: var(--ark-problem) !important; }
+  .account-current-review-footnote { color: var(--ark-soft) !important; font-size: 9px !important; }
+  .account-current-dialog-backdrop {
+    position: fixed;
+    z-index: 60;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 22px;
+    background: rgba(20, 32, 42, 0.42);
+  }
+  .account-current-dialog {
+    width: min(100%, 440px);
+    padding: 28px;
+    border: 1px solid var(--ark-line);
+    border-radius: 10px;
+    background: var(--ark-panel);
+    box-shadow: 0 24px 70px rgba(20, 32, 42, 0.2);
+  }
+  .account-current-dialog h2 {
+    margin-top: 7px;
+    font-family: var(--ark-font-display);
+    font-size: 24px;
+    font-weight: 700;
+  }
+  .account-current-dialog p { margin-top: 12px; color: var(--ark-muted); font-size: 12px; line-height: 1.7; }
+  .account-current-dialog > div { display: flex; gap: 10px; margin-top: 22px; }
+  .account-current-dialog button {
+    padding: 9px 13px;
+    border: 1px solid var(--ark-line);
+    border-radius: 5px;
+    color: var(--ark-text);
+    font-size: 11px;
+    font-weight: 650;
+  }
+  .account-current-dialog button.is-danger { border-color: var(--ark-problem); background: var(--ark-problem); color: white; }
+  @media (max-width: 1180px) {
+    .account-current-layout { grid-template-columns: 220px minmax(0, 1fr); }
+    .account-current-review {
+      grid-column: 2;
+      min-height: 0;
+      border-top: 1px solid var(--ark-line);
+      border-left: 0;
+    }
+  }
+  @media (max-width: 760px) {
+    .account-current-header { align-items: flex-start; }
+    .account-current-overview { max-width: none; text-align: left; }
+    .account-current-layout { display: block; overflow: visible; }
+    .account-current-rail {
+      display: flex;
+      gap: 0;
+      overflow-x: auto;
+      padding: 0;
+      border-right: 0;
+      border-bottom: 1px solid var(--ark-line);
+      scrollbar-width: thin;
+    }
+    .account-current-rail-heading { display: none; }
+    .account-current-rail-row {
+      flex: 0 0 190px;
+      min-height: 84px;
+      border-top: 0;
+      border-right: 1px solid var(--ark-faint);
+    }
+    .account-current-rail-row.is-active::before { inset: auto 14px 0; width: auto; height: 3px; }
+    .account-current-editor { padding: 24px 18px 28px; }
+    .account-current-editor-header { display: block; }
+    .account-current-timestamp { margin-top: 14px; text-align: left; }
+    .account-current-cash-row { grid-template-columns: 1fr; }
+    .account-current-field input,
+    .account-current-security input,
+    .account-current-holding-row label input { font-size: 16px; }
+    .account-current-derived-total { padding: 12px 0 0; border-top: 1px solid var(--ark-faint); border-left: 0; }
+    .account-current-holding-head { display: none; }
+    .account-current-holding-row {
+      grid-template-columns: minmax(0, 1fr) 90px 36px;
+      grid-template-areas: "security quantity remove" "security derived-value remove";
+      gap: 5px 10px;
+      padding: 12px 0;
+    }
+    .account-current-security { grid-area: security; }
+    .account-current-holding-row label { grid-area: quantity; min-height: 44px; }
+    .account-current-holding-row label > span { display: block; margin-bottom: 2px; color: var(--ark-soft); font-size: 8px; }
+    .account-current-derived:nth-of-type(1) { display: none; }
+    .account-current-derived:nth-of-type(2) { grid-area: derived-value; }
+    .account-current-remove { grid-area: remove; }
+    .account-current-review { padding: 22px 18px; border-left: 0; }
   }
   .responsive-table-scroll {
     width: 100%;
@@ -555,26 +1125,28 @@
   .changelog-kicker {
     margin: 0 0 16px;
     color: var(--ark-changelog-accent);
+    font-family: var(--ark-font-label);
     font-size: 11px;
     font-weight: 650;
-    letter-spacing: 0.23em;
+    letter-spacing: 0.2em;
     line-height: 16px;
   }
   .changelog-title {
     margin: 0;
     color: var(--ark-changelog-ink);
-    font-size: 32px;
+    font-family: var(--ark-font-display);
+    font-size: 40px;
     font-weight: 680;
-    letter-spacing: -0.035em;
-    line-height: 39.04px;
+    letter-spacing: -0.055em;
+    line-height: 44px;
     text-wrap: balance;
   }
   .changelog-subtitle {
     margin: 12px 0 0;
     color: var(--ark-changelog-secondary);
-    font-size: 17px;
+    font-size: 16px;
     font-weight: 400;
-    line-height: 27.2px;
+    line-height: 28px;
   }
   .changelog-header {
     margin-bottom: var(--ark-header-stream-gap);
@@ -595,10 +1167,11 @@
   .changelog-date-title {
     margin: 0;
     color: var(--ark-changelog-ink);
-    font-size: 24px;
+    font-family: var(--ark-font-display);
+    font-size: 30px;
     font-weight: 650;
-    letter-spacing: -0.025em;
-    line-height: 31.2px;
+    letter-spacing: -0.045em;
+    line-height: 36px;
     text-wrap: balance;
   }
   .changelog-weekday {
@@ -667,21 +1240,39 @@
   .changelog-entry-title {
     margin: 0;
     color: var(--ark-changelog-ink);
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 650;
-    letter-spacing: -0.018em;
-    line-height: 25.2px;
+    letter-spacing: -0.012em;
+    line-height: 26px;
     overflow-wrap: anywhere;
     text-wrap: balance;
   }
   .changelog-entry-body {
-    margin: 13px 0 0;
+    margin: 11px 0 0;
     color: var(--ark-changelog-secondary);
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 400;
-    line-height: 28px;
+    line-height: 27px;
     overflow-wrap: anywhere;
     text-wrap: pretty;
+  }
+  .changelog-scope-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 12px;
+  }
+  .changelog-scope-tag {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #eef1f3;
+    color: var(--ark-changelog-secondary);
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1.2;
   }
   @media (max-width: 760px) {
     body {
@@ -734,6 +1325,19 @@
     .app-main {
       min-height: calc(100vh - 64px);
     }
+    .global-status-shell {
+      padding: 18px 14px 0;
+    }
+    .global-status-bar {
+      grid-template-columns: 1fr;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .global-status-pill {
+      justify-content: center;
+      white-space: normal;
+      text-align: center;
+    }
     .workspace-shell {
       padding: 30px 18px 72px;
     }
@@ -744,10 +1348,6 @@
     .workspace-title {
       font-size: 30px;
     }
-    .account-total-card .text-4xl {
-      font-size: 30px;
-      line-height: 1.2;
-    }
     .plan-decision-hero {
       grid-template-columns: 1fr;
       gap: 18px;
@@ -755,6 +1355,7 @@
     }
     .plan-decision-title { font-size: 27px; }
     .plan-decision-mark { border-width: 1px 0 0; padding: 12px 0 0; text-align: left; }
+    .plan-state-chain { grid-template-columns: 1fr; }
     .plan-funding-header { display: block; }
     .plan-funding-group { grid-template-columns: 1fr; gap: 10px; }
     .plan-funding-action { grid-template-columns: 1fr; gap: 6px; }
@@ -866,127 +1467,6 @@
       white-space: normal;
       overflow-wrap: anywhere;
     }
-    .account-readiness-hero { grid-template-columns: 1fr; gap: 18px; padding: 20px; }
-    .account-readiness-window { text-align: left; }
-    .account-portfolio-grid { grid-template-columns: 1fr; }
-    .account-ledger {
-      display: block;
-    }
-    .account-ledger tbody {
-      display: block;
-    }
-    .account-ledger-row {
-      display: grid;
-      grid-template-columns: 18px minmax(0, 1fr) auto;
-      column-gap: 10px;
-      row-gap: 8px;
-      align-items: center;
-      padding: 16px;
-    }
-    .account-ledger-row > td {
-      display: block;
-      width: auto !important;
-      padding: 0 !important;
-    }
-    .account-ledger-row > td:nth-child(2) {
-      min-width: 0;
-    }
-    .account-ledger-row > td:nth-child(2) span {
-      overflow-wrap: anywhere;
-    }
-    .account-ledger-row > td:nth-child(3) {
-      grid-column: 3;
-      grid-row: 1;
-      white-space: nowrap;
-    }
-    .account-ledger-row > td:nth-child(4) {
-      grid-column: 3;
-      grid-row: 2;
-      white-space: nowrap;
-    }
-    .account-ledger-row > td:nth-child(5) {
-      grid-column: 2;
-      grid-row: 2;
-      text-align: left !important;
-    }
-    .account-ledger-row > td:nth-child(6) {
-      display: none;
-    }
-    .account-position-row {
-      display: block;
-    }
-    .account-position-row > td {
-      display: block;
-      width: 100% !important;
-      padding: 16px !important;
-    }
-    .account-position-row .flex.items-center.gap-3 {
-      align-items: start;
-      flex-direction: column;
-    }
-    .account-position-cash-fields {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 12px;
-      width: 100%;
-    }
-    .account-position-cash-fields label {
-      display: grid;
-      gap: 6px;
-      color: var(--ark-muted);
-      font-size: 12px;
-    }
-    .account-position-cash-fields input,
-    .account-position-entry input {
-      width: 100% !important;
-      min-height: 42px;
-      box-sizing: border-box;
-    }
-    .account-position-table-scroll { overflow: visible; }
-    .account-position-table-scroll table,
-    .account-position-table-scroll tbody {
-      display: block;
-      min-width: 0 !important;
-    }
-    .account-position-table-scroll thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0 0 0 0);
-      white-space: nowrap;
-    }
-    .account-position-entry {
-      display: grid !important;
-      grid-template-columns: 1fr;
-      gap: 10px;
-      margin: 0 0 12px;
-      padding: 14px;
-      border: 1px solid var(--ark-line);
-      border-radius: 6px;
-      background: var(--ark-panel);
-    }
-    .account-position-entry td {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 4px;
-      padding: 0 !important;
-      text-align: left !important;
-    }
-    .account-position-entry td::before {
-      content: attr(data-label);
-      color: var(--ark-muted);
-      font-size: 11px;
-    }
-    .account-position-entry .account-position-delete {
-      justify-items: start;
-    }
-    .account-position-delete button {
-      min-width: 36px;
-      min-height: 36px;
-      padding: 6px 10px;
-    }
-    .account-maintenance-action { min-height: 42px; }
     .changelog-shell {
       padding: 30px 18px 88px;
     }
@@ -1054,15 +1534,15 @@
     <div class="changelog-brand-name">方舟计划</div>
     <div class="changelog-brand-subtitle">个人投资系统</div>
   </div>
-  <a href="#trading" @click.prevent="setActivePage('trading')"
-    aria-label="今日计划"
-    :aria-current="$store.page === 'trading' ? 'page' : null"
-    :class="$store.page === 'trading'
+  <a href="#today" @click.prevent="setActivePage('today')"
+    aria-label="今日状态"
+    :aria-current="$store.page === 'today' ? 'page' : null"
+    :class="$store.page === 'today'
       ? 'bg-gray-100 text-gray-900 font-medium'
       : 'text-gray-500 hover:bg-gray-50'"
     class="nav-item flex items-center gap-2 px-3 py-2 text-left w-full">
     <i class="nav-icon" data-lucide="clipboard-list" aria-hidden="true"></i>
-    <span class="nav-label">今日计划</span>
+    <span class="nav-label">今日状态</span>
   </a>
   <a href="#account" @click.prevent="setActivePage('account')"
     aria-label="账户"
@@ -1097,186 +1577,250 @@
   x-data
   @nav.window="setActivePage($event.detail)">
 
-  <!-- 账户总览 -->
-  <div x-show="$store.page === 'account'" x-data="accountPage()" x-init="ensureLoaded($store.page)" x-effect="ensureLoaded($store.page)" @account-focus.window="focusAccountFact($event.detail)" role="region" aria-label="账户工作台">
+  <section x-data="globalStatusBar()" x-init="load()" @account-data-updated.window="load()" class="global-status-shell" aria-label="全局当前状态">
+    <div class="global-status-bar">
+      <div><strong>当前状态</strong>：<span x-text="basisText()"></span></div>
+      <span class="global-status-pill" :class="accountStatus().className" x-text="accountStatus().text"></span>
+      <span class="global-status-pill" :class="fundingStatus().className" x-text="fundingStatus().text"></span>
+      <span class="global-status-pill" :class="generationStatus().className" x-text="generationStatus().text"></span>
+    </div>
+  </section>
 
-    <div role="region" aria-label="账户内容区域" class="workspace-shell workspace-shell-workbench">
-      <!-- 标题栏 -->
-      <div class="workspace-title-row flex justify-between gap-5">
+  <!-- 账户数据：每个账户独立维护自己的当前状态。 -->
+  <div
+    x-show="$store.page === 'account'"
+    x-data="accountWorkspace()"
+    x-init="ensureLoaded($store.page)"
+    x-effect="ensureLoaded($store.page)"
+    @account-focus.window="focusAccount($event.detail)"
+    role="region"
+    aria-label="账户数据工作台">
+    <div class="workspace-shell workspace-shell-workbench account-current-workbench">
+      <header class="workspace-title-row account-current-header">
         <div>
-          <div class="workspace-kicker">FACTS / ACCOUNTS</div>
-          <h1 class="workspace-title tracking-normal">账户</h1>
-          <div class="workspace-meta mt-2">为今日计划确认账户事实；资产结构用于解释资金归属。</div>
+          <div class="workspace-kicker">ACCOUNT DATA</div>
+          <h1 class="workspace-title tracking-normal">账户数据</h1>
+          <p class="workspace-meta mt-2">打开一个账户，沿用现有数据，只更新发生变化的内容。</p>
         </div>
-        <label class="workspace-meta flex items-center gap-2">
-          账户事实日
-          <input type="date" x-ref="factDateInput" aria-label="账户事实日" :value="factDateInputValue" @change="requestFactDate($event.target.value)" :disabled="saveInProgress" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white disabled:cursor-not-allowed disabled:bg-gray-100">
-        </label>
-      </div>
+        <div class="account-current-overview" aria-live="polite">
+          <strong x-text="overviewTitle()"></strong>
+          <span x-text="overviewCopy()"></span>
+        </div>
+      </header>
 
-      <section x-show="pendingFactDate" x-cloak role="alert" class="ark-panel mb-4 border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-        <p>当前事实日有未保存编辑。切换到 <strong x-text="pendingFactDate"></strong> 会放弃这些编辑，不会把它们迁移到新日期。</p>
-        <div class="mt-3 flex flex-wrap gap-3">
-          <button @click="discardPendingFactDate()" class="rounded bg-amber-800 px-3 py-1.5 text-sm text-white">放弃编辑并读取新日期</button>
-          <button @click="cancelFactDateSwitch()" class="rounded border border-amber-300 px-3 py-1.5 text-sm">保留当前日期</button>
+      <section x-show="loadError" x-cloak class="account-current-alert is-error" role="alert">
+        <div>
+          <strong>账户数据读取失败</strong>
+          <p x-text="loadError"></p>
         </div>
+        <button type="button" @click="load()">重新读取</button>
       </section>
 
-      <!-- 首屏只回答账户事实能否支撑今日计划 -->
-      <section class="account-readiness-hero mb-4" :data-status="accountFactsFailed() || readinessError ? 'error' : (readiness?.status || accountFactState)" aria-label="账户事实就绪度" aria-live="polite" aria-atomic="true">
+      <section x-show="readinessError && !loadError" x-cloak class="account-current-alert is-warning" role="alert">
         <div>
-          <div class="plan-decision-label">计划输入</div>
-          <h2 class="account-readiness-title" x-text="accountReadinessTitle()"></h2>
-          <p class="account-readiness-copy" x-text="accountReadinessCopy()"></p>
-          <button
-            x-show="accountFactsFailed()"
-            @click="retryAccountFacts()"
-            class="mt-4 text-sm font-medium text-teal-700 underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">
-            重新读取账户事实
-          </button>
-          <button
-            x-show="!accountFactsFailed() && readinessIssues().length"
-            @click="scrollAccountFacts()"
-            class="mt-4 text-sm font-medium text-teal-700 underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">
-            查看并更新这些账户
-          </button>
+          <strong>无法确认计划输入状态</strong>
+          <p x-text="readinessError"></p>
         </div>
-        <div class="account-readiness-window" x-text="accountInputWindowText()"></div>
+        <button type="button" @click="retryReadiness()">重新确认</button>
       </section>
 
-      <!-- A / B / C 资产结构承载当前事实 -->
-      <section x-show="accountFactsUsable()" class="ark-panel account-portfolio-structure p-5 mb-4" aria-label="资产结构">
-        <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mb-4">
-          <div>
-            <h2 class="text-sm font-semibold text-gray-900">资产结构</h2>
-            <p class="workspace-meta mt-1">账户是事实来源，组合是资金归属；策略只解释账户内部如何投资。</p>
+      <section class="account-current-layout" :aria-busy="loading ? 'true' : 'false'">
+        <nav class="account-current-rail" aria-label="账户列表">
+          <div class="account-current-rail-heading">
+            <span>账户</span>
+            <span>分别更新</span>
           </div>
-          <div class="text-right">
-            <div class="text-xs text-gray-400">总资产</div>
-            <div class="text-2xl font-semibold tracking-normal tabular-nums" x-text="fmtMoney(totalAssets())"></div>
+          <template x-for="account in accounts" :key="account.account_id">
+            <button
+              type="button"
+              class="account-current-rail-row"
+              :data-account-id="account.account_id"
+              :class="selectedId === account.account_id ? 'is-active' : ''"
+              @click="selectAccount(account.account_id)"
+              :aria-current="selectedId === account.account_id ? 'true' : null">
+              <span class="account-current-rail-main">
+                <strong x-text="account.label"></strong>
+                <small x-text="account.sub"></small>
+              </span>
+              <span class="account-current-rail-value" x-text="fmtMoney(account.valuation?.total)"></span>
+              <span class="account-current-rail-meta">
+                <span :class="statusClass(account)" x-text="statusText(account)"></span>
+                <time x-text="formatUpdatedAt(account.updated_at)"></time>
+              </span>
+            </button>
+          </template>
+          <div x-show="loading" class="account-current-loading">正在读取各账户当前数据…</div>
+        </nav>
+
+        <section x-show="selected" class="account-current-editor" aria-label="当前账户编辑区">
+          <section x-show="pendingAccountId || pendingPage" x-cloak class="account-current-alert is-warning" role="alert">
+            <div>
+              <strong>当前账户有未保存修改</strong>
+              <p x-text="pendingPage ? '离开账户页不会自动保存。你可以放弃这些修改，或留在当前账户继续编辑。' : '切换账户不会自动保存。你可以放弃这些修改，或留在当前账户继续编辑。'"></p>
+            </div>
+            <div class="account-current-alert-actions">
+              <button type="button" @click="discardPendingChange()" x-text="pendingPage ? '放弃并离开' : '放弃并切换'"></button>
+              <button type="button" class="is-secondary" @click="cancelPendingChange()">继续编辑</button>
+            </div>
+          </section>
+
+          <header class="account-current-editor-header">
+            <div>
+              <span class="account-current-eyebrow" x-text="selected?.kind === 'securities' ? '证券账户' : '余额账户'"></span>
+              <h2 x-text="selected?.label"></h2>
+              <p x-text="selected?.sub"></p>
+            </div>
+            <div class="account-current-timestamp">
+              <span>当前数据</span>
+              <strong x-text="selected?.as_of || '尚未录入'"></strong>
+              <small x-text="selected?.updated_at ? formatUpdatedAt(selected.updated_at) : '等待首次更新'"></small>
+            </div>
+          </header>
+
+          <section x-show="selected?.record_state === 'missing'" class="account-current-note">
+            这个账户还没有数据。只需完成本账户的首次录入，不影响其他账户。
+          </section>
+          <section x-show="selected?.readiness === 'waiting_for_valuation'" class="account-current-note is-warning">
+            原始账户数据已经保存，但部分行情暂不可用；系统不会把未知估值当成 0，相关计划会等待估值完成。
+          </section>
+          <section x-show="selected?.plan_readiness === 'unknown'" class="account-current-note is-warning">
+            <strong>本账户的计划就绪度尚未确认。</strong>
+            <span>账户数据仍可独立维护；在计划输入状态恢复前，系统不会把本账户标记为已就绪。</span>
+            <button type="button" @click="retryReadiness()">重新确认计划输入状态</button>
+          </section>
+          <section x-show="selected?.record_state === 'recorded' && selected?.plan_readiness && !['ready', 'unknown'].includes(selected?.plan_readiness)" class="account-current-note is-warning">
+            <strong>当前数据需要为本次计划更新。</strong>
+            <span x-text="selected?.plan_message || '这个账户的数据不在本次计划输入窗口内。'"></span>
+          </section>
+          <section x-show="conflict" class="account-current-note is-error" role="alert">
+            <strong>账户数据已经在别处更新。</strong>
+            <span>你的编辑仍保留在页面中。请重新读取最新数据，再合并这次修改。</span>
+            <button type="button" @click="reloadSelected()">重新读取最新数据</button>
+          </section>
+          <section x-show="saveError" class="account-current-note is-error" role="alert" x-text="saveError"></section>
+          <section x-show="saveSuccess" class="account-current-note is-success" aria-live="polite" x-text="saveSuccess"></section>
+
+          <div x-show="selected?.kind === 'balance'" class="account-current-balance-editor">
+            <label for="account-current-amount">资金余额</label>
+            <div class="account-current-money-input">
+              <span>¥</span>
+              <input
+                id="account-current-amount"
+                type="number"
+                min="0"
+                step="0.01"
+                inputmode="decimal"
+                x-model="draft.amount"
+                @input="markEdited()"
+                placeholder="请输入当前余额">
+            </div>
+            <p>这是当前可用于系统判断的账户余额，不要求与其他账户同一时间更新。</p>
           </div>
-        </div>
-        <div class="account-portfolio-grid">
-          <template x-for="portfolio in portfolioSections()" :key="portfolio.id">
-            <article class="account-portfolio-card">
-              <div class="account-portfolio-id" x-text="portfolio.id"></div>
-              <h3 class="mt-1 text-sm font-semibold" x-text="portfolio.name"></h3>
-              <p class="mt-1 min-h-[38px] text-xs leading-relaxed text-gray-500" x-text="portfolio.description"></p>
-              <div class="mt-3 text-lg font-semibold tabular-nums" x-text="fmtMoney(portfolio.current_amount)"></div>
-              <div class="mt-3 space-y-2">
-                <template x-for="account in portfolio.accounts" :key="account.id">
-                  <div class="account-portfolio-account">
-                    <div class="min-w-0">
-                      <div class="truncate text-xs font-medium" x-text="account.name"></div>
-                      <div class="mt-0.5 truncate text-[11px] text-gray-400" x-text="account.role"></div>
+
+          <div x-show="selected?.kind === 'securities'" class="account-current-securities-editor">
+            <section class="account-current-cash-row" aria-label="账户资金">
+              <label>
+                <span>可用资金</span>
+                <div class="account-current-field"><span>¥</span><input type="number" min="0" step="0.01" inputmode="decimal" x-model="draft.available_cash" @input="markEdited()" placeholder="0.00"></div>
+              </label>
+              <label>
+                <span>冻结资金</span>
+                <div class="account-current-field"><span>¥</span><input type="number" min="0" step="0.01" inputmode="decimal" x-model="draft.frozen_cash" @input="markEdited()" placeholder="0.00"></div>
+              </label>
+              <div class="account-current-derived-total">
+                <span>账户估值</span>
+                <strong x-text="fmtMoney(selected?.valuation?.total)"></strong>
+                <small>系统派生，不手工填写</small>
+              </div>
+            </section>
+
+            <section class="account-current-holdings" aria-label="当前持仓">
+              <div class="account-current-section-heading">
+                <div>
+                  <h3>当前持仓</h3>
+                  <p>默认保留现有持仓；代码和数量是原始数据，名称、价格和市值由系统补全。</p>
+                </div>
+                <button type="button" @click="addPosition()">＋ 添加证券</button>
+              </div>
+              <div class="account-current-holding-table" role="table" aria-label="持仓编辑表">
+                <div class="account-current-holding-head" role="row">
+                  <span>代码 / 名称</span><span>数量</span><span>价格</span><span>市值</span><span></span>
+                </div>
+                <template x-for="row in draft.positions" :key="row._key">
+                  <div class="account-current-holding-row" role="row">
+                    <div class="account-current-security">
+                      <input
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="6"
+                        x-model="row.code"
+                        :readonly="!row.isNew"
+                        @input="markEdited()"
+                        @change="lookupSecurity(row)"
+                        aria-label="证券代码"
+                        placeholder="6 位代码">
+                      <span x-text="row.name || (row.isNew ? '等待识别' : '名称暂不可用')"></span>
                     </div>
-                    <div class="text-right">
-                      <div class="text-xs tabular-nums" x-text="fmtMoney(account.total)"></div>
-                      <div class="mt-0.5 text-[11px] text-gray-400" x-text="account.snapshot_date || '待更新'"></div>
-                    </div>
+                    <label><span>数量</span><input type="number" min="0" step="1" x-model="row.quantity" @input="markEdited()" aria-label="持仓数量"></label>
+                    <span class="account-current-derived" x-text="fmtPrice(row.price)"></span>
+                    <span class="account-current-derived" x-text="fmtMoney(rowMarketValue(row))"></span>
+                    <button type="button" class="account-current-remove" @click="removePosition(row)" :aria-label="'移除 ' + (row.name || row.code || '证券')">移除</button>
                   </div>
                 </template>
+                <div x-show="draft.positions?.length === 0" class="account-current-empty-holdings">
+                  当前没有持仓。保存后会明确记录为“已确认空仓”，而不是“缺少数据”。
+                </div>
               </div>
-            </article>
-          </template>
-        </div>
-        <div x-show="!summary" class="text-sm text-gray-400 mt-3">暂无账户数据。</div>
+            </section>
+          </div>
+
+          <button x-show="selected?.record_state === 'recorded'" type="button" class="account-current-clear-link" @click="openClearDialog('account')">
+            清空这个账户的数据…
+          </button>
+        </section>
+
+        <aside x-show="selected" class="account-current-review" aria-label="保存检查">
+          <div class="account-current-review-label">保存检查</div>
+          <h2 x-text="isDirty() ? '确认本账户的变化' : '当前数据没有变化'"></h2>
+          <p x-text="isDirty() ? '只会保存这个账户，其他账户保持原样。' : '可以确认数据仍准确；确认时间会更新，但不会让当前计划失效。'"></p>
+          <ul>
+            <template x-for="change in reviewChanges()" :key="change">
+              <li x-text="change"></li>
+            </template>
+          </ul>
+          <button
+            type="button"
+            class="account-current-primary"
+            @click="saveSelected()"
+            :disabled="saving || !isValid() || conflict"
+            x-text="saving ? '正在保存…' : (isDirty() ? '保存账户数据' : '确认数据仍准确')">
+          </button>
+          <p x-show="!isValid()" class="account-current-validation" x-text="validationMessage()"></p>
+          <p class="account-current-review-footnote">保存后留在当前账户，方便核对结果或继续处理同一账户。</p>
+        </aside>
       </section>
 
-      <section x-show="accountFactsFailed()" role="alert" class="ark-panel mb-4 border-red-200 bg-red-50 p-5 text-sm text-red-700">
-        <h2 class="font-semibold">账户事实读取失败</h2>
-        <p class="mt-2" x-text="accountFactError"></p>
-        <p class="mt-2">读取失败期间不显示资产数值或事实结论；请重试后再依据账户信息判断。</p>
-      </section>
-
-      <section x-show="accountFactsEmpty()" class="ark-panel mb-4 p-5 text-sm text-gray-600" aria-label="空账户状态">
-        <h2 class="font-semibold text-gray-900">尚未录入账户事实</h2>
-        <p class="mt-2">账户请求已成功完成，但当前没有可用于今日计划的账户资产或持仓记录。</p>
-      </section>
-
-      <!-- 维护动作在异常时展开，正常时保留为次级入口 -->
-      <details x-show="accountFactsUsable() || accountFactsEmpty()" id="account-facts" class="account-facts-maintenance" :open="readinessIssues().length > 0">
-        <summary class="mb-3 cursor-pointer select-none text-sm font-semibold text-gray-700">账户事实与维护</summary>
-        <div x-show="saveError && !['stock', 'cb'].includes(saveErrorTarget)" :id="saveErrorTarget && !['stock', 'cb'].includes(saveErrorTarget) ? saveErrorTarget + '-save-error' : null" role="alert" class="mb-3 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" x-text="saveError"></div>
-        <div x-show="saveSuccess" aria-live="polite" class="mb-3 border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700" x-text="saveSuccess"></div>
-        <div x-show="dirty && !pendingFactDate && !saveInProgress" aria-live="polite" class="mb-3 border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">有未保存编辑；切换事实日前请先保存或明确放弃这些编辑。</div>
-        <div x-show="!canSaveFacts()" aria-live="polite" class="mb-3 border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">正在读取或确认该事实日；保存前请先完成该事实日的数据读取。</div>
-        <div x-show="saveInProgress" aria-live="polite" class="mb-3 border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800">正在保存账户事实，请勿重复提交。</div>
-        <table aria-label="账户明细" class="ark-panel account-ledger w-full table-fixed">
-        <template x-for="acc in accounts" :key="acc.id">
-          <tbody>
-            <tr :id="'account-fact-' + acc.id" @click="acc.posType ? toggleExpand(acc.id) : null"
-              :role="acc.posType ? 'button' : null"
-              :tabindex="acc.posType ? 0 : null"
-              :aria-expanded="acc.posType ? String(expanded === acc.id) : null"
-              @keydown.enter.prevent="acc.posType ? toggleExpand(acc.id) : null"
-              @keydown.space.prevent="acc.posType ? toggleExpand(acc.id) : null"
-              :class="acc.posType ? 'cursor-pointer hover:bg-gray-50' : ''"
-              class="account-ledger-row border-b border-gray-50 last:border-b-0">
-              <td class="pl-5 py-3.5" style="width:32px"><div :style="'background:' + acc.color" class="w-2.5 h-2.5 rounded-full"></div></td>
-              <td class="py-3.5 pr-4">
-                <div><span class="text-sm font-medium" x-text="acc.label"></span><span class="text-xs text-gray-400 ml-2" x-text="acc.sub"></span></div>
-                <div class="text-xs text-gray-400 mt-0.5" x-text="accountRole(acc)"></div>
-              </td>
-              <td class="py-3.5 pr-4 text-right"><span x-show="acc.posType" class="text-sm font-semibold tabular-nums" x-text="fmtMoney(accountFactDisplayValue(acc.totalKey))"></span><span x-show="!acc.posType"><span x-show="editingSimple === acc.id" class="flex items-baseline gap-1 justify-end"><span class="text-sm text-gray-400">¥</span><input type="text" inputmode="decimal" :aria-label="'账户金额 ' + acc.label" :aria-describedby="saveErrorTarget === acc.id ? acc.id + '-save-error' : null" x-model="form[acc.totalKey]" @input="markDirty()" @blur="saveSimpleAccount(acc.id)" @keyup.enter="$el.blur()" x-init="$el.focus()" class="text-sm font-semibold tabular-nums bg-transparent text-right outline-none border-b border-gray-200 w-28" placeholder="0"></span><span x-show="editingSimple !== acc.id" @click.stop="editingSimple = acc.id" @keydown.enter.prevent.stop="editingSimple = acc.id" @keydown.space.prevent.stop="editingSimple = acc.id" role="button" tabindex="0" aria-label="编辑账户金额" class="text-sm font-semibold tabular-nums cursor-pointer" x-text="fmtMoney(accountFactDisplayValue(acc.totalKey))"></span></span></td>
-              <td class="py-3.5 pr-4 text-right text-xs text-gray-400 tabular-nums"><span x-text="acctPct(acc)"></span></td>
-              <td class="py-3.5 pr-4 text-right text-xs text-gray-400"><span x-text="accUpdateDate(acc)"></span></td>
-              <td class="py-3.5 pr-5 text-center" style="width:28px"><span x-show="acc.posType" class="text-gray-300 text-sm" x-text="expanded === acc.id ? '▾' : '▸'"></span></td>
-            </tr>
-            <tr x-show="expanded === 'stock' && acc.id === 'stock'" class="account-position-row border-b border-gray-50">
-              <td colspan="6" class="bg-gray-50/30 px-5 py-4">
-              <div x-show="acc.id === 'stock' && saveError && saveErrorTarget === 'stock'" :id="acc.id === 'stock' ? 'stock-save-error' : null" role="alert" class="mb-3 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" x-text="saveError"></div>
-              <div class="account-position-cash-fields flex items-center gap-3 mb-3">
-                <label>可用现金（元）
-                  <input type="text" inputmode="decimal" x-ref="stockAvailableCashInput" aria-label="股票可用现金" :aria-describedby="saveErrorTarget === 'stock' ? 'stock-save-error' : null" x-model="form.stock_available_cash" @input="markDirty()" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
-                </label>
-                <label>冻结现金（元）
-                  <input type="text" inputmode="decimal" aria-label="股票冻结现金" :aria-describedby="saveErrorTarget === 'stock' ? 'stock-save-error' : null" x-model="form.stock_frozen_cash" @input="markDirty()" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
-                </label>
-                <span class="text-xs text-gray-400">现金总额 <span x-text="fmtMoney(accountCash('stock'))"></span></span>
-              </div>
-              <div class="responsive-table-scroll account-position-table-scroll">
-              <table class="w-full min-w-[640px] table-fixed text-sm"><thead><tr class="text-xs text-gray-400 border-b border-gray-200"><th class="text-left font-normal py-1.5">代码</th><th class="text-left font-normal py-1.5">名称</th><th class="text-right font-normal py-1.5">股数</th><th class="text-right font-normal py-1.5">现价</th><th class="text-right font-normal py-1.5">市值</th><th class="text-right font-normal py-1.5">占比</th><th style="width:24px"></th></tr></thead>
-              <tbody><template x-for="row in stockRows" :key="row._id"><tr class="account-position-entry border-b border-gray-100"><td data-label="代码" class="py-1.5"><template x-if="row.isNew"><input type="text" x-model="row.code" :aria-label="'股票持仓代码 ' + (row.name || '新行')" :aria-describedby="saveErrorTarget === 'stock' ? 'stock-save-error' : null" @change="markDirty(); autofill('stock', row)" placeholder="代码" style="border:none;border-bottom:1px solid #d1d5db;background:transparent;outline:none;padding:1px 0;font-size:12px;width:5em;"></template><span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span></td><td data-label="名称" class="py-1.5 text-gray-700 font-medium text-xs" x-text="row.name || '—'"></td><td data-label="数量（股）" class="py-1.5 text-right"><input type="number" min="0" step="100" x-model.number="row.shares" :aria-label="'股票持仓数量 ' + (row.name || row.code || '新行')" :aria-describedby="saveErrorTarget === 'stock' ? 'stock-save-error' : null" @input.debounce.600ms="markDirty(); scheduleSortRows('stock')" style="border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0 1px 0;text-align:right;font-size:12px;width:5em;padding-right:0;"></td><td data-label="现价" class="py-1.5 text-right text-xs text-gray-500" x-text="rowPrice('stock', row.code)?.toFixed(2) ?? '-'"></td><td data-label="市值" class="py-1.5 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('stock', row) != null ? fmtMoney(rowValue('stock', row)) : '-'"></td><td data-label="占比" class="py-1.5 text-right text-xs text-gray-400" x-text="rowWeight('stock', row) != null ? (rowWeight('stock', row)*100).toFixed(1)+'%' : '-'"></td><td data-label="删除" class="account-position-delete py-1.5 text-center"><button type="button" @click="removeRow('stock', row)" :aria-label="'删除股票持仓 ' + (row.name || row.code || '新行')" class="text-gray-500 hover:text-red-500 text-xs">删除</button></td></tr></template></tbody></table>
-              </div>
-              <div x-show="stockRows.length === 0" class="text-xs text-gray-400 py-2">暂无持仓</div>
-              <div class="flex flex-wrap items-center gap-3 mt-3"><button type="button" @click="addRow('stock')" :disabled="saveInProgress" class="account-maintenance-action text-xs text-gray-600 hover:text-gray-900 disabled:cursor-not-allowed">＋ 添加行</button><button type="button" @click="saveAccount('stock')" :disabled="!canSaveFacts() || saveInProgress" :aria-busy="saveInProgress ? 'true' : 'false'" class="account-maintenance-action text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400" x-text="saveInProgress ? '正在保存…' : '保存'"></button><span x-show="stockSaved" class="text-xs text-green-600">已保存</span></div>
-              </td>
-            </tr>
-            <tr x-show="expanded === 'cb' && acc.id === 'cb'" class="account-position-row border-b border-gray-50">
-              <td colspan="6" class="bg-gray-50/30 px-5 py-4">
-              <div x-show="acc.id === 'cb' && saveError && saveErrorTarget === 'cb'" :id="acc.id === 'cb' ? 'cb-save-error' : null" role="alert" class="mb-3 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" x-text="saveError"></div>
-              <div class="account-position-cash-fields flex items-center gap-3 mb-3">
-                <label>可用现金（元）
-                  <input type="text" inputmode="decimal" x-ref="cbAvailableCashInput" aria-label="转债可用现金" :aria-describedby="saveErrorTarget === 'cb' ? 'cb-save-error' : null" x-model="form.bond_available_cash" @input="markDirty()" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
-                </label>
-                <label>冻结现金（元）
-                  <input type="text" inputmode="decimal" aria-label="转债冻结现金" :aria-describedby="saveErrorTarget === 'cb' ? 'cb-save-error' : null" x-model="form.bond_frozen_cash" @input="markDirty()" class="text-sm font-semibold w-28 bg-white border border-gray-200 rounded px-2 py-1 outline-none focus:border-gray-400" placeholder="0">
-                </label>
-                <span class="text-xs text-gray-400">现金总额 <span x-text="fmtMoney(accountCash('cb'))"></span></span>
-              </div>
-              <div class="responsive-table-scroll account-position-table-scroll">
-              <table class="w-full min-w-[640px] table-fixed text-sm"><thead><tr class="text-xs text-gray-400 border-b border-gray-200"><th class="text-left font-normal py-1.5">代码</th><th class="text-left font-normal py-1.5">名称</th><th class="text-right font-normal py-1.5">张数</th><th class="text-right font-normal py-1.5">现价</th><th class="text-right font-normal py-1.5">市值</th><th class="text-right font-normal py-1.5">占比</th><th style="width:24px"></th></tr></thead>
-              <tbody><template x-for="row in cbRows" :key="row._id"><tr class="account-position-entry border-b border-gray-100"><td data-label="代码" class="py-1.5"><template x-if="row.isNew"><input type="text" x-model="row.code" :aria-label="'转债持仓代码 ' + (row.name || '新行')" @change="markDirty(); autofill('cb', row)" placeholder="代码" style="border:none;border-bottom:1px solid #d1d5db;background:transparent;outline:none;padding:1px 0;font-size:12px;width:5em;"></template><span x-show="!row.isNew" class="text-xs text-gray-500" x-text="row.code"></span></td><td data-label="名称" class="py-1.5 text-gray-700 font-medium text-xs" x-text="row.name || '—'"></td><td data-label="数量（张）" class="py-1.5 text-right"><input type="number" min="0" step="10" x-model.number="row.shares" :aria-label="'转债持仓数量 ' + (row.name || row.code || '新行')" @input.debounce.600ms="markDirty(); scheduleSortRows('cb')" style="border:none;border-bottom:1px solid #e5e7eb;background:transparent;outline:none;padding:1px 0 1px 0;text-align:right;font-size:12px;width:5em;padding-right:0;"></td><td data-label="现价" class="py-1.5 text-right text-xs text-gray-500" x-text="rowPrice('cb', row.code)?.toFixed(2) ?? '-'"></td><td data-label="市值" class="py-1.5 text-right text-xs text-gray-800 tabular-nums" x-text="rowValue('cb', row) != null ? fmtMoney(rowValue('cb', row)) : '-'"></td><td data-label="占比" class="py-1.5 text-right text-xs text-gray-400" x-text="rowWeight('cb', row) != null ? (rowWeight('cb', row)*100).toFixed(1)+'%' : '-'"></td><td data-label="删除" class="account-position-delete py-1.5 text-center"><button type="button" @click="removeRow('cb', row)" :aria-label="'删除转债持仓 ' + (row.name || row.code || '新行')" class="text-gray-500 hover:text-red-500 text-xs">删除</button></td></tr></template></tbody></table>
-              </div>
-              <div x-show="cbRows.length === 0" class="text-xs text-gray-400 py-2">暂无持仓</div>
-              <div class="flex flex-wrap items-center gap-3 mt-3"><button type="button" @click="addRow('cb')" :disabled="saveInProgress" class="account-maintenance-action text-xs text-gray-600 hover:text-gray-900 disabled:cursor-not-allowed">＋ 添加行</button><button type="button" @click="saveAccount('cb')" :disabled="!canSaveFacts() || saveInProgress" :aria-busy="saveInProgress ? 'true' : 'false'" class="account-maintenance-action text-xs px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400" x-text="saveInProgress ? '正在保存…' : '保存'"></button><span x-show="cbSaved" class="text-xs text-green-600">已保存</span></div>
-              </td>
-            </tr>
-          </tbody>
-        </template>
-        </table>
-      </details>
+      <div x-show="clearDialog" x-cloak class="account-current-dialog-backdrop" @click.self="closeClearDialog()" @keydown.escape.window="closeClearDialog()">
+        <section class="account-current-dialog" role="dialog" aria-modal="true" aria-labelledby="account-clear-title" @keydown.tab="trapClearDialog($event)">
+          <span class="account-current-eyebrow">二次确认</span>
+          <h2 id="account-clear-title" x-text="clearDialogTitle()"></h2>
+          <p x-text="clearDialogCopy()"></p>
+          <div>
+            <button x-ref="clearConfirm" type="button" class="is-danger" @click="confirmClearAndSave()" x-text="clearConfirmLabel()"></button>
+            <button x-ref="clearCancel" type="button" @click="closeClearDialog()">取消</button>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 
-<!-- 计划 -->
-  <template x-if="$store.page === 'trading'">
-  <div x-data="tradingPage()" class="workspace-shell workspace-shell-workbench plan-workbench" role="region" aria-label="计划工作台" :aria-busy="generatingPlan || !planReady ? 'true' : 'false'">
+<!-- 今日状态 -->
+  <template x-if="$store.page === 'today'">
+  <div x-data="tradingPage()" class="workspace-shell workspace-shell-workbench plan-workbench" role="region" aria-label="今日状态工作台" :aria-busy="generatingPlan || !planReady ? 'true' : 'false'">
     <div class="workspace-title-row flex justify-between gap-5">
       <div>
-        <div class="workspace-kicker">TODAY / DECISION</div>
-        <h1 class="workspace-title tracking-normal">今日计划</h1>
+        <div class="workspace-kicker">WORK STATE</div>
+        <h1 class="workspace-title tracking-normal">今日状态</h1>
         <div class="workspace-meta mt-2" x-text="tDate ? '基于 ' + tDate + ' 收盘数据' : '等待计划基准日'"></div>
       </div>
       <span x-show="hasCurrentGeneratedPlan() && executionDate()" class="plan-execution-badge text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full self-start"
@@ -1286,14 +1830,14 @@
     <!-- 今日决策 -->
     <section class="plan-decision-hero mb-4" :data-state="planState()" :aria-label="planStateTitle()" aria-live="polite" aria-atomic="true">
       <div>
-        <div class="plan-decision-label">今日决策</div>
+        <div class="plan-decision-label">系统判断</div>
         <h2 class="plan-decision-title" x-text="planStateTitle()"></h2>
         <p class="plan-decision-copy" x-text="planStateCopy()"></p>
         <button
           x-show="planState() === 'needs-facts'"
-          @click="goToMissingFactAccount()"
+          @click="goToAccountNeedingUpdate()"
           class="mt-4 text-sm font-medium text-teal-700 underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">
-          前往账户页补充事实
+          前往账户页更新数据
         </button>
         <button
           x-show="Boolean(readinessError)"
@@ -1304,6 +1848,35 @@
       </div>
       <div class="plan-decision-mark" x-text="planDecisionMark()"></div>
     </section>
+
+    <section class="plan-state-chain" aria-label="今日状态链">
+      <template x-for="item in workStateChainItems()" :key="item.label">
+        <article class="plan-state-chain-item" :class="item.className">
+          <div class="plan-state-chain-title" x-text="item.label"></div>
+          <div class="plan-state-chain-copy" x-text="item.text"></div>
+        </article>
+      </template>
+    </section>
+
+    <!-- 计划生成是今日状态的工具动作，靠近系统判断但不抢状态链。 -->
+    <div class="ark-panel plan-hero-panel flex flex-col xl:flex-row xl:items-center gap-4 mb-5 p-5">
+      <div>
+        <div class="text-sm font-semibold text-gray-900">计划生成</div>
+        <div class="workspace-meta mt-2">按账户数据、计划条件和策略榜单生成当日可执行安排。</div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 xl:ml-auto">
+        <span class="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">
+          温度 <span class="text-gray-700 font-medium tabular-nums" x-text="temperatureText()"></span>
+        </span>
+        <span x-show="temperatureLabel()" class="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2"
+          x-text="temperatureLabel()"></span>
+        <span x-show="temperatureUpdatedAt()" class="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2"
+          x-text="'更新 ' + temperatureUpdatedAt()"></span>
+        <button @click="generateCompletePlan()" :disabled="!canGenerateCompletePlan()" class="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 disabled:bg-gray-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">
+          <span x-show="!generatingPlan">生成完整计划</span><span x-show="generatingPlan">正在生成完整计划…</span>
+        </button>
+      </div>
+    </div>
 
     <!-- 执行计划必须紧跟今日决策 -->
     <template x-if="planState() === 'action' && hasExecutionPlans()">
@@ -1466,32 +2039,12 @@
     </div>
     </template>
 
-    <!-- 计划基准与唯一主操作 -->
-    <div class="ark-panel plan-hero-panel flex flex-col xl:flex-row xl:items-center gap-4 mb-5 p-5">
-      <div>
-        <div class="text-sm font-semibold text-gray-900">计划生成</div>
-        <div class="workspace-meta mt-2">按账户事实、计划条件和策略榜单生成当日可执行安排。</div>
-      </div>
-      <div class="flex flex-wrap items-center gap-2 xl:ml-auto">
-        <span class="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">
-          温度 <span class="text-gray-700 font-medium tabular-nums" x-text="temperatureText()"></span>
-        </span>
-        <span x-show="temperatureLabel()" class="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2"
-          x-text="temperatureLabel()"></span>
-        <span x-show="temperatureUpdatedAt()" class="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2"
-          x-text="'更新 ' + temperatureUpdatedAt()"></span>
-        <button @click="generateCompletePlan()" :disabled="!canGenerateCompletePlan()" class="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 disabled:bg-gray-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">
-          <span x-show="!generatingPlan">生成完整计划</span><span x-show="generatingPlan">正在生成完整计划…</span>
-        </button>
-      </div>
-    </div>
-
     <!-- 本次计划条件 -->
     <details aria-label="计划条件" class="ark-panel plan-conditions-panel px-5 py-3 mb-4" :open="!plan">
       <summary class="cursor-pointer select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">
         <div class="inline-flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span class="text-sm font-semibold">本次计划条件</span>
-          <span class="text-xs text-gray-400">账户余额和持仓在“账户”页维护；这里只填写本次计划特有的事实。</span>
+          <span class="text-xs text-gray-400">账户余额和持仓在“账户”页维护；这里只填写本次计划特有的条件。</span>
         </div>
       </summary>
       <div class="mt-3 grid grid-cols-1 lg:grid-cols-[minmax(220px,360px)_1fr] gap-3 items-start">
@@ -1865,6 +2418,11 @@
                 <div data-visual-metric="entry-main" class="changelog-entry-main">
                   <h3 class="changelog-entry-title" x-text="entry.title"></h3>
                   <p data-visual-metric="entry-body" class="changelog-entry-body" x-text="entry.body"></p>
+                  <div x-show="scopeTags(entry).length" class="changelog-scope-tags" aria-label="影响范围">
+                    <template x-for="scope in scopeTags(entry)" :key="entry.title + scope">
+                      <span class="changelog-scope-tag" x-text="scope"></span>
+                    </template>
+                  </div>
                 </div>
               </article>
             </template>
@@ -1887,23 +2445,36 @@
   // Alpine store for active page
   document.addEventListener('alpine:init', () => {
     Alpine.store('page', pageFromLocation())
+    Alpine.store('workStatus', createWorkStatusStore())
   })
 
   window.addEventListener('hashchange', () => {
-    if (window.Alpine) Alpine.store('page', pageFromLocation())
+    if (window.Alpine) requestLocationPage()
   })
 
   window.addEventListener('popstate', () => {
-    if (window.Alpine) Alpine.store('page', pageFromLocation())
+    if (window.Alpine) requestLocationPage()
   })
 
   function pageFromLocation() {
     const page = window.location.hash.replace(/^#/, '')
-    return ['account', 'trading', 'changelog'].includes(page) ? page : 'trading'
+    if (page === 'trading') return 'today'
+    return ['account', 'today', 'changelog'].includes(page) ? page : 'today'
   }
 
   function setActivePage(page) {
-    if (!['account', 'trading', 'changelog'].includes(page)) return
+    if (page === 'trading') page = 'today'
+    if (!['account', 'today', 'changelog'].includes(page)) return
+    const controller = window.__arkAccountWorkspace
+    if (
+      Alpine.store('page') === 'account'
+      && page !== 'account'
+      && controller?.isDirty?.()
+    ) {
+      controller.pendingPage = page
+      controller.pendingAccountId = ''
+      return
+    }
     Alpine.store('page', page)
     const nextHash = `#${page}`
     if (window.location.hash !== nextHash) {
@@ -1916,9 +2487,129 @@
     })
   }
 
-  function navigateToAccountFact(accountId) {
+  function requestLocationPage() {
+    const page = pageFromLocation()
+    const controller = window.__arkAccountWorkspace
+    if (
+      Alpine.store('page') === 'account'
+      && page !== 'account'
+      && controller?.isDirty?.()
+    ) {
+      controller.pendingPage = page
+      controller.pendingAccountId = ''
+      history.replaceState(null, '', `${window.location.pathname}${window.location.search}#account`)
+      return
+    }
+    Alpine.store('page', page)
+  }
+
+  function navigateToAccount(accountId) {
     setActivePage('account')
     window.dispatchEvent(new CustomEvent('account-focus', { detail: accountId }))
+  }
+
+  function createWorkStatusStore() {
+    return {
+      readiness: null,
+      generation: null,
+      readinessError: '',
+      lifecycleError: '',
+      loaded: false,
+      _promise: null,
+      async load(options = {}) {
+        const force = Boolean(options.force)
+        if (this._promise && !force) return this._promise
+        if (this.loaded && !force) return this
+        this._promise = (async () => {
+          this.readinessError = ''
+          this.lifecycleError = ''
+          const [readinessResponse, generationResponse] = await Promise.all([
+            fetch('/api/plan/readiness'),
+            fetch('/api/plan/generated'),
+          ])
+          if (readinessResponse.ok) {
+            this.readiness = await readinessResponse.json()
+          } else {
+            const body = await readinessResponse.json().catch(() => ({}))
+            this.readiness = null
+            this.readinessError = body.detail?.message || `账户数据校验失败 (${readinessResponse.status})`
+          }
+          if (generationResponse.ok) {
+            this.generation = (await generationResponse.json()).generation || null
+          } else {
+            this.generation = null
+            this.lifecycleError = `HTTP ${generationResponse.status}`
+          }
+          this.loaded = true
+          this._promise = null
+          return this
+        })().catch(error => {
+          this.readiness = null
+          this.generation = null
+          this.readinessError = error.message || '无法读取计划输入就绪度'
+          this.lifecycleError = error.message || '计划状态读取失败'
+          this.loaded = true
+          this._promise = null
+          return this
+        })
+        return this._promise
+      },
+    }
+  }
+
+  function workStatusStore() {
+    return window.Alpine?.store('workStatus') || createWorkStatusStore()
+  }
+
+  function globalStatusBar() {
+    return {
+      error: '',
+      async load(force = false) {
+        this.error = ''
+        const status = await workStatusStore().load({ force })
+        this.error = status.readinessError || status.lifecycleError || ''
+      },
+      basisText() {
+        const status = workStatusStore()
+        if (this.error) return '当前状态无法确认'
+        const planDate = status.readiness?.plan_date
+        const window = status.readiness?.input_window
+        if (planDate && window?.start && window?.end) {
+          const inputWindow = window.start === window.end
+            ? window.start
+            : `${window.start} 至 ${window.end}`
+          return `基于 ${planDate} 收盘数据，事实窗口 ${inputWindow}`
+        }
+        return '等待计划基准日与输入窗口'
+      },
+      accountStatus() {
+        const status = workStatusStore()
+        if (this.error || !status.readiness) return { text: '账户数据待确认', className: 'is-neutral' }
+        if (status.readiness.status === 'ready') return { text: '账户数据就绪', className: 'is-ready' }
+        const count = (status.readiness.accounts || []).filter(item => item.status !== 'ready').length
+        return { text: `账户数据需更新 ${count || 1} 项`, className: 'is-warn' }
+      },
+      fundingStatus() {
+        const generation = workStatusStore().generation
+        if (this.error) return { text: '资金状态待确认', className: 'is-neutral' }
+        if (generation?.status === 'running') return { text: '资金计划生成中', className: 'is-info' }
+        if (['failed', 'stale'].includes(generation?.status)) return { text: '资金计划不可用', className: 'is-problem' }
+        const count = generation?.summary?.funding_action_count || 0
+        if (count > 0) return { text: `资金需调拨 ${count} 笔`, className: 'is-warn' }
+        if (generation?.status === 'complete') return { text: '资金无需调拨', className: 'is-ready' }
+        return { text: '资金计划待生成', className: 'is-neutral' }
+      },
+      generationStatus() {
+        const generation = workStatusStore().generation
+        if (this.error) return { text: '生成状态待确认', className: 'is-neutral' }
+        return {
+          running: { text: '计划生成中', className: 'is-info' },
+          complete: { text: '计划已生成', className: 'is-ready' },
+          failed: { text: '计划生成失败', className: 'is-problem' },
+          stale: { text: '计划已失效', className: 'is-problem' },
+        }[generation?.status] || { text: '计划待生成', className: 'is-neutral' }
+      },
+    }
   }
 
   function localDate() {
@@ -1990,522 +2681,517 @@
         }
         return classes[type] || 'bg-gray-400'
       },
+      scopeTags(entry) {
+        return Array.isArray(entry.scopes) ? entry.scopes : []
+      },
     }
   }
 
   // 账户总览（含持仓）
-  function accountPage() {
+  function accountWorkspace() {
     return {
-      summary: null,
-      readiness: null,
-      readinessError: '',
-      accountFactState: 'idle',
-      accountFactError: '',
-      saveError: '',
-      saveErrorTarget: '',
-      saveSuccess: '',
-      factDateInputValue: localDate(),
-      loadedFactDate: '',
-      pendingFactDate: '',
-      dirty: false,
-      saveInProgress: false,
-      _factLoadToken: 0,
-      pendingAccountFocusId: '',
-      expanded: null, editingSimple: null,
-      cbSaved: false, stockSaved: false,
-      cbRows: [], stockRows: [],
-      prices: { stock: {}, cb: {} },   // code -> {name, price}
-      loaded: { stock: false, cb: false },
-      _uid: 0,
-      _sortTimers: {},
+      accounts: [],
+      selectedId: '',
+      selected: null,
+      draft: { amount: '', available_cash: '', frozen_cash: '', positions: [] },
+      originalRaw: null,
       loadedOnce: false,
-      accounts: [
-        { id: 'stock',    label: '广发账户', sub: '证券交易与托管', color: '#8b5cf6', totalKey: 'stock_total',     cashKey: 'stock_cash', posType: 'stock' },
-        { id: 'cb',       label: '华泰账户', sub: '证券交易与托管', color: '#14b8a6', totalKey: 'bond_total',      cashKey: 'bond_cash',  posType: 'cb'    },
-        { id: 'changqian',label: '长钱投顾组合', sub: '雪球基金托管', color: '#f59e0b', totalKey: 'changqian_total', posType: null    },
-        { id: 'overseas', label: '海外长钱投顾组合', sub: '雪球基金托管', color: '#60a5fa', totalKey: 'overseas_total',  posType: null    },
-        { id: 'cash',     label: '资金账户', sub: '资金调拨与现金管理', color: '#9ca3af', totalKey: 'cash_pool',       posType: null    },
-      ],
-      form: {
-        snapshot_date: localDate(),
-        temperature: null, stock_total: null, stock_available_cash: null, stock_frozen_cash: 0,
-        bond_total: null, bond_available_cash: null, bond_frozen_cash: 0, changqian_total: null,
-        cash_pool: null, overseas_total: null,
-        _stock_updated: '', _cb_updated: '',
-      },
-      async load() {
-        await this.loadFactDate(this.form.snapshot_date)
-      },
-      clearFactData(factDate) {
-        this.factDateInputValue = factDate
-        this.summary = null
-        this.cbRows = []
-        this.stockRows = []
-        this.prices = { stock: {}, cb: {} }
-        this.loaded = { stock: false, cb: false }
-        this.expanded = null
-        this.editingSimple = null
-        this.form = {
-          snapshot_date: factDate,
-          temperature: null, stock_total: null, stock_available_cash: null, stock_frozen_cash: 0,
-          bond_total: null, bond_available_cash: null, bond_frozen_cash: 0, changqian_total: null,
-          cash_pool: null, overseas_total: null,
-          _stock_updated: '', _cb_updated: '',
-        }
-      },
-      async loadFactDate(factDate) {
-        const selectedDate = String(factDate || '')
-        if (!selectedDate) return
-        const loadToken = ++this._factLoadToken
-        this.accountFactState = 'loading'
-        this.accountFactError = ''
-        this.saveError = ''
-        this.saveSuccess = ''
-        this.loadedFactDate = ''
-        this.clearFactData(selectedDate)
-        try {
-          const [summary] = await Promise.all([
-            this.fetchAccountFact(`/api/account/summary?date=${encodeURIComponent(selectedDate)}`, '账户汇总'),
-            this.loadReadiness(),
-          ])
-          if (loadToken !== this._factLoadToken) return
-          this.applySummary(summary)
-          const [cb, stock] = await Promise.all([
-            this.loadPositions('cb', selectedDate),
-            this.loadPositions('stock', selectedDate),
-          ])
-          if (loadToken !== this._factLoadToken) return
-          this.cbRows = cb.map(r => ({ ...r, _id: ++this._uid, isNew: false }))
-          this.stockRows = stock.map(r => ({ ...r, _id: ++this._uid, isNew: false }))
-          // per-account 更新日期
-          const contextDate = summary?.context?.snapshot_date || ''
-          this.form._stock_updated = stock.length > 0 ? stock[0].position_date : contextDate
-          this.form._cb_updated = cb.length > 0 ? cb[0].position_date : contextDate
-          // 自动加载行情
-          const [stockPrices, cbPrices] = await Promise.all([
-            this.loadQuotes('stock', selectedDate), this.loadQuotes('cb', selectedDate),
-          ])
-          if (loadToken !== this._factLoadToken) return
-          this.prices.stock = stockPrices
-          this.prices.cb = cbPrices
-          this.loaded = { stock: true, cb: true }
-          this.sortRowsByValue('stock')
-          this.sortRowsByValue('cb')
-          this.loadedFactDate = selectedDate
-          this.dirty = false
-          this.accountFactState = summary ? 'success' : 'empty'
-          this.focusPendingAccountFact()
-        } catch (error) {
-          if (loadToken !== this._factLoadToken) return
-          this.accountFactState = 'error'
-          this.accountFactError = error.message || '账户事实请求未完成'
-        }
+      loading: false,
+      saving: false,
+      loadError: '',
+      readinessError: '',
+      saveError: '',
+      saveSuccess: '',
+      conflict: false,
+      clearDialog: false,
+      clearMode: '',
+      clearConfirmed: false,
+      pendingAccountId: '',
+      pendingPage: '',
+      pendingFocusId: '',
+      _clearReturnFocus: null,
+      _uid: 0,
+      init() {
+        window.__arkAccountWorkspace = this
+        window.addEventListener('beforeunload', event => {
+          if (!this.isDirty()) return
+          event.preventDefault()
+          event.returnValue = ''
+        })
       },
       ensureLoaded(page) {
-        if (page !== 'account' || this.loadedOnce) return
-        this.loadedOnce = true
-        this.load()
+        if (page === 'account' && !this.loadedOnce && !this.loading) this.load()
       },
-      async retryAccountFacts() {
-        await this.loadFactDate(this.form.snapshot_date)
-      },
-      requestFactDate(nextDate) {
-        if (!nextDate) {
-          this.factDateInputValue = ''
-          this.$nextTick(() => {
-            this.factDateInputValue = this.form.snapshot_date
-            this.$refs.factDateInput.value = this.form.snapshot_date
-          })
-          return
-        }
-        if (nextDate === this.form.snapshot_date || this.saveInProgress) return
-        if (this.dirty) {
-          this.factDateInputValue = nextDate
-          this.pendingFactDate = nextDate
-          return
-        }
-        this.loadFactDate(nextDate)
-      },
-      discardPendingFactDate() {
-        const nextDate = this.pendingFactDate
-        this.pendingFactDate = ''
-        this.dirty = false
-        this.loadFactDate(nextDate)
-      },
-      cancelFactDateSwitch() {
-        this.pendingFactDate = ''
-        this.factDateInputValue = this.form.snapshot_date
-      },
-      markDirty() {
-        if (this.canSaveFacts()) {
-          this.dirty = true
-          this.saveSuccess = ''
-        }
-      },
-      clearSaveFeedback() {
-        this.saveError = ''
-        this.saveErrorTarget = ''
-        this.saveSuccess = ''
-      },
-      showSaveError(strategy, error) {
-        this.saveError = error?.message || '保存账户失败，请检查输入后重试'
-        this.saveErrorTarget = strategy
-        this.$nextTick(() => {
-          const account = this.accounts.find(item => item.id === strategy)
-          const label = strategy === 'stock' ? '股票可用现金'
-            : strategy === 'cb' ? '转债可用现金' : account ? `账户金额 ${account.label}` : ''
-          const input = Array.from(document.querySelectorAll('#account-facts input'))
-            .find(element => element.getAttribute('aria-label') === label && element.checkVisibility())
-          input?.focus()
-        })
-      },
-      async fetchAccountFact(url, label) {
-        let response
-        try {
-          response = await fetch(url)
-        } catch (error) {
-          throw new Error(`${label}网络请求失败，请检查连接后重试`)
-        }
-        if (!response.ok) {
-          throw new Error(`${label}读取失败 (${response.status})`)
-        }
-        try {
-          return await response.json()
-        } catch (error) {
-          throw new Error(`${label}响应无效，请重试`)
-        }
-      },
-      accountFactsFailed() {
-        return this.accountFactState === 'error'
-      },
-      accountFactsEmpty() {
-        return this.accountFactState === 'empty'
-      },
-      accountFactsUsable() {
-        return this.accountFactState === 'success'
-      },
-      canSaveFacts() {
-        return !this.pendingFactDate
-          && !this.saveInProgress
-          && ['success', 'empty'].includes(this.accountFactState)
-          && Boolean(this.loadedFactDate)
-          && this.loadedFactDate === this.form.snapshot_date
-      },
-      assertCanSaveFacts() {
-        if (!this.canSaveFacts()) {
-          throw new Error('保存前请先完成该事实日的数据读取')
-        }
-      },
-      accountItem(id) {
-        return (this.summary?.accounts || []).find(item => item.id === id) || null
-      },
-      async loadReadiness() {
+      async load(options = {}) {
+        this.loading = true
+        this.loadError = ''
         this.readinessError = ''
         try {
-          const response = await fetch('/api/plan/readiness')
-          if (!response.ok) {
-            const body = await response.json().catch(() => ({}))
-            throw new Error(body.detail?.message || `账户事实校验失败 (${response.status})`)
-          }
-          this.readiness = await response.json()
+          const [response, workStatus] = await Promise.all([
+            fetch('/api/accounts'),
+            workStatusStore().load({ force: Boolean(options.forceReadiness) }),
+          ])
+          if (!response.ok) throw new Error(`账户数据读取失败 (${response.status})`)
+          const body = await response.json()
+          const readinessUnknown = Boolean(workStatus.readinessError || !workStatus.readiness)
+          this.readinessError = workStatus.readinessError
+            || (readinessUnknown ? '计划输入就绪度暂时不可用' : '')
+          const planReadiness = Object.fromEntries(
+            (workStatus.readiness?.accounts || []).map(item => [item.account_id, item]),
+          )
+          this.accounts = (body.accounts || []).map(account => ({
+            ...account,
+            plan_readiness: readinessUnknown
+              ? 'unknown'
+              : planReadiness[account.account_id]?.status || 'unknown',
+            plan_message: readinessUnknown
+              ? this.readinessError
+              : planReadiness[account.account_id]?.message || '',
+          }))
+          this.loadedOnce = true
+          const preferred = this.pendingFocusId
+            || (this.accounts.some(item => item.account_id === this.selectedId) ? this.selectedId : '')
+            || this.accounts.find(item => !this.accountReadyForPlan(item))?.account_id
+            || this.accounts[0]?.account_id
+          this.pendingFocusId = ''
+          if (preferred) this.openAccount(preferred)
         } catch (error) {
-          this.readiness = null
-          this.readinessError = error.message || '无法读取账户事实就绪度'
+          this.loadError = error?.message || '无法读取账户数据'
+        } finally {
+          this.loading = false
         }
       },
-      readinessIssues() {
-        return (this.readiness?.accounts || []).filter(item => item.status !== 'ready')
+      async retryReadiness() {
+        this.loading = true
+        try {
+          const workStatus = await workStatusStore().load({ force: true })
+          const readinessUnknown = Boolean(workStatus.readinessError || !workStatus.readiness)
+          this.readinessError = workStatus.readinessError
+            || (readinessUnknown ? '计划输入就绪度暂时不可用' : '')
+          const planReadiness = Object.fromEntries(
+            (workStatus.readiness?.accounts || []).map(item => [item.account_id, item]),
+          )
+          this.accounts = this.accounts.map(account => ({
+            ...account,
+            plan_readiness: readinessUnknown
+              ? 'unknown'
+              : planReadiness[account.account_id]?.status || 'unknown',
+            plan_message: readinessUnknown
+              ? this.readinessError
+              : planReadiness[account.account_id]?.message || '',
+          }))
+          this.selected = this.accounts.find(item => item.account_id === this.selectedId) || null
+        } finally {
+          this.loading = false
+        }
       },
-      accountReadinessTitle() {
-        if (this.accountFactsFailed()) return '无法确认账户事实'
-        if (this.accountFactsEmpty()) return '尚未录入账户事实'
-        if (!this.accountFactsUsable()) return '正在读取账户事实'
-        if (this.readinessError) return '账户事实暂不可用'
-        if (!this.readiness) return '正在核对账户事实'
-        const count = this.readinessIssues().length
-        return count ? `${count} 项事实需要更新` : '事实已就绪'
-      },
-      accountReadinessCopy() {
-        if (this.accountFactsFailed()) return '关键账户请求未完成，当前不展示资产数值或“事实已就绪”结论。'
-        if (this.accountFactsEmpty()) return '这不是读取失败；请录入账户事实后再确认今日计划。'
-        if (!this.accountFactsUsable()) return '正在读取账户汇总、持仓和报价。'
-        if (this.readinessError) return `${this.readinessError}；请稍后重试。`
-        if (!this.readiness) return '正在按今日计划的输入窗口校验五项账户事实。'
-        const issues = this.readinessIssues()
-        if (!issues.length) return '五项账户事实均在输入窗口内，可以作为今日计划的事实基础。'
-        return `${issues.map(item => item.account_name).join('、')}需要更新；其余账户事实仍可查看。`
-      },
-      accountInputWindowText() {
-        if (this.accountFactsFailed()) return '账户事实未确认'
-        if (this.accountFactsEmpty()) return '等待录入事实'
-        const window = this.readiness?.input_window
-        if (!window?.start || !window?.end) return '等待输入窗口'
-        return window.start === window.end
-          ? `事实窗口 ${window.start}`
-          : `事实窗口\n${window.start}\n至 ${window.end}`
-      },
-      portfolioSections() {
-        if (!this.accountFactsUsable()) return []
-        const portfolios = this.summary?.read_model?.portfolios || []
-        const accounts = this.summary?.read_model?.accounts || []
-        return portfolios.map(portfolio => ({
-          ...portfolio,
-          accounts: (portfolio.account_ids || [])
-            .map(accountId => accounts.find(account => account.id === accountId))
-            .filter(Boolean),
-        }))
-      },
-      scrollAccountFacts() {
-        const target = document.getElementById('account-facts')
-        if (!target) return
-        target.open = true
-        const firstIssue = this.readinessIssues()[0]
-        const editable = this.accounts.find(account => account.id === firstIssue?.account_id)
-        if (editable?.posType) this.expanded = editable.id
-        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
-      },
-      focusAccountFact(accountId) {
-        this.pendingAccountFocusId = accountId || ''
-        if (!this.loadedOnce || ['idle', 'loading'].includes(this.accountFactState)) return
-        this.focusPendingAccountFact()
-      },
-      focusPendingAccountFact() {
-        const accountId = this.pendingAccountFocusId
+      async focusAccount(accountId) {
         if (!accountId) return
-        const account = this.accounts.find(item => item.id === accountId)
-        const target = document.getElementById('account-facts')
-        if (!account || !target) return
-        target.open = true
-        if (account.posType) this.expanded = account.id
-        else this.editingSimple = account.id
-        this.pendingAccountFocusId = ''
-        this.$nextTick(() => {
-          const row = document.getElementById(`account-fact-${account.id}`)
-          const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-          row?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' })
-          const input = account.posType
-            ? document.querySelector(`#account-facts input[aria-label="${account.id === 'stock' ? '股票可用现金' : '转债可用现金'}"]`)
-            : row?.querySelector('input')
-          requestAnimationFrame(() => input?.focus())
-        })
+        if (!this.loadedOnce) {
+          this.pendingFocusId = accountId
+          return
+        }
+        this.selectAccount(accountId)
       },
-      applySummary(summary) {
-        this.summary = summary
-        if (!summary) return
-        const context = summary.context || {}
-        this.form.temperature = context.temperature ?? this.form.temperature
-        ;(summary.accounts || []).forEach(item => {
-          const acc = this.accounts.find(a => a.id === item.id)
-          if (!acc) return
-          this.form[acc.totalKey] = item.total
-          if (acc.cashKey) {
-            this.form[acc.cashKey.replace('_cash', '_available_cash')] = item.available_cash
-            this.form[acc.cashKey.replace('_cash', '_frozen_cash')] = item.frozen_cash || 0
+      selectAccount(accountId) {
+        if (!accountId || accountId === this.selectedId) return
+        if (this.isDirty()) {
+          this.pendingAccountId = accountId
+          return
+        }
+        this.openAccount(accountId)
+      },
+      discardPendingChange() {
+        const accountId = this.pendingAccountId
+        const page = this.pendingPage
+        this.pendingAccountId = ''
+        this.pendingPage = ''
+        if (accountId) this.openAccount(accountId)
+        if (page) {
+          this.openAccount(this.selectedId)
+          setActivePage(page)
+        }
+      },
+      cancelPendingChange() {
+        this.pendingAccountId = ''
+        this.pendingPage = ''
+      },
+      openAccount(accountId) {
+        const account = this.accounts.find(item => item.account_id === accountId)
+        if (!account) return
+        this.selectedId = accountId
+        this.selected = JSON.parse(JSON.stringify(account))
+        this.originalRaw = this.normalizeRaw(account.raw_data)
+        this.draft = this.draftFromAccount(account)
+        this.pendingAccountId = ''
+        this.pendingPage = ''
+        this.saveError = ''
+        this.saveSuccess = ''
+        this.conflict = false
+        this.clearDialog = false
+        this.clearMode = ''
+        this.clearConfirmed = false
+      },
+      draftFromAccount(account) {
+        if (account.kind === 'balance') {
+          return {
+            amount: account.raw_data?.amount ?? '',
+            available_cash: '',
+            frozen_cash: '',
+            positions: [],
           }
-        })
-        ;(summary.read_model?.accounts || []).forEach(item => {
-          const acc = this.accounts.find(a => a.id === item.id)
-          if (!acc) return
-          acc.label = item.name || acc.label
-          acc.sub = item.portfolio_node_name || acc.sub
-          acc.readModel = item
-        })
-      },
-      addRow(strategy) {
-        const row = { code: '', name: '', shares: 0, _id: ++this._uid, isNew: true }
-        ;(strategy === 'cb' ? this.cbRows : this.stockRows).push(row)
-        this.markDirty()
-      },
-      removeRow(strategy, row) {
-        const rows = strategy === 'cb' ? this.cbRows : this.stockRows
-        const i = rows.indexOf(row)
-        if (i >= 0) rows.splice(i, 1)
-        this.markDirty()
-      },
-      fmtMoney(v) { return v == null ? '-' : '¥' + Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
-      num(v) { return Number.isFinite(Number(v)) ? Number(v) : 0 },
-      accountFactDisplayValue(key) {
-        return this.accountFactsUsable() ? this.form[key] : null
-      },
-      totalAssets() {
-        if (!this.accountFactsUsable()) return null
-        const f = this.form
-        return this.num(f.stock_total) + this.num(f.bond_total) + this.num(f.changqian_total) + this.num(f.cash_pool) + this.num(f.overseas_total)
-      },
-      async loadPositions(strategy, factDate) {
-        const label = strategy === 'stock' ? '股票持仓' : '转债持仓'
-        return this.fetchAccountFact(
-          `/api/positions/${strategy}?date=${encodeURIComponent(factDate)}`,
-          label,
+        }
+        const valuationByCode = Object.fromEntries(
+          (account.valuation?.items || []).map(item => [item.code, item]),
         )
-      },
-      async loadQuotes(strategy, factDate) {
-        const label = strategy === 'stock' ? '股票报价' : '转债报价'
-        const q = await this.fetchAccountFact(
-          `/api/positions/${strategy}/quotes?date=${encodeURIComponent(factDate)}`,
-          label,
-        )
-        const map = {}
-        ;(q.items || []).forEach(it => { map[it.code] = { name: it.name, price: it.price } })
-        return map
-      },
-      async autofill(strategy, row) {
-        const code = String(row.code || '').trim()
-        if (!code) return
-        const q = await fetch(`/api/positions/${strategy}/quote?code=${code}`).then(r => r.json())
-        if (q && q.price != null) {
-          this.prices[strategy] = { ...this.prices[strategy], [String(code).padStart(6, '0')]: { name: q.name, price: q.price } }
-          if (q.name) row.name = q.name
-          this.scheduleSortRows(strategy)
-        }
-      },
-      rowPrice(strategy, code) {
-        return this.prices[strategy][String(code || '').padStart(6, '0')]?.price ?? null
-      },
-      rowValue(strategy, row) {
-        const p = this.rowPrice(strategy, row.code)
-        return p != null ? p * (row.shares || 0) : null
-      },
-      holdingsValue(strategy) {
-        const rows = strategy === 'stock' ? this.stockRows : this.cbRows
-        return rows.reduce((s, r) => s + (this.rowValue(strategy, r) || 0), 0)
-      },
-      rowWeight(strategy, row) {
-        const total = this.holdingsValue(strategy)
-        const v = this.rowValue(strategy, row)
-        return (total && v != null) ? v / total : null
-      },
-      accountCash(strategy) {
-        if (!this.accountFactsUsable()) return null
-        const availableKey = strategy === 'stock' ? 'stock_available_cash' : 'bond_available_cash'
-        const frozenKey = strategy === 'stock' ? 'stock_frozen_cash' : 'bond_frozen_cash'
-        const raw = this.form[availableKey]
-        if (raw !== null && raw !== undefined && raw !== '') return this.num(raw) + this.num(this.form[frozenKey])
-        const accountId = strategy === 'stock' ? 'stock' : 'cb'
-        return this.num(this.accountItem(accountId)?.cash)
-      },
-      accountAvailableCash(strategy) {
-        const key = strategy === 'stock' ? 'stock_available_cash' : 'bond_available_cash'
-        const raw = this.form[key]
-        if (raw !== null && raw !== undefined && raw !== '') return this.num(raw)
-        const accountId = strategy === 'stock' ? 'stock' : 'cb'
-        return this.num(this.accountItem(accountId)?.available_cash)
-      },
-      accountTotal(strategy) {
-        return this.holdingsValue(strategy) + this.accountCash(strategy)
-      },
-      sortRowsByValue(strategy) {
-        const rows = strategy === 'stock' ? this.stockRows : this.cbRows
-        rows.sort((a, b) => (this.rowValue(strategy, b) || 0) - (this.rowValue(strategy, a) || 0))
-      },
-      scheduleSortRows(strategy) {
-        clearTimeout(this._sortTimers[strategy])
-        this._sortTimers[strategy] = setTimeout(() => this.sortRowsByValue(strategy), 250)
-      },
-      toggleExpand(id) { this.expanded = this.expanded === id ? null : id },
-      acctPct(acc) {
-        if (!this.accountFactsUsable()) return '-'
-        const total = this.totalAssets()
-        return total > 0 ? (this.num(this.form[acc.totalKey]) / total * 100).toFixed(1) + '%' : '0%'
-      },
-      accountRole(acc) {
-        return acc.readModel?.role || ''
-      },
-      accUpdateDate(acc) {
-        if (!this.accountFactsUsable()) return ''
-        const accountDate = this.accountItem(acc.id)?.snapshot_date
-        if (accountDate) return this.formatFactDate(accountDate)
-        if (acc.posType) {
-          const d = this.form['_' + acc.id + '_updated'] || ''
-          return d ? this.formatFactDate(d) : ''
-        }
-        return this.form.snapshot_date ? this.formatFactDate(this.form.snapshot_date) : ''
-      },
-      formatFactDate(value) {
-        if (!value) return ''
-        return '事实日 ' + String(value).slice(0, 10)
-      },
-      async saveSimpleAccount(id) {
-        this.clearSaveFeedback()
-        try {
-          this.assertCanSaveFacts()
-          await this.saveAccountSnapshot(id)
-          this.editingSimple = null
-        } catch (err) {
-          console.error(err)
-          this.showSaveError(id, err)
-        }
-      },
-      accountSnapshotPayload(id) {
-        const acc = this.accounts.find(a => a.id === id)
-        const available_cash = id === 'stock' ? this.accountAvailableCash('stock')
-          : id === 'cb' ? this.accountAvailableCash('cb')
-          : null
-        const frozen_cash = id === 'stock' ? this.num(this.form.stock_frozen_cash)
-          : id === 'cb' ? this.num(this.form.bond_frozen_cash)
-          : null
         return {
-          snapshot_date: this.loadedFactDate,
-          total: acc ? this.num(this.form[acc.totalKey]) : 0,
-          available_cash,
-          frozen_cash,
+          amount: '',
+          available_cash: account.raw_data?.available_cash ?? '',
+          frozen_cash: account.raw_data?.frozen_cash ?? '',
+          positions: (account.raw_data?.positions || []).map(position => {
+            const derived = valuationByCode[position.code] || {}
+            return {
+              code: position.code,
+              quantity: position.quantity,
+              name: derived.name || '',
+              price: derived.price ?? null,
+              _key: ++this._uid,
+              isNew: false,
+            }
+          }),
         }
       },
-      async saveAccountSnapshot(id) {
-        this.assertCanSaveFacts()
-        const factDate = this.loadedFactDate
-        this.saveInProgress = true
+      markEdited() {
+        this.saveError = ''
+        this.saveSuccess = ''
+        this.conflict = false
+        this.clearConfirmed = false
+      },
+      addPosition() {
+        this.draft.positions.push({
+          code: '', quantity: '', name: '', price: null, _key: ++this._uid, isNew: true,
+        })
+        this.markEdited()
+        this.$nextTick(() => {
+          const inputs = document.querySelectorAll('.account-current-security input:not([readonly])')
+          inputs[inputs.length - 1]?.focus()
+        })
+      },
+      removePosition(row) {
+        const index = this.draft.positions.indexOf(row)
+        if (index >= 0) this.draft.positions.splice(index, 1)
+        this.markEdited()
+      },
+      async lookupSecurity(row) {
+        const code = String(row.code || '').trim()
+        if (!/^\d{1,6}$/.test(code) || !this.selectedId) return
         try {
-          const res = await fetch(`/api/account/${id}/snapshot`, {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(this.accountSnapshotPayload(id)),
-          })
-          if (!res.ok) throw new Error('保存账户失败')
-          await this.loadFactDate(factDate)
-          await this.loadReadiness()
-          this.saveSuccess = '账户事实已保存，并已重新读取账户事实与计划就绪度。'
-        } finally {
-          this.saveInProgress = false
+          const response = await fetch(`/api/positions/${this.selectedId}/quote?code=${encodeURIComponent(code)}`)
+          if (!response.ok) return
+          const quote = await response.json()
+          row.code = quote.code || code.padStart(6, '0')
+          row.name = quote.name || ''
+          row.price = quote.price ?? null
+        } catch (_) {
+          row.code = code.padStart(6, '0')
         }
       },
-      async saveAccount(strategy) {
-        this.clearSaveFeedback()
-        try {
-          this.assertCanSaveFacts()
-          const factDate = this.loadedFactDate
-          this.saveInProgress = true
-          const src = strategy === 'cb' ? this.cbRows : this.stockRows
-          const rows = src.filter(r => r.code).map(r => ({ code: r.code, name: r.name, shares: r.shares }))
-
-          // 持仓与账户金额必须同一事务写入，避免部分保存。
-          if (this.loaded[strategy]) {
-            const totalKey = strategy === 'cb' ? 'bond_total' : 'stock_total'
-            this.form[totalKey] = this.accountTotal(strategy)
-          }
-          const account = this.accountSnapshotPayload(strategy)
-          const res = await fetch(`/api/account/${strategy}/state`, {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ ...account, snapshot_date: factDate, positions: rows }),
-          })
-          if (!res.ok) {
-            const error = await res.json().catch(() => null)
-            throw new Error(error?.detail || '保存账户状态失败')
-          }
-          await res.json()
-          await this.loadFactDate(factDate)
-          await this.loadReadiness()
-          this.saveSuccess = '账户事实已保存，并已重新读取账户事实与计划就绪度。'
-
-          // 标记已保存
-          if (strategy === 'cb') { this.cbSaved = true; setTimeout(() => this.cbSaved = false, 2000) }
-          else { this.stockSaved = true; setTimeout(() => this.stockSaved = false, 2000) }
-        } catch (err) {
-          console.error(err)
-          this.showSaveError(strategy, err)
-        } finally {
-          this.saveInProgress = false
+      numberOrNull(value) {
+        if (value === '' || value === null || value === undefined) return null
+        const number = Number(value)
+        return Number.isFinite(number) ? number : null
+      },
+      normalizeRaw(raw) {
+        if (!this.selected || this.selected.kind === 'balance') {
+          return { amount: this.numberOrNull(raw?.amount) }
         }
+        return {
+          available_cash: this.numberOrNull(raw?.available_cash),
+          frozen_cash: this.numberOrNull(raw?.frozen_cash),
+          positions: (raw?.positions || [])
+            .map(item => ({
+              code: String(item.code || '').trim().padStart(6, '0'),
+              quantity: this.numberOrNull(item.quantity),
+            }))
+            .filter(item => item.code !== '000000' && item.quantity > 0)
+            .sort((left, right) => left.code.localeCompare(right.code)),
+        }
+      },
+      payloadRaw() {
+        if (this.selected?.kind === 'balance') {
+          return { amount: this.numberOrNull(this.draft.amount) }
+        }
+        return this.normalizeRaw({
+          available_cash: this.draft.available_cash,
+          frozen_cash: this.draft.frozen_cash,
+          positions: this.draft.positions,
+        })
+      },
+      isDirty() {
+        if (!this.selected || !this.originalRaw) return false
+        return JSON.stringify(this.payloadRaw()) !== JSON.stringify(this.originalRaw)
+      },
+      isValid() {
+        if (!this.selected) return false
+        const raw = this.payloadRaw()
+        if (this.selected.kind === 'balance') return raw.amount !== null && raw.amount >= 0
+        if (raw.available_cash === null || raw.available_cash < 0) return false
+        if (raw.frozen_cash === null || raw.frozen_cash < 0) return false
+        const enteredRows = this.draft.positions.filter(row => String(row.code || '').trim() || String(row.quantity ?? '').trim())
+        if (enteredRows.some(row => !/^\d{1,6}$/.test(String(row.code || '').trim()))) return false
+        if (enteredRows.some(row => this.numberOrNull(row.quantity) === null || this.numberOrNull(row.quantity) < 0)) return false
+        const codes = enteredRows.map(row => String(row.code).padStart(6, '0'))
+        return new Set(codes).size === codes.length
+      },
+      validationMessage() {
+        if (!this.selected) return ''
+        if (this.selected.kind === 'balance') return '请填写大于或等于 0 的资金余额。'
+        return '请填写可用资金、冻结资金，并检查证券代码、数量和重复代码。'
+      },
+      isWholeAccountClear(raw = this.payloadRaw()) {
+        if (this.selected?.kind === 'balance') return raw.amount === 0
+        return raw.available_cash === 0 && raw.frozen_cash === 0 && raw.positions.length === 0
+      },
+      baselineWasClear() {
+        return this.selected?.record_state === 'recorded' && this.isWholeAccountClear(this.originalRaw)
+      },
+      baselineHasHoldings() {
+        return this.selected?.kind === 'securities' && (this.originalRaw?.positions || []).length > 0
+      },
+      clearRequirement(raw = this.payloadRaw()) {
+        if (this.isWholeAccountClear(raw) && !this.baselineWasClear()) return 'account'
+        if (
+          this.selected?.kind === 'securities'
+          && raw.positions.length === 0
+          && this.baselineHasHoldings()
+        ) return 'holdings'
+        return ''
+      },
+      openClearDialog(mode) {
+        this.clearMode = mode
+        this.clearDialog = true
+        this._clearReturnFocus = document.activeElement
+        this.$nextTick(() => this.$refs.clearCancel?.focus())
+      },
+      closeClearDialog(restoreFocus = true) {
+        if (!this.clearDialog) return
+        this.clearDialog = false
+        this.clearMode = ''
+        if (restoreFocus) setTimeout(() => this._clearReturnFocus?.focus?.(), 0)
+      },
+      trapClearDialog(event) {
+        const buttons = [...event.currentTarget.querySelectorAll('button:not([disabled])')]
+        if (!buttons.length) return
+        const first = buttons[0]
+        const last = buttons[buttons.length - 1]
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault()
+          last.focus()
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault()
+          first.focus()
+        }
+      },
+      clearDialogTitle() {
+        return this.clearMode === 'holdings' ? '确认清空当前持仓？' : '确认清空这个账户？'
+      },
+      clearDialogCopy() {
+        if (this.clearMode === 'holdings') {
+          return '这只会把当前持仓记录为已确认空仓，可用资金和冻结资金保持不变；现有计划会失效。'
+        }
+        return '这会把余额设为 0；证券账户还会记录为已确认空仓。只影响当前账户，但会使现有计划失效。'
+      },
+      clearConfirmLabel() {
+        return this.clearMode === 'holdings' ? '确认清空持仓并保存' : '确认清空账户并保存'
+      },
+      async saveSelected(skipClearCheck = false) {
+        if (!this.selected || this.saving || !this.isValid()) return
+        const clearRequirement = this.clearRequirement()
+        if (this.isDirty() && clearRequirement && !skipClearCheck) {
+          this.openClearDialog(clearRequirement)
+          return
+        }
+        this.saving = true
+        this.saveError = ''
+        this.saveSuccess = ''
+        this.conflict = false
+        try {
+          const changed = this.isDirty()
+          const raw = this.payloadRaw()
+          const endpoint = changed
+            ? `/api/accounts/${this.selectedId}`
+            : `/api/accounts/${this.selectedId}/confirm`
+          const body = changed
+            ? { expected_version: this.selected.version, ...raw }
+            : { expected_version: this.selected.version }
+          const response = await fetch(endpoint, {
+            method: changed ? 'PUT' : 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+          })
+          const result = await response.json().catch(() => ({}))
+          if (response.status === 409) {
+            this.conflict = true
+            const message = typeof result.detail === 'string'
+              ? result.detail
+              : result.detail?.message
+            throw new Error(message || '账户数据已更新，请重新读取')
+          }
+          if (!response.ok) throw new Error(result.detail || `保存失败 (${response.status})`)
+          const workStatus = await workStatusStore().load({ force: true })
+          const readinessUnknown = Boolean(workStatus.readinessError || !workStatus.readiness)
+          this.readinessError = workStatus.readinessError
+            || (readinessUnknown ? '计划输入就绪度暂时不可用' : '')
+          const planFact = (workStatus.readiness?.accounts || [])
+            .find(item => item.account_id === result.account_id)
+          this.accounts = this.accounts.map(account => {
+            const accountPlanFact = (workStatus.readiness?.accounts || [])
+              .find(item => item.account_id === account.account_id)
+            return {
+              ...account,
+              plan_readiness: readinessUnknown
+                ? 'unknown'
+                : accountPlanFact?.status || 'unknown',
+              plan_message: readinessUnknown
+                ? this.readinessError
+                : accountPlanFact?.message || '',
+            }
+          })
+          const enrichedResult = {
+            ...result,
+            plan_readiness: readinessUnknown ? 'unknown' : planFact?.status || 'unknown',
+            plan_message: readinessUnknown ? this.readinessError : planFact?.message || '',
+          }
+          const index = this.accounts.findIndex(item => item.account_id === result.account_id)
+          if (index >= 0) this.accounts.splice(index, 1, enrichedResult)
+          this.openAccount(result.account_id)
+          this.saveSuccess = changed
+            ? '本账户数据已保存。若数值发生变化，当前计划已标记为需要重新生成。'
+            : '已确认本账户数据仍准确；当前计划保持原状态。'
+          window.dispatchEvent(new CustomEvent('account-data-updated'))
+        } catch (error) {
+          this.saveError = error?.message || '账户数据保存失败'
+        } finally {
+          this.saving = false
+          this.clearConfirmed = false
+        }
+      },
+      async confirmClearAndSave() {
+        const mode = this.clearMode
+        if (mode === 'account' && this.selected?.kind === 'balance') {
+          this.draft.amount = 0
+        } else if (mode === 'account') {
+          this.draft.available_cash = 0
+          this.draft.frozen_cash = 0
+          this.draft.positions = []
+        } else if (mode === 'holdings') {
+          this.draft.positions = []
+        }
+        this.closeClearDialog(false)
+        this.clearConfirmed = true
+        await this.saveSelected(true)
+      },
+      async reloadSelected() {
+        if (!this.selectedId) return
+        const retainedDraft = JSON.parse(JSON.stringify(this.draft))
+        this.saving = true
+        try {
+          const response = await fetch(`/api/accounts/${this.selectedId}`)
+          if (!response.ok) throw new Error(`最新账户数据读取失败 (${response.status})`)
+          const latest = await response.json()
+          const index = this.accounts.findIndex(item => item.account_id === latest.account_id)
+          if (index >= 0) this.accounts.splice(index, 1, latest)
+          this.openAccount(latest.account_id)
+          this.draft = retainedDraft
+          this.conflict = false
+          this.saveError = ''
+          this.saveSuccess = '已读取最新版本，并保留你的草稿；请核对变化后重新保存。'
+        } catch (error) {
+          this.saveError = error?.message || '无法读取最新账户数据'
+        } finally {
+          this.saving = false
+        }
+      },
+      reviewChanges() {
+        if (!this.selected || !this.originalRaw) return []
+        const before = this.originalRaw
+        const after = this.payloadRaw()
+        const changes = []
+        if (this.selected.kind === 'balance') {
+          if (before.amount !== after.amount) {
+            changes.push(`资金余额：${this.fmtMoney(before.amount)} → ${this.fmtMoney(after.amount)}`)
+          }
+        } else {
+          if (before.available_cash !== after.available_cash) {
+            changes.push(`可用资金：${this.fmtMoney(before.available_cash)} → ${this.fmtMoney(after.available_cash)}`)
+          }
+          if (before.frozen_cash !== after.frozen_cash) {
+            changes.push(`冻结资金：${this.fmtMoney(before.frozen_cash)} → ${this.fmtMoney(after.frozen_cash)}`)
+          }
+          const oldPositions = Object.fromEntries(before.positions.map(item => [item.code, item.quantity]))
+          const newPositions = Object.fromEntries(after.positions.map(item => [item.code, item.quantity]))
+          const codes = [...new Set([...Object.keys(oldPositions), ...Object.keys(newPositions)])].sort()
+          codes.forEach(code => {
+            const oldValue = oldPositions[code] || 0
+            const newValue = newPositions[code] || 0
+            if (oldValue !== newValue) changes.push(`${code}：${oldValue} → ${newValue}`)
+          })
+        }
+        if (!changes.length) return ['没有数值变化；只更新本账户的确认时间。']
+        return changes.slice(0, 8).concat(changes.length > 8 ? [`另有 ${changes.length - 8} 项变化`] : [])
+      },
+      overviewTitle() {
+        if (this.loading && !this.loadedOnce) return '正在读取账户数据'
+        if (this.readinessError) return '账户计划就绪度待确认'
+        const ready = this.accounts.filter(item => this.accountReadyForPlan(item)).length
+        return `${ready} / ${this.accounts.length || 5} 个账户已就绪`
+      },
+      overviewCopy() {
+        if (this.readinessError) return '账户数据仍可分别更新；恢复校验前不判定计划就绪。'
+        const pending = this.accounts.filter(item => !this.accountReadyForPlan(item))
+        if (!pending.length && this.accounts.length) return '各账户均可独立维护，不要求同一时刻更新。'
+        if (!pending.length) return '每个账户分别保存自己的当前数据。'
+        return `${pending.map(item => item.label).join('、')}需要处理；其他账户不受影响。`
+      },
+      statusText(account) {
+        if (account.record_state === 'missing') return '待录入'
+        if (account.readiness === 'waiting_for_valuation') return '等待估值'
+        if (account.plan_readiness === 'unknown') return '待确认'
+        if (account.plan_readiness && account.plan_readiness !== 'ready') return '需要更新'
+        if (account.holding_state === 'confirmed_empty') return '已确认空仓'
+        return '当前数据可用'
+      },
+      accountReadyForPlan(account) {
+        return account.readiness === 'ready'
+          && account.plan_readiness === 'ready'
+      },
+      statusClass(account) {
+        if (account.readiness === 'waiting_for_valuation') return 'is-warning'
+        if (account.plan_readiness === 'unknown') return 'is-warning'
+        if (account.readiness === 'needs_update' || (account.plan_readiness && account.plan_readiness !== 'ready')) return 'is-missing'
+        return ''
+      },
+      fmtMoney(value) {
+        if (value === null || value === undefined || value === '') return '暂不可计算'
+        return '¥' + Number(value).toLocaleString('zh-CN', {
+          minimumFractionDigits: 2, maximumFractionDigits: 2,
+        })
+      },
+      fmtPrice(value) {
+        return value === null || value === undefined ? '—' : Number(value).toFixed(3)
+      },
+      rowMarketValue(row) {
+        const price = this.numberOrNull(row.price)
+        const quantity = this.numberOrNull(row.quantity)
+        return price === null || quantity === null ? null : price * quantity
+      },
+      formatUpdatedAt(value) {
+        if (!value) return '待更新'
+        const date = new Date(value)
+        if (Number.isNaN(date.getTime())) return String(value).slice(0, 16)
+        return new Intl.DateTimeFormat('zh-CN', {
+          month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+        }).format(date)
       },
     }
   }
@@ -2542,9 +3228,9 @@
             this.funding.b_purchase_limit = context.b_purchase_limit || 0
             this.funding.b_purchase_status = this.inferBPurchaseStatus(context)
           }
-          await this.loadReadiness()
+          await this.loadWorkStatus(true)
           await this.refreshFullPlan(false)
-          await this.loadLatestGeneration()
+          await this.loadSavedGeneratedPlan()
           await this.refreshRankingState()
         } finally {
           this.planReady = true
@@ -2562,32 +3248,29 @@
       },
 
       async loadReadiness() {
-        this.readinessError = ''
-        try {
-          const response = await fetch('/api/plan/readiness')
-          if (!response.ok) {
-            const body = await response.json().catch(() => ({}))
-            throw new Error(body.detail?.message || `账户事实校验失败 (${response.status})`)
-          }
-          this.readiness = await response.json()
-          if (this.readiness?.plan_date) {
-            this.tDate = this.readiness.plan_date
-            this.funding.snapshot_date = this.tDate
-          }
-        } catch (error) {
-          this.readiness = null
-          this.readinessError = error.message || '无法读取计划输入就绪度'
+        await this.loadWorkStatus(true)
+      },
+
+      async loadWorkStatus(force = false) {
+        const status = await workStatusStore().load({ force })
+        this.readiness = status.readiness
+        this.latestGeneration = status.generation
+        this.readinessError = status.readinessError
+        this.lifecycleError = status.lifecycleError
+        if (this.readiness?.plan_date) {
+          this.tDate = this.readiness.plan_date
+          this.funding.snapshot_date = this.tDate
         }
       },
 
       async loadLatestGeneration() {
-        this.lifecycleError = ''
-        try {
-          const response = await fetch('/api/plan/generated')
-          if (!response.ok) throw new Error(`HTTP ${response.status}`)
-          this.latestGeneration = (await response.json()).generation || null
-          if (this.latestGeneration?.status !== 'complete') return
+        await this.loadWorkStatus(true)
+        await this.loadSavedGeneratedPlan()
+      },
 
+      async loadSavedGeneratedPlan() {
+        if (this.latestGeneration?.status !== 'complete') return
+        try {
           const savedResponse = await fetch(`/api/plan/generated/${this.latestGeneration.plan_id}`)
           if (!savedResponse.ok) throw new Error(`HTTP ${savedResponse.status}`)
           const savedRecord = await savedResponse.json()
@@ -2610,13 +3293,13 @@
       },
 
       async retryPlanReadiness() {
-        await Promise.all([this.loadReadiness(), this.loadLatestGeneration()])
+        await this.loadLatestGeneration()
       },
 
-      goToMissingFactAccount() {
+      goToAccountNeedingUpdate() {
         const accountId = (this.readiness?.accounts || [])
           .find(item => item.status !== 'ready')?.account_id
-        if (accountId) navigateToAccountFact(accountId)
+        if (accountId) navigateToAccount(accountId)
       },
 
       canGenerateCompletePlan() {
@@ -2726,7 +3409,7 @@
           const response = await fetch('/api/plan/generate', { method: 'POST' })
           if (response.status === 404) {
             await this.generateCompletePlanLegacy()
-            await Promise.all([this.loadReadiness(), this.loadLatestGeneration()])
+            await this.loadLatestGeneration()
             return
           }
           if (!response.ok) {
@@ -2745,7 +3428,6 @@
           this.transferPlan = this.plan
           await Promise.all([
             this.refreshRankingState(),
-            this.loadReadiness(),
             this.loadLatestGeneration(),
           ])
         } catch (error) {
@@ -2892,6 +3574,7 @@
         return (amount > 0 ? '+' : amount < 0 ? '-' : '') + this.fmtMoney(Math.abs(amount))
       },
       executionDate() {
+        if (!this.hasCurrentGeneratedPlan()) return ''
         return this.plan?.stock?.trade_date || this.plan?.cb?.trade_date || ''
       },
       hasCurrentGeneratedPlan() {
@@ -2909,7 +3592,7 @@
         if (this.lifecycleError) return 'problem'
         if (['stale', 'failed'].includes(this.latestGeneration?.status)) return 'problem'
         if (this.planReady && this.planError && !this.plan) return 'problem'
-        if (!this.hasCurrentGeneratedPlan()) return 'problem'
+        if (!this.hasCurrentGeneratedPlan()) return 'pending'
         return this.hasExecutionPlans() ? 'action' : 'no-action'
       },
       planStateDescriptor() {
@@ -2917,7 +3600,7 @@
         if (state === 'running') {
           return {
             title: '正在生成完整计划',
-            copy: '服务器正在校验账户事实、生成榜单、调拨与订单；完成前不会展示猜测进度。',
+            copy: '服务器正在校验账户数据、生成榜单、调拨与订单；完成前不会展示猜测进度。',
           }
         }
         if (state === 'needs-facts') {
@@ -2925,14 +3608,14 @@
             .filter(item => item.status !== 'ready')
             .map(item => item.account_name)
           return {
-            title: '待补充账户事实',
+            title: '待更新账户数据',
             copy: `${names.join('、') || '账户'}不在计划输入窗口内，补齐后再生成完整计划。`,
           }
         }
-        if (state === 'problem') {
+        if (state === 'problem' || state === 'pending') {
           if (this.readinessError) {
             return {
-              title: '无法确认账户事实',
+              title: '无法确认账户数据',
               copy: `${this.readinessError}；为避免误导，暂不展示任何操作。`,
             }
           }
@@ -2955,7 +3638,7 @@
             }
           }
           return {
-            title: '今日计划待生成',
+            title: '计划待生成',
             copy: '计划输入已就绪；生成完整计划后确认今日是否需要操作。',
           }
         }
@@ -2988,6 +3671,52 @@
         return this.latestGeneration?.created_at
           ? `最近生成 ${String(this.latestGeneration.created_at).replace('T', ' ').slice(0, 16)}`
           : '等待事实校验'
+      },
+      workStateChainItems() {
+        const accountReady = this.readiness?.status === 'ready'
+        const accountIssueCount = (this.readiness?.accounts || []).filter(item => item.status !== 'ready').length
+        const fundingPlan = this.fundingPlan()
+        const fundingCount = (fundingPlan?.groups || []).reduce(
+          (sum, group) => sum + (group.actions || []).length,
+          0,
+        )
+        const accountPlanCount = this.accountTradingPlans().length
+        const executionDate = this.executionDate()
+        const planState = this.planState()
+        return [
+          {
+            label: '账户数据',
+            text: accountReady
+              ? '事实均在输入窗口内'
+              : accountIssueCount
+                ? `${accountIssueCount} 项需要更新`
+                : '等待事实校验',
+            className: accountReady ? 'is-ready' : accountIssueCount ? 'is-warn' : 'is-info',
+          },
+          {
+            label: '资金调拨',
+            text: fundingCount
+              ? `需调拨 ${fundingCount} 笔`
+              : planState === 'no-action'
+                ? '无需调拨'
+                : '等待计划生成',
+            className: fundingCount ? 'is-warn' : planState === 'no-action' ? 'is-ready' : 'is-info',
+          },
+          {
+            label: '账户交易计划',
+            text: accountPlanCount
+              ? `${accountPlanCount} 个账户计划已生成`
+              : planState === 'no-action'
+                ? '无需证券交易'
+                : '等待账户计划',
+            className: accountPlanCount || planState === 'no-action' ? 'is-ready' : 'is-info',
+          },
+          {
+            label: '执行窗口',
+            text: executionDate ? `适用 ${executionDate} 开盘执行` : '等待确认',
+            className: executionDate ? 'is-ready' : ['problem', 'needs-facts'].includes(planState) ? 'is-problem' : 'is-info',
+          },
+        ]
       },
       executionReadModel() {
         if (!this.hasCurrentGeneratedPlan()) return null
@@ -3273,7 +4002,7 @@
         const accountWaiting = !this.readiness
         return [
           {
-            label: '账户事实',
+            label: '账户数据',
             state: accountReady ? 'ready' : accountWaiting ? 'waiting' : 'blocked',
             text: accountReady ? '5 项事实均在输入窗口内' : accountWaiting ? '等待校验' : `${(this.readiness?.errors || []).length} 项需要更新`,
           },
@@ -3350,7 +4079,7 @@
         }
       },
       async generateOrders(strategy) {
-        if (!this.plan?.account) throw new Error('请先在账户页补齐账户事实')
+        if (!this.plan?.account) throw new Error('请先在账户页补齐账户数据')
         const response = await fetch(`/api/plan/${strategy}/size-orders`, { method: 'POST' })
         if (!response.ok) {
           const body = await response.json().catch(() => ({ detail: '订单生成失败' }))

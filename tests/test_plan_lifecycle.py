@@ -90,6 +90,28 @@ class TestPlanLifecycle(unittest.TestCase):
         self.assertEqual(saved["status"], plan_lifecycle.STALE)
         self.assertEqual(saved["error"]["code"], "PLAN_INPUTS_CHANGED")
 
+    def test_account_change_stales_running_plan_and_late_completion_cannot_revive_it(self):
+        plan_id = "plan-2026-08-05-deadbeef"
+        plan = {
+            "plan_date": "2026-08-05",
+            "generation": {
+                "plan_id": plan_id,
+                "plan_date": "2026-08-05",
+                "status": plan_lifecycle.RUNNING,
+                "stages": [],
+            },
+        }
+        self.assertTrue(plan_lifecycle.start(plan_id, "2026-08-05", plan))
+
+        plan_lifecycle.mark_stale()
+        completed = plan_lifecycle.complete(plan_id, plan)
+        plan_lifecycle.fail(plan_id, plan, {"code": "LATE_FAILURE"})
+
+        saved = plan_lifecycle.get_plan(plan_id)
+        self.assertFalse(completed)
+        self.assertEqual(saved["status"], plan_lifecycle.STALE)
+        self.assertEqual(saved["error"]["code"], "PLAN_INPUTS_CHANGED")
+
     def test_plan_id_format_documents_lifecycle_identity(self):
         plan_id = plan_lifecycle.new_plan_id("2026-08-05")
 

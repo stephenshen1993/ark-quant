@@ -117,7 +117,7 @@ def _context(summary: dict) -> dict:
         "b_purchase_limit": summary.get("b_purchase_limit", 0) or 0,
         "b_purchase_checked_at": summary.get("b_purchase_checked_at"),
         "b_purchase_source": summary.get("b_purchase_source"),
-        "total_assets": _amount(summary.get("total_assets")),
+        "total_assets": _nullable_amount(summary.get("total_assets")),
     }
 
 
@@ -143,7 +143,7 @@ def _account_fact(account_id: str, summary: dict) -> dict:
         ],
         "asset_classes": list(definition["asset_classes"]),
         "country_exposure": definition["country_exposure"],
-        "total": _amount(summary.get(fields["total"])),
+        "total": _nullable_amount(summary.get(fields["total"])),
         "cash": _nullable_amount(summary.get(fields["cash"])) if fields["cash"] else None,
         "available_cash": (
             _nullable_amount(summary.get(fields["available_cash"]))
@@ -212,7 +212,12 @@ def _portfolio_nodes(account_facts: list[dict]) -> list[dict]:
         node["account_ids"].append(account["id"])
         node["account_names"].append(account["name"])
         node["strategy_ids"].extend(account["strategy_ids"])
-        node["current_amount"] = round(node["current_amount"] + account["total"], 2)
+        if node["current_amount"] is not None:
+            node["current_amount"] = (
+                None
+                if account["total"] is None
+                else round(node["current_amount"] + account["total"], 2)
+            )
     for node in nodes.values():
         node["strategy_ids"] = list(dict.fromkeys(node["strategy_ids"]))
     return list(nodes.values())
@@ -238,8 +243,10 @@ def _top_portfolios(portfolio_nodes: list[dict]) -> list[dict]:
                 for child in children
                 for account_id in child["account_ids"]
             ],
-            "current_amount": round(
-                sum(child["current_amount"] for child in children), 2
+            "current_amount": (
+                None
+                if any(child["current_amount"] is None for child in children)
+                else round(sum(child["current_amount"] for child in children), 2)
             ),
         })
     return portfolios

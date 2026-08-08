@@ -16,6 +16,7 @@ STATIC_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 app.include_router(accounts.router)
+app.include_router(accounts.current_router)
 app.include_router(positions.router)
 app.include_router(rankings.router)
 app.include_router(plans.router)

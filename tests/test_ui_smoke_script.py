@@ -44,11 +44,12 @@ class TestUiSmokeScript(unittest.TestCase):
             '"wide": {"width": 1512, "height": 749}',
             '"desktop": {"width": 1440, "height": 1000}',
             '"narrow": {"width": 390, "height": 900}',
-            "今日计划",
-            "账户事实就绪度",
+            "今日状态",
+            "今日状态链",
+            "账户数据工作台",
             "更新日志内容",
             "planScenarioChecks",
-            "待补充账户事实",
+            "待更新账户数据",
             "正在生成完整计划",
             "今日无需操作",
             "今日需要操作",
@@ -60,13 +61,14 @@ class TestUiSmokeScript(unittest.TestCase):
             "scenario-stale",
             "scenario-failed",
             "readiness-error",
-            "无法确认账户事实",
+            "无法确认账户数据",
             "generateDisabled",
             "retryReadiness",
             "readinessRetry",
             "focusAccountId",
             "accountFocus",
             "executionBadgeVisible",
+            "stateChainExecutionReady",
             "orderEntryNarrowChecks",
             "plan.orderEntries.narrow",
             "noActionConclusion",
@@ -76,24 +78,17 @@ class TestUiSmokeScript(unittest.TestCase):
             "scenario.readiness.input_window.start",
             "scenario.readiness.input_window.end",
             "['动作', '证券代码与名称', '数量', '参考价', '估算金额']",
-            "accountFactScenarioChecks",
-            "summary-http-error",
-            "positions-http-error",
-            "quotes-http-error",
-            "quotes-network-error",
-            "empty-account",
-            "重新读取账户事实",
-            "maintenanceVisibleDuringFailure",
-            "unexpectedConsoleErrors",
-            "accountFactDateIdentityChecks",
-            "date-switch-dirty-gate",
-            "date-switch-loading-gate",
-            "date-switch-error-gate",
-            "save-in-progress.duplicateRequestCount",
-            "save-error-preserves-input",
-            "save-success-refresh.readiness",
-            "old fact rows",
-            "savedPayloads",
+            "accountDataScenarioChecks",
+            "accounts-http-error",
+            "account.readiness-error",
+            "failClosed",
+            "version-conflict",
+            "accountDataIdentityChecks",
+            "account-scoped-current-state",
+            "clearHoldingsPreservesCash",
+            "singleAccountSave",
+            "unsavedNavigationGuard",
+            "holdingsClearPayloads",
         ]:
             self.assertIn(literal, source)
 
@@ -226,6 +221,53 @@ class TestUiSmokeScript(unittest.TestCase):
             self.assertEqual(report["check"], "browser.cli")
             self.assertIn("browser command failed", report["error"])
             self.assertGreaterEqual(len(report["differences"]), 1)
+            self.assertEqual(report["differences"][0]["expected"], "exit code 0")
+            self.assertTrue((output_dir / "wide-failure.txt").exists())
+
+    def test_browser_cli_timeout_writes_structured_diagnostics(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            fake_cli = temp_path / "playwright-cli"
+            fake_cli.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/usr/bin/env python3
+                    import sys
+                    import time
+
+                    if "run-code" in sys.argv:
+                        time.sleep(2)
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake_cli.chmod(0o755)
+            output_dir = temp_path / "artifacts"
+            env = {
+                **os.environ,
+                "ARK_UI_SMOKE_CLI_TIMEOUT_SECONDS": "0.1",
+                "PATH": f"{temp_path}:{os.environ.get('PATH', '')}",
+            }
+
+            result = subprocess.run(
+                [
+                    str(SCRIPT),
+                    "--base-url",
+                    "http://browser-boundary.invalid",
+                    "--viewport",
+                    "wide",
+                    "--output-dir",
+                    str(output_dir),
+                ],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            report = json.loads((output_dir / "wide-failure.json").read_text(encoding="utf-8"))
+            self.assertEqual(report["check"], "browser.cli")
+            self.assertIn("playwright-cli timed out after 0.1s", report["error"])
             self.assertEqual(report["differences"][0]["expected"], "exit code 0")
             self.assertTrue((output_dir / "wide-failure.txt").exists())
 
