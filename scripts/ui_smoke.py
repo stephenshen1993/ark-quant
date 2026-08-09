@@ -699,6 +699,18 @@ def browser_check_code(
             const accountRailById = accountId => accountPage
               .locator(`.account-current-rail-row[data-account-id="${{accountId}}"]`)
               .first();
+            const accountMobileSelector = accountPage.locator('.account-current-mobile-selector select');
+            const chooseAccount = async accountId => {{
+              if ({json.dumps(viewport_name)} === 'narrow') {{
+                await accountMobileSelector.selectOption(accountId);
+              }} else {{
+                await accountRailById(accountId).click();
+              }}
+              await page.waitForFunction(id => {{
+                const workspace = document.querySelector('[aria-label="账户数据工作台"]');
+                return window.Alpine?.$data(workspace)?.selectedId === id;
+              }}, accountId, {{ timeout: 10000 }});
+            }};
             const selectedHeading = accountPage.locator('.account-current-editor h2');
             await selectedHeading.waitFor({{ state: 'visible', timeout: 10000 }});
             const [accountShellBox, accountLayoutBox] = await Promise.all([
@@ -718,6 +730,7 @@ def browser_check_code(
               accountCount: await accountRailRows.count(),
               selectedAccount: await selectedHeading.innerText(),
               visibleFactDateInputs: await accountPage.locator('input[type="date"]:visible').count(),
+              mobileSelectorVisible: await accountMobileSelector.isVisible(),
               shellStyle: accountShellStyle,
             }};
             const accountDifferences = [];
@@ -743,6 +756,13 @@ def browser_check_code(
             }}
             if (accountMetrics.visibleFactDateInputs !== 0) {{
               accountDifferences.push(difference('account.globalFactDateInputs', 0, accountMetrics.visibleFactDateInputs));
+            }}
+            if (accountMetrics.mobileSelectorVisible !== ({json.dumps(viewport_name)} === 'narrow')) {{
+              accountDifferences.push(difference(
+                'account.mobileSelector',
+                {json.dumps(viewport_name)} === 'narrow',
+                accountMetrics.mobileSelectorVisible,
+              ));
             }}
             accountMetrics.holdingSortOrder = await accountPage.evaluate(element => {{
               const component = window.Alpine.$data(element);
@@ -834,8 +854,7 @@ def browser_check_code(
               ));
             }}
 
-            const cashRail = accountRailById('cash');
-            await cashRail.click();
+            await chooseAccount('cash');
             const cashHeading = accountPage.locator('.account-current-editor h2');
             await cashHeading.getByText('资金账户', {{ exact: true }}).waitFor({{ state: 'visible', timeout: 10000 }});
             const cashAmount = accountPage.getByLabel('资金余额', {{ exact: true }});
@@ -849,7 +868,11 @@ def browser_check_code(
               .waitFor({{ state: 'visible', timeout: 10000 }});
             const currentCashAmount = Number(await cashAmount.inputValue());
             await cashAmount.fill(String(currentCashAmount + 1));
-            await accountRailById('cb').click();
+            if ({json.dumps(viewport_name)} === 'narrow') {{
+              await accountMobileSelector.selectOption('cb');
+            }} else {{
+              await accountRailById('cb').click();
+            }}
             const unsavedAlert = accountPage.getByRole('alert').filter({{ hasText: '当前账户有未保存修改' }});
             await unsavedAlert.waitFor({{ state: 'visible', timeout: 10000 }});
             await unsavedAlert.getByRole('button', {{ name: '继续编辑', exact: true }}).click();
@@ -1047,7 +1070,15 @@ def browser_check_code(
             const conflictWorkspace = conflictPage.getByRole('region', {{ name: '账户数据工作台' }});
             await conflictWorkspace.getByRole('heading', {{ name: '账户数据', level: 1 }})
               .waitFor({{ state: 'visible', timeout: 10000 }});
-            await conflictWorkspace.locator('.account-current-rail-row[data-account-id="cash"]').first().click();
+            if ({json.dumps(viewport_name)} === 'narrow') {{
+              await conflictWorkspace.locator('.account-current-mobile-selector select').selectOption('cash');
+            }} else {{
+              await conflictWorkspace.locator('.account-current-rail-row[data-account-id="cash"]').first().click();
+            }}
+            await conflictPage.waitForFunction(() => {{
+              const workspace = document.querySelector('[aria-label="账户数据工作台"]');
+              return window.Alpine?.$data(workspace)?.selectedId === 'cash';
+            }}, {{ timeout: 10000 }});
             const conflictAmount = conflictWorkspace.getByLabel('资金余额', {{ exact: true }});
             const conflictCurrent = await conflictPage.request
               .get({json.dumps(base_url + '/api/accounts/cash')})
@@ -1080,8 +1111,8 @@ def browser_check_code(
               globalFactDateInputs: accountMetrics.visibleFactDateInputs,
               changedPayloads,
             }});
-            await accountRailById('changqian').click();
-            await cashRail.click();
+            await chooseAccount('changqian');
+            await chooseAccount('cash');
             const accountIntegrity = await assertPageIntegrity('account', main);
             await main.evaluate(element => element.scrollTo({{ top: 0, left: 0 }}));
             await accountHeading.scrollIntoViewIfNeeded();
@@ -1725,9 +1756,19 @@ def browser_check_code(
               }};
               await page.route('**/api/plan/readiness', readinessHandler);
               await page.route('**/api/plan/generated**', generationHandler);
+              await page.goto('about:blank', {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
               await page.goto(
                 {json.dumps(base_url)} + `?ui_scenario=${{scenario.name}}#today`,
                 {{ waitUntil: 'domcontentloaded', timeout: 15000 }},
+              );
+              await page.waitForFunction(() => window.Alpine, {{ timeout: 10000 }});
+              await page.evaluate(() => {{
+                window.Alpine.store('page', 'today');
+                history.replaceState(null, '', `${{window.location.pathname}}${{window.location.search}}#today`);
+              }});
+              await page.waitForFunction(
+                () => window.Alpine?.store('page') === 'today',
+                {{ timeout: 10000 }},
               );
               await page.waitForFunction(
                 () => Array.from(document.querySelectorAll('[role="region"][aria-label="今日状态工作台"]'))
@@ -1742,7 +1783,8 @@ def browser_check_code(
               const scenarioAccountPlans = scenarioPage.locator('.plan-account-card');
               const scenarioExecutionBadge = scenarioPage.locator('.plan-execution-badge');
               const scenarioStateChain = scenarioPage.getByRole('region', {{ name: '今日状态链' }});
-              const generateButton = scenarioPage.getByRole('button', {{ name: '生成完整计划' }});
+              const generateButton = scenarioPage.locator('.plan-generate-action');
+              const generateButtonText = (await generateButton.innerText()).trim();
               const actualTitle = await scenarioHero.getByRole('heading', {{ level: 2 }}).innerText();
               const executionDossierVisible = await scenarioDossier.isVisible();
               const executionDossierCount = await scenarioDossier.count();
@@ -1870,6 +1912,16 @@ def browser_check_code(
                   generateDisabled,
                 ));
               }}
+              const expectedGenerateText = ['action', 'future-funding', 'no-action'].includes(scenario.name)
+                ? '重新生成计划'
+                : '生成完整计划';
+              if (!generateDisabled && generateButtonText !== expectedGenerateText) {{
+                scenarioDifferences.push(difference(
+                  `plan.scenarios.${{scenario.name}}.generateButtonText`,
+                  expectedGenerateText,
+                  generateButtonText,
+                ));
+              }}
               if (scenario.name === 'action' && accountPlanCount > 0) {{
                 const firstAccountPlan = scenarioAccountPlans.first();
                 await firstAccountPlan.locator(':scope > summary').click();
@@ -1991,24 +2043,36 @@ def browser_check_code(
                 const accountId = scenario.focusAccountId;
                 await page.waitForFunction(
                   expected => {{
+                    const workspace = document.querySelector('[aria-label="账户数据工作台"]');
+                    const component = window.Alpine?.$data(workspace);
+                    const mobileSelector = document.querySelector('.account-current-mobile-selector select');
                     const target = document.querySelector(
                       `.account-current-rail-row[data-account-id="${{expected}}"][aria-current="true"]`,
                     );
                     const editor = document.querySelector('.account-current-editor');
                     return window.location.hash === '#account'
-                      && Boolean(target?.checkVisibility())
+                      && component?.selectedId === expected
+                      && (
+                        Boolean(target?.checkVisibility())
+                        || (Boolean(mobileSelector?.checkVisibility()) && mobileSelector.value === expected)
+                      )
                       && Boolean(editor?.checkVisibility());
                   }},
                   accountId,
                   {{ timeout: 10000 }},
                 );
                 const focusResult = await page.evaluate(expected => {{
+                  const workspace = document.querySelector('[aria-label="账户数据工作台"]');
+                  const component = window.Alpine?.$data(workspace);
+                  const mobileSelector = document.querySelector('.account-current-mobile-selector select');
                   const target = document.querySelector(
                     `.account-current-rail-row[data-account-id="${{expected}}"][aria-current="true"]`,
                   );
                   const editor = document.querySelector('.account-current-editor');
                   return {{
-                    visible: Boolean(target?.checkVisibility()),
+                    selectedId: component?.selectedId,
+                    visible: Boolean(target?.checkVisibility())
+                      || (Boolean(mobileSelector?.checkVisibility()) && mobileSelector.value === expected),
                     editorVisible: Boolean(editor?.checkVisibility()),
                   }};
                 }}, accountId);

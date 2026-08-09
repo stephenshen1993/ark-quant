@@ -98,6 +98,8 @@ class TestUiSmokeScript(unittest.TestCase):
             "holdingsClearPayloads",
             "account.holdingSortOrder",
             "sortPositionsByMarketValue",
+            "account.mobileSelector",
+            "重新生成计划",
         ]:
             self.assertIn(literal, source)
 

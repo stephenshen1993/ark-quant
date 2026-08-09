@@ -44,10 +44,13 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("padding: 30px 18px 72px", self.html)
 
     def test_regular_flow_has_one_complete_plan_action(self):
-        self.assertEqual(self.html.count(">生成完整计划<"), 1)
         self.assertNotIn("保存并生成计划", self.html)
         self.assertNotIn("运行策略", self.html)
         self.assertIn('@click="generateCompletePlan()"', self.html)
+        self.assertIn("generatePlanButtonText()", self.html)
+        self.assertIn("hasCurrentGeneratedPlan() ? '重新生成计划' : '生成完整计划'", self.html)
+        self.assertIn("当前已有可用计划。重新生成可能改变调拨和交易安排，确认继续？", self.html)
+        self.assertIn("class=\"plan-generate-action", self.html)
 
     def test_plan_scenarios_use_plain_language_and_hide_exceptions(self):
         self.assertIn("日常轮动", self.html)
@@ -79,6 +82,13 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn("function accountPage()", self.html)
         self.assertNotIn("saveAllAccountFacts", self.html)
 
+    def test_account_mobile_selection_is_explicit_and_respects_unsaved_guard(self):
+        self.assertIn("account-current-mobile-selector", self.html)
+        self.assertIn("aria-label=\"选择当前账户\"", self.html)
+        self.assertIn("selectAccountFromControl($event.target.value, $event.target)", self.html)
+        self.assertIn("control.value = this.selectedId", self.html)
+        self.assertIn(".account-current-rail {\n      display: none;", self.html)
+
     def test_account_current_holdings_sort_by_market_value_descending(self):
         self.assertIn("列表按持仓市值从高到低排列", self.html)
         self.assertIn("sortPositionsByMarketValue(positions)", self.html)
@@ -90,6 +100,18 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("if (leftValue === null) return 1", body)
         self.assertIn("if (rightValue === null) return -1", body)
         self.assertIn("localeCompare", body)
+
+    def test_new_security_code_lookup_gives_inline_feedback(self):
+        self.assertIn("@input=\"handleSecurityCodeInput(row)\"", self.html)
+        self.assertIn("if (/^\\d{6}$/.test(code)) this.lookupSecurity(row)", self.html)
+        self.assertIn("正在识别证券…", self.html)
+        self.assertIn("未能识别证券，保存后系统仍会按代码尝试估值", self.html)
+        self.assertIn("securityHelperText(row)", self.html)
+
+    def test_saved_account_can_be_reloaded_for_recheck(self):
+        self.assertIn("重新读取核对", self.html)
+        self.assertIn("async reloadCurrentAccount()", self.html)
+        self.assertIn("已重新读取当前账户数据。", self.html)
 
     def test_account_workspace_combines_current_data_with_plan_input_readiness(self):
         self.assertIn("workStatusStore().load({ force:", self.html)

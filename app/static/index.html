@@ -687,6 +687,9 @@
     color: var(--ark-muted);
     font-size: 12px;
   }
+  .account-current-mobile-selector {
+    display: none;
+  }
   .account-current-editor {
     min-width: 0;
     padding: 30px 32px 36px;
@@ -920,6 +923,8 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .account-current-security span.is-warning,
+  .account-current-security span.is-error { color: var(--ark-warn); }
   .account-current-holding-row label { text-align: right; }
   .account-current-holding-row label > span { display: none; }
   .account-current-holding-row label input {
@@ -1019,6 +1024,14 @@
   }
   .account-current-primary:hover { background: #263541; }
   .account-current-primary:disabled { cursor: not-allowed; opacity: 0.42; }
+  .plan-generate-action.is-regenerate {
+    border: 1px solid var(--ark-line);
+    background: var(--ark-panel);
+    color: var(--ark-text);
+  }
+  .plan-generate-action.is-regenerate:hover {
+    background: var(--ark-paper);
+  }
   .account-current-validation { color: var(--ark-problem) !important; }
   .account-current-review-footnote { color: var(--ark-soft) !important; font-size: 9px !important; }
   .account-current-dialog-backdrop {
@@ -1068,14 +1081,26 @@
     .account-current-header { align-items: flex-start; }
     .account-current-overview { max-width: none; text-align: left; }
     .account-current-layout { display: block; overflow: visible; }
+    .account-current-mobile-selector {
+      display: grid;
+      gap: 6px;
+      margin: 0 0 12px;
+      color: var(--ark-muted);
+      font-size: 11px;
+      font-weight: 650;
+    }
+    .account-current-mobile-selector select {
+      min-height: 44px;
+      width: 100%;
+      border: 1px solid var(--ark-line);
+      border-radius: 8px;
+      background: var(--ark-panel);
+      color: var(--ark-text);
+      font-size: 15px;
+      font-weight: 650;
+    }
     .account-current-rail {
-      display: flex;
-      gap: 0;
-      overflow-x: auto;
-      padding: 0;
-      border-right: 0;
-      border-bottom: 1px solid var(--ark-line);
-      scrollbar-width: thin;
+      display: none;
     }
     .account-current-rail-heading { display: none; }
     .account-current-rail-row {
@@ -1624,6 +1649,15 @@
         <button type="button" @click="retryReadiness()">重新确认</button>
       </section>
 
+      <label class="account-current-mobile-selector">
+        当前账户
+        <select :value="selectedId" @change="selectAccountFromControl($event.target.value, $event.target)" aria-label="选择当前账户">
+          <template x-for="account in accounts" :key="'mobile-' + account.account_id">
+            <option :value="account.account_id" x-text="account.label + ' · ' + statusText(account)"></option>
+          </template>
+        </select>
+      </label>
+
       <section class="account-current-layout" :aria-busy="loading ? 'true' : 'false'">
         <nav class="account-current-rail" aria-label="账户列表">
           <div class="account-current-rail-heading">
@@ -1698,7 +1732,10 @@
             <button type="button" @click="reloadSelected()">重新读取最新数据</button>
           </section>
           <section x-show="saveError" class="account-current-note is-error" role="alert" x-text="saveError"></section>
-          <section x-show="saveSuccess" class="account-current-note is-success" aria-live="polite" x-text="saveSuccess"></section>
+          <section x-show="saveSuccess" class="account-current-note is-success" aria-live="polite">
+            <span x-text="saveSuccess"></span>
+            <button type="button" @click="reloadCurrentAccount()">重新读取核对</button>
+          </section>
 
           <div x-show="selected?.kind === 'balance'" class="account-current-balance-editor">
             <label for="account-current-amount">资金余额</label>
@@ -1755,11 +1792,11 @@
                         maxlength="6"
                         x-model="row.code"
                         :readonly="!row.isNew"
-                        @input="markEdited()"
+                        @input="handleSecurityCodeInput(row)"
                         @change="lookupSecurity(row)"
                         aria-label="证券代码"
                         placeholder="6 位代码">
-                      <span x-text="row.name || (row.isNew ? '等待识别' : '名称暂不可用')"></span>
+                      <span :class="securityStatusClass(row)" x-text="securityHelperText(row)"></span>
                     </div>
                     <label><span>数量</span><input type="number" min="0" step="1" x-model="row.quantity" @input="markEdited()" aria-label="持仓数量"></label>
                     <span class="account-current-derived" x-text="fmtPrice(row.price)"></span>
@@ -1872,8 +1909,12 @@
           x-text="temperatureLabel()"></span>
         <span x-show="temperatureUpdatedAt()" class="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2"
           x-text="'更新 ' + temperatureUpdatedAt()"></span>
-        <button @click="generateCompletePlan()" :disabled="!canGenerateCompletePlan()" class="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 disabled:bg-gray-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">
-          <span x-show="!generatingPlan">生成完整计划</span><span x-show="generatingPlan">正在生成完整计划…</span>
+        <button
+          @click="generateCompletePlan()"
+          :disabled="!canGenerateCompletePlan()"
+          :class="hasCurrentGeneratedPlan() ? 'is-regenerate' : ''"
+          class="plan-generate-action px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 disabled:bg-gray-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900"
+          x-text="generatePlanButtonText()">
         </button>
       </div>
     </div>
@@ -2799,6 +2840,13 @@
         }
         this.openAccount(accountId)
       },
+      selectAccountFromControl(accountId, control) {
+        const before = this.selectedId
+        this.selectAccount(accountId)
+        if (this.selectedId === before && control) {
+          this.$nextTick(() => { control.value = this.selectedId })
+        }
+      },
       discardPendingChange() {
         const accountId = this.pendingAccountId
         const page = this.pendingPage
@@ -2881,13 +2929,20 @@
       },
       addPosition() {
         this.draft.positions.push({
-          code: '', quantity: '', name: '', price: null, _key: ++this._uid, isNew: true,
+          code: '', quantity: '', name: '', price: null, lookupStatus: '', lookupError: '', _key: ++this._uid, isNew: true,
         })
         this.markEdited()
         this.$nextTick(() => {
           const inputs = document.querySelectorAll('.account-current-security input:not([readonly])')
           inputs[inputs.length - 1]?.focus()
         })
+      },
+      handleSecurityCodeInput(row) {
+        this.markEdited()
+        row.lookupStatus = ''
+        row.lookupError = ''
+        const code = String(row.code || '').trim()
+        if (/^\d{6}$/.test(code)) this.lookupSecurity(row)
       },
       removePosition(row) {
         const index = this.draft.positions.indexOf(row)
@@ -2896,17 +2951,35 @@
       },
       async lookupSecurity(row) {
         const code = String(row.code || '').trim()
-        if (!/^\d{1,6}$/.test(code) || !this.selectedId) return
+        if (!/^\d{1,6}$/.test(code) || !this.selectedId) {
+          row.lookupStatus = ''
+          row.lookupError = ''
+          return
+        }
+        row.lookupStatus = 'loading'
+        row.lookupError = ''
         try {
           const response = await fetch(`/api/positions/${this.selectedId}/quote?code=${encodeURIComponent(code)}`)
-          if (!response.ok) return
+          if (!response.ok) throw new Error(`行情读取失败 (${response.status})`)
           const quote = await response.json()
           row.code = quote.code || code.padStart(6, '0')
           row.name = quote.name || ''
           row.price = quote.price ?? null
+          row.lookupStatus = quote.price == null ? 'warning' : 'ready'
         } catch (_) {
           row.code = code.padStart(6, '0')
+          row.lookupStatus = 'error'
+          row.lookupError = '未能识别证券，保存后系统仍会按代码尝试估值'
         }
+      },
+      securityHelperText(row) {
+        if (row.lookupStatus === 'loading') return '正在识别证券…'
+        if (row.lookupStatus === 'error') return row.lookupError || '识别失败'
+        if (row.lookupStatus === 'warning') return row.name ? `${row.name} · 价格暂不可用` : '价格暂不可用'
+        return row.name || (row.isNew ? '输入 6 位代码后自动识别' : '名称暂不可用')
+      },
+      securityStatusClass(row) {
+        return ['warning', 'error'].includes(row.lookupStatus) ? `is-${row.lookupStatus}` : ''
       },
       numberOrNull(value) {
         if (value === '' || value === null || value === undefined) return null
@@ -3127,6 +3200,15 @@
           this.saving = false
         }
       },
+      async reloadCurrentAccount() {
+        if (!this.selectedId) return
+        const accountId = this.selectedId
+        this.pendingFocusId = accountId
+        await this.load({ forceReadiness: true })
+        if (this.selectedId === accountId && !this.loadError) {
+          this.saveSuccess = '已重新读取当前账户数据。'
+        }
+      },
       reviewChanges() {
         if (!this.selected || !this.originalRaw) return []
         const before = this.originalRaw
@@ -3324,6 +3406,12 @@
           && this.readiness?.status === 'ready'
           && this.latestGeneration?.status !== 'running'
       },
+      generatePlanButtonText() {
+        if (this.generatingPlan) {
+          return this.hasCurrentGeneratedPlan() ? '正在重新生成计划…' : '正在生成完整计划…'
+        }
+        return this.hasCurrentGeneratedPlan() ? '重新生成计划' : '生成完整计划'
+      },
 
       async loadTransferPlan(refreshTemperature = false) {
         const url = refreshTemperature ? '/api/plan/transfer?refresh_temperature=true' : '/api/plan/transfer'
@@ -3413,6 +3501,10 @@
 
       async generateCompletePlan() {
         if (!this.canGenerateCompletePlan()) return
+        if (
+          this.hasCurrentGeneratedPlan()
+          && !window.confirm('当前已有可用计划。重新生成可能改变调拨和交易安排，确认继续？')
+        ) return
         this.loadingPlan = true
         this.generatingPlan = true
         this.planError = ''
