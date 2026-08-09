@@ -33,6 +33,9 @@ class TestAccountCurrentState(unittest.TestCase):
         self.assertEqual([item["account_id"] for item in accounts], [
             "stock", "cb", "cash", "changqian", "overseas",
         ])
+        labels = {item["account_id"]: item["label"] for item in accounts}
+        self.assertEqual(labels["changqian"], "国内长钱")
+        self.assertEqual(labels["overseas"], "海外长钱")
         self.assertTrue(all(item["record_state"] == "missing" for item in accounts))
         self.assertTrue(all(item["version"] is None for item in accounts))
 

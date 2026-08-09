@@ -211,7 +211,7 @@ class TestPlansApi(unittest.TestCase):
             item for item in readiness["accounts"]
             if item["account_id"] == "overseas"
         )
-        self.assertEqual(overseas["account_name"], "海外长钱投顾组合")
+        self.assertEqual(overseas["account_name"], "海外长钱")
         self.assertEqual(overseas["portfolio_id"], "B")
         self.assertEqual(overseas["status"], "missing")
         self.assertEqual(overseas["snapshot_date"], None)
@@ -593,7 +593,7 @@ class TestPlansApi(unittest.TestCase):
             if item["input"] == "account.overseas"
         )
         self.assertEqual(overseas_error["kind"], "account")
-        self.assertEqual(overseas_error["account_name"], "海外长钱投顾组合")
+        self.assertEqual(overseas_error["account_name"], "海外长钱")
         self.assertEqual(overseas_error["portfolio_id"], "B")
 
     def test_order_sizing_stops_when_complete_funding_inputs_are_missing(self):

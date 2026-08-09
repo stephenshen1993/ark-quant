@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from functools import lru_cache
+import json
+from pathlib import Path
 
 
 AVAILABILITY_LABELS = {
@@ -24,6 +27,21 @@ FUNDING_STATE_ORDER = {
 
 SELL_ACTIONS = {"SELL", "TRIM"}
 BUY_ACTIONS = {"BUY", "ADD"}
+ACTION_EXECUTION_ORDER = {
+    "SELL": 0,
+    "TRIM": 1,
+    "BUY": 2,
+    "ADD": 3,
+}
+
+
+@lru_cache(maxsize=1)
+def _cb_buy_price_ceiling() -> float:
+    """Return the strategy's configured hard execution ceiling."""
+    config_path = Path(__file__).resolve().parents[1] / "config" / "cb_rotation.json"
+    with config_path.open(encoding="utf-8") as handle:
+        config = json.load(handle)
+    return float(config["filters"]["max_cb_price"])
 
 
 def build_execution_read_model(
@@ -45,6 +63,7 @@ def build_execution_read_model(
             execution_date,
         ),
         "account_trading_plans": _account_trading_plans(
+            plan_date=plan_date,
             account_read_model=account_read_model,
             funding_actions=funding_actions,
             sections=(
@@ -143,6 +162,7 @@ def _raw_funding_actions(fund_transfer: dict | None) -> list[dict]:
 
 def _account_trading_plans(
     *,
+    plan_date: str,
     account_read_model: dict | None,
     funding_actions: list[dict],
     sections: tuple[dict, ...],
@@ -199,6 +219,15 @@ def _account_trading_plans(
             for action, _, target_account_id in related_actions
             if target_account_id == account_id
         ]
+        incoming_actions = [
+            _account_prerequisite_action(
+                action,
+                account_read_model=account_read_model,
+                execution_date=section.get("trade_date"),
+            )
+            for action, _, target_account_id in related_actions
+            if target_account_id == account_id
+        ]
         expected_sell = _money(sum(
             order["estimated_amount"]
             for order in orders
@@ -237,10 +266,14 @@ def _account_trading_plans(
         )
         phases = [
             {"phase": "sell", "orders": [
-                order for order in orders if order["action"] in SELL_ACTIONS
+                order
+                for order in sorted(orders, key=_order_execution_key)
+                if order["action"] in SELL_ACTIONS
             ]},
             {"phase": "buy", "orders": [
-                order for order in orders if order["action"] in BUY_ACTIONS
+                order
+                for order in sorted(orders, key=_order_execution_key)
+                if order["action"] in BUY_ACTIONS
             ]},
         ]
         phases = [phase for phase in phases if phase["orders"]]
@@ -249,8 +282,14 @@ def _account_trading_plans(
             "account_id": account_id,
             "account_name": account.get("name") or account_id,
             "portfolio_name": portfolio.get("name") or "",
+            "strategy_id": strategy,
             "strategy_name": (account.get("strategy_names") or [strategy])[0],
             "trade_date": section.get("trade_date"),
+            "execution_guardrails": _execution_guardrails(
+                strategy=strategy,
+                plan_date=plan_date,
+                section=section,
+            ),
             "funding": {
                 "state": state,
                 "available_on": available_on,
@@ -258,6 +297,7 @@ def _account_trading_plans(
                 "display_date": display_date,
                 "transfer_in": transfer_in,
                 "transfer_out": transfer_out,
+                "incoming_actions": incoming_actions,
                 "blocked_reason": (
                     "计划后预计资金余额不足" if state == "blocked" else None
                 ),
@@ -292,6 +332,61 @@ def _account_trading_plans(
     )
 
 
+def _account_prerequisite_action(
+    action: dict,
+    *,
+    account_read_model: dict | None,
+    execution_date: str | None,
+) -> dict:
+    source_id, source_name = _account_identity(action.get("source"), account_read_model)
+    target_id, target_name = _account_identity(action.get("target"), account_read_model)
+    available_date = _availability_date(
+        action.get("available_on"),
+        execution_date,
+        action.get("available_date"),
+    )
+    return {
+        "source_account_id": source_id,
+        "source_account_name": source_name,
+        "target_account_id": target_id,
+        "target_account_name": target_name,
+        "amount": _money(action.get("amount")),
+        "availability": action.get("available_on"),
+        "available_date": available_date,
+        "display_date": available_date or "日期待确认",
+    }
+
+
+def _execution_guardrails(
+    *,
+    strategy: str,
+    plan_date: str,
+    section: dict,
+) -> dict:
+    rules = []
+    if strategy == "cb":
+        rules.append({
+            "kind": "buy_price_ceiling",
+            "applies_to": ["BUY", "ADD"],
+            "comparison": "strictly_below",
+            "max_price": _cb_buy_price_ceiling(),
+            "check": "at_execution",
+        })
+    elif strategy == "stock":
+        from strategies.stock_smallcap.target_sizing import MAX_SINGLE_WEIGHT
+
+        rules.append({
+            "kind": "single_position_cap",
+            "max_weight": float(MAX_SINGLE_WEIGHT),
+            "check": "validated_at_generation",
+        })
+    return {
+        "price_basis_date": section.get("data_date") or plan_date,
+        "reference_price_is_limit": False,
+        "rules": rules,
+    }
+
+
 def _normalize_order(strategy: str, order: dict) -> dict | None:
     action = order.get("action")
     quantity = float(order.get("delta_shares", order.get("shares", 0)) or 0)
@@ -302,15 +397,36 @@ def _normalize_order(strategy: str, order: dict) -> dict | None:
     code = order.get("bond_code" if is_cb else "stock_code") or ""
     name = order.get("bond_name" if is_cb else "stock_name") or ""
     price = order.get("price")
+    current_quantity = _quantity_or_none(order.get("current_shares"))
+    target_quantity = _quantity_or_none(order.get("target_shares"))
     return {
         "action": action,
+        "execution_priority": ACTION_EXECUTION_ORDER[action],
         "code": code,
         "name": name,
         "quantity": abs(quantity),
+        "current_quantity": current_quantity,
+        "target_quantity": target_quantity,
         "unit": "张" if is_cb else "股",
         "reference_price": round(float(price), 3) if price is not None else None,
+        "max_execution_price": (
+            _cb_buy_price_ceiling()
+            if is_cb and action in BUY_ACTIONS
+            else None
+        ),
         "estimated_amount": amount,
     }
+
+
+def _order_execution_key(order: dict) -> int:
+    return int(order.get("execution_priority", ACTION_EXECUTION_ORDER[order["action"]]))
+
+
+def _quantity_or_none(value: object) -> int | float | None:
+    if value is None:
+        return None
+    quantity = float(value)
+    return int(quantity) if quantity.is_integer() else quantity
 
 
 def _funding_state(

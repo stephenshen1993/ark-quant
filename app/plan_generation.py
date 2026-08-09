@@ -22,7 +22,13 @@ def preview_current_plan(refresh_temperature: bool = False) -> dict:
 
 
 def get_generated_plan(plan_id: str) -> dict | None:
-    return plan_lifecycle.get_plan(plan_id)
+    record = plan_lifecycle.get_plan(plan_id)
+    if record is None:
+        return None
+    plan = record.get("plan")
+    if not isinstance(plan, dict):
+        return record
+    return {**record, "plan": plan_service.hydrate_execution_read_model(plan)}
 
 
 def generate_complete_plan(

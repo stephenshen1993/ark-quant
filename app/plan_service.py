@@ -32,6 +32,25 @@ def current_account_summary() -> dict | None:
     return account_current_state.build_current_account_summary()
 
 
+def hydrate_execution_read_model(plan: dict) -> dict:
+    """Rebuild derived execution UX fields for stored plans without mutating history."""
+    if not isinstance(plan, dict):
+        return plan
+    required = ("plan_date", "account_read_model", "fund_transfer", "cb", "stock")
+    if any(key not in plan for key in required):
+        return plan
+    return {
+        **plan,
+        "execution_read_model": build_execution_read_model(
+            plan_date=plan["plan_date"],
+            account_read_model=plan.get("account_read_model"),
+            fund_transfer=plan.get("fund_transfer"),
+            cb=plan.get("cb"),
+            stock=plan.get("stock"),
+        ),
+    }
+
+
 def build_plan_readiness() -> dict:
     market_temperature = _market_temperature(refresh=False)
     plan_date = market_temperature.updated_at[:10]

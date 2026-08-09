@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 import unittest
 
 from app.plan_execution_read_model import build_execution_read_model
@@ -33,7 +35,7 @@ class TestPlanExecutionReadModel(unittest.TestCase):
                 },
                 {
                     "id": "overseas",
-                    "name": "海外长钱投顾组合",
+                    "name": "海外长钱",
                     "portfolio_id": "B",
                     "strategy_names": [],
                     "available_cash": None,
@@ -150,7 +152,7 @@ class TestPlanExecutionReadModel(unittest.TestCase):
             [
                 ("cash", "资金账户", "cb", "华泰账户", 1200.0),
                 ("stock", "广发账户", "cash", "资金账户", 800.0),
-                ("cash", "资金账户", "overseas", "海外长钱投顾组合", 3000.0),
+                ("cash", "资金账户", "overseas", "海外长钱", 3000.0),
             ],
         )
         self.assertEqual(
@@ -181,6 +183,71 @@ class TestPlanExecutionReadModel(unittest.TestCase):
         )
 
         self.assertIsNone(result["funding_plan"])
+
+    def test_account_orders_are_sorted_by_execution_priority(self):
+        result = build_execution_read_model(
+            plan_date="2026-08-05",
+            account_read_model=self.account_read_model,
+            fund_transfer={"top_level": {"executed_actions": [], "outflows": []}},
+            cb={"trade_date": "2026-08-06", "orders": [], "summary": None},
+            stock={
+                "trade_date": "2026-08-06",
+                "summary": {"starting_cash": 1000.0},
+                "orders": [
+                    {
+                        "action": "ADD",
+                        "stock_code": "600004",
+                        "stock_name": "加仓股票",
+                        "current_shares": 100,
+                        "target_shares": 200,
+                        "shares": 100,
+                        "price": 8.0,
+                        "amount": 800.0,
+                    },
+                    {
+                        "action": "BUY",
+                        "stock_code": "600003",
+                        "stock_name": "建仓股票",
+                        "current_shares": 0,
+                        "target_shares": 100,
+                        "shares": 100,
+                        "price": 7.0,
+                        "amount": 700.0,
+                    },
+                    {
+                        "action": "TRIM",
+                        "stock_code": "600002",
+                        "stock_name": "减仓股票",
+                        "current_shares": 200,
+                        "target_shares": 100,
+                        "shares": -100,
+                        "price": 6.0,
+                        "amount": 600.0,
+                    },
+                    {
+                        "action": "SELL",
+                        "stock_code": "600001",
+                        "stock_name": "清仓股票",
+                        "current_shares": 100,
+                        "target_shares": 0,
+                        "shares": -100,
+                        "price": 5.0,
+                        "amount": 500.0,
+                    },
+                ],
+            },
+        )
+
+        plan = result["account_trading_plans"][0]
+        orders = [order for phase in plan["phases"] for order in phase["orders"]]
+        self.assertEqual(
+            [order["action"] for order in orders],
+            ["SELL", "TRIM", "BUY", "ADD"],
+        )
+        self.assertEqual(
+            [order["execution_priority"] for order in orders],
+            [0, 1, 2, 3],
+        )
 
     def test_builds_account_plans_in_funding_prerequisite_order(self):
         fund_transfer = {
@@ -218,6 +285,8 @@ class TestPlanExecutionReadModel(unittest.TestCase):
                         "action": "SELL",
                         "bond_code": "110001",
                         "bond_name": "测试转债甲",
+                        "current_shares": 10,
+                        "target_shares": 0,
                         "delta_shares": -10,
                         "price": 50.0,
                         "amount": 500.0,
@@ -226,6 +295,8 @@ class TestPlanExecutionReadModel(unittest.TestCase):
                         "action": "BUY",
                         "bond_code": "110002",
                         "bond_name": "测试转债乙",
+                        "current_shares": 0,
+                        "target_shares": 1,
                         "delta_shares": 1,
                         "price": 100.0,
                         "amount": 100.0,
@@ -240,6 +311,8 @@ class TestPlanExecutionReadModel(unittest.TestCase):
                         "action": "TRIM",
                         "stock_code": "600001",
                         "stock_name": "测试股票甲",
+                        "current_shares": 200,
+                        "target_shares": 100,
                         "shares": -100,
                         "price": 5.0,
                         "amount": 500.0,
@@ -248,6 +321,8 @@ class TestPlanExecutionReadModel(unittest.TestCase):
                         "action": "ADD",
                         "stock_code": "600002",
                         "stock_name": "测试股票乙",
+                        "current_shares": 100,
+                        "target_shares": 200,
                         "shares": 100,
                         "price": 9.0,
                         "amount": 900.0,
@@ -273,6 +348,19 @@ class TestPlanExecutionReadModel(unittest.TestCase):
         cb_plan, stock_plan = plans
         self.assertEqual(stock_plan["funding"]["available_date"], "2026-08-06")
         self.assertEqual(stock_plan["funding"]["display_date"], "2026-08-06")
+        self.assertEqual(
+            stock_plan["funding"]["incoming_actions"],
+            [{
+                "source_account_id": "cash",
+                "source_account_name": "资金账户",
+                "target_account_id": "stock",
+                "target_account_name": "广发账户",
+                "amount": 600.0,
+                "availability": "same_day",
+                "available_date": "2026-08-06",
+                "display_date": "2026-08-06",
+            }],
+        )
         self.assertEqual(
             (cb_plan["account_name"], cb_plan["portfolio_name"], cb_plan["strategy_name"]),
             ("华泰账户", "主动组合", "多因子可转债策略"),
@@ -315,6 +403,54 @@ class TestPlanExecutionReadModel(unittest.TestCase):
         self.assertEqual(
             [phase["orders"][0]["action"] for phase in stock_plan["phases"]],
             ["TRIM", "ADD"],
+        )
+        self.assertEqual(cb_plan["strategy_id"], "cb")
+        self.assertEqual(stock_plan["strategy_id"], "stock")
+        self.assertEqual(
+            cb_plan["execution_guardrails"]["price_basis_date"],
+            "2026-08-05",
+        )
+        self.assertFalse(
+            cb_plan["execution_guardrails"]["reference_price_is_limit"]
+        )
+        cb_rule = cb_plan["execution_guardrails"]["rules"][0]
+        config = json.loads(
+            (Path(__file__).parents[1] / "config" / "cb_rotation.json").read_text()
+        )
+        self.assertEqual(cb_rule["kind"], "buy_price_ceiling")
+        self.assertEqual(cb_rule["comparison"], "strictly_below")
+        self.assertEqual(cb_rule["max_price"], config["filters"]["max_cb_price"])
+        stock_rule = stock_plan["execution_guardrails"]["rules"][0]
+        self.assertEqual(stock_rule["kind"], "single_position_cap")
+        self.assertEqual(stock_rule["max_weight"], 0.10)
+        self.assertEqual(stock_rule["check"], "validated_at_generation")
+        cb_sell, cb_buy = [
+            order
+            for phase in cb_plan["phases"]
+            for order in phase["orders"]
+        ]
+        self.assertEqual(
+            (cb_sell["current_quantity"], cb_sell["target_quantity"]),
+            (10, 0),
+        )
+        self.assertIsNone(cb_sell["max_execution_price"])
+        self.assertEqual(
+            (cb_buy["current_quantity"], cb_buy["target_quantity"]),
+            (0, 1),
+        )
+        self.assertEqual(cb_buy["max_execution_price"], cb_rule["max_price"])
+        stock_sell, stock_buy = [
+            order
+            for phase in stock_plan["phases"]
+            for order in phase["orders"]
+        ]
+        self.assertEqual(
+            (stock_sell["current_quantity"], stock_sell["target_quantity"]),
+            (200, 100),
+        )
+        self.assertEqual(
+            (stock_buy["current_quantity"], stock_buy["target_quantity"]),
+            (100, 200),
         )
 
     def test_future_funding_and_insufficient_cash_are_structured_states(self):

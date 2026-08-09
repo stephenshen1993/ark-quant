@@ -21,8 +21,8 @@ class TestChangelogData(unittest.TestCase):
         self.assertGreaterEqual(len(self.entries), 12)
         required_keys = {"date", "time", "type", "title", "body"}
         allowed_keys = {*required_keys, "scopes"}
-        allowed_types = {"更新", "优化", "公告", "下线"}
-        allowed_scopes = {"今日状态", "账户", "账户事实", "计划生成", "视觉系统"}
+        allowed_types = {"更新", "优化", "修复", "公告", "下线"}
+        allowed_scopes = {"概览", "计划", "榜单", "今日状态", "账户", "账户事实", "计划生成", "视觉系统"}
 
         for entry in self.entries:
             self.assertTrue(required_keys.issubset(entry))
@@ -44,7 +44,7 @@ class TestChangelogData(unittest.TestCase):
             moments.append(moment)
 
         self.assertEqual(moments, sorted(moments, reverse=True))
-        self.assertEqual(self.entries[0]["date"], "2026-08-09")
+        self.assertEqual(self.entries[0]["date"], "2026-08-10")
         self.assertLessEqual(self.entries[-1]["date"], "2026-06-29")
 
     def test_changelog_does_not_leak_engineering_tracker_metadata(self):

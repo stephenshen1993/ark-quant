@@ -45,6 +45,8 @@ class TestAccountReadModel(unittest.TestCase):
         self.assertEqual(accounts["cash"]["strategy_ids"], [])
         self.assertEqual(accounts["cash"]["carrier_strategy_ids"], ["cash_management"])
         self.assertEqual(accounts["overseas"]["strategy_ids"], [])
+        self.assertEqual(accounts["overseas"]["name"], "海外长钱")
+        self.assertEqual(accounts["changqian"]["name"], "国内长钱")
         self.assertEqual(
             accounts["overseas"]["carrier_strategy_ids"],
             ["overseas_long_term_advisory"],
@@ -64,7 +66,9 @@ class TestAccountReadModel(unittest.TestCase):
         portfolios = {item["id"]: item for item in read_model["portfolios"]}
         self.assertEqual(portfolios["A"]["current_amount"], 70000)
         self.assertEqual(portfolios["A"]["account_ids"], ["stock", "cb", "cash"])
+        self.assertEqual(portfolios["B"]["name"], "海外长钱")
         self.assertEqual(portfolios["B"]["account_ids"], ["overseas"])
+        self.assertEqual(portfolios["C"]["name"], "国内长钱")
         self.assertEqual(portfolios["C"]["account_ids"], ["changqian"])
 
         nodes = {item["id"]: item for item in read_model["portfolio_nodes"]}

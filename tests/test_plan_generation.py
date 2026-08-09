@@ -148,6 +148,53 @@ class TestPlanGeneration(unittest.TestCase):
         saved = plan_generation.get_generated_plan(plan_id)
         self.assertEqual(saved["plan"]["generation"]["plan_id"], plan_id)
 
+    def test_reads_legacy_generated_plan_with_current_execution_guardrails(self):
+        plan = {
+            "plan_date": "2026-06-29",
+            "account_read_model": {
+                "accounts": [{
+                    "id": "cb",
+                    "name": "华泰账户",
+                    "portfolio_id": "A",
+                    "strategy_names": ["多因子可转债策略"],
+                    "available_cash": 1000.0,
+                }],
+                "portfolios": [{"id": "A", "name": "主动组合", "account_ids": ["cb"]}],
+                "legacy_adapter": {"strategy_to_account_id": {"cb": "cb"}},
+            },
+            "fund_transfer": {
+                "top_level": {"executed_actions": [], "outflows": []},
+                "a_internal": {"actions": []},
+            },
+            "cb": {
+                "data_date": "2026-06-29",
+                "trade_date": "2026-06-30",
+                "summary": {"starting_cash": 1000.0},
+                "orders": [{
+                    "action": "BUY",
+                    "bond_code": "113062",
+                    "bond_name": "常银转债",
+                    "delta_shares": 10,
+                    "price": 126.8,
+                    "amount": 1268.0,
+                }],
+            },
+            "stock": {"data_date": "2026-06-29", "trade_date": "2026-06-30", "orders": []},
+            "execution_read_model": {"account_trading_plans": []},
+        }
+        with patch(
+            "app.plan_generation.plan_lifecycle.get_plan",
+            return_value={"plan": plan},
+        ):
+            saved = plan_generation.get_generated_plan("legacy-plan")
+
+        account_plan = saved["plan"]["execution_read_model"]["account_trading_plans"][0]
+        self.assertEqual(account_plan["execution_guardrails"]["price_basis_date"], "2026-06-29")
+        self.assertEqual(
+            account_plan["execution_guardrails"]["rules"][0]["kind"],
+            "buy_price_ceiling",
+        )
+
     def test_generate_complete_plan_prepares_missing_rankings_through_strategy_runner(self):
         self._clear_strategy_outputs()
 
