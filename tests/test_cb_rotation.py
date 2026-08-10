@@ -380,6 +380,27 @@ class ConvertibleBondRotationTests(unittest.TestCase):
         self.assertGreaterEqual(summary["cash_left"], 0)  # 永不超支
         self.assertTrue((sheet["target_shares"] % size_orders.LOT == 0).all())  # 张数都是10的整数倍
 
+    def test_size_rebalance_keeps_missing_cb_slots_in_funds_account(self) -> None:
+        from strategies.cb_rotation import size_orders
+
+        target = pd.DataFrame([
+            {"bond_code": "100001", "bond_name": "甲转债"},
+            {"bond_code": "100002", "bond_name": "乙转债"},
+        ])
+        positions = pd.DataFrame(columns=["bond_code", "bond_name", "shares"])
+
+        sheet, summary = size_orders.size_rebalance(
+            target,
+            positions,
+            cash=20_000.0,
+            prices={"100001": 100.0, "100002": 100.0},
+        )
+
+        self.assertEqual(summary["target_slot_count"], 20)
+        self.assertEqual(summary["per_target"], 1_000.0)
+        self.assertEqual(summary["uninvestable_cash"], 18_000.0)
+        self.assertTrue((sheet["target_shares"] == 10).all())
+
     def test_snapshot_raw_data_writes_frames_and_manifest(self) -> None:
         import json
 

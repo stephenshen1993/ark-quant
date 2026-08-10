@@ -28,6 +28,7 @@ from strategies.cb_rotation.run import (
 
 DEFAULT_POSITIONS = ROOT / "portfolios" / "current_cb_positions.csv"
 LOT = 10  # 沪深可转债最小交易单位与递增均为 10 张
+TARGET_SLOTS = 20
 
 
 def latest_target_file() -> Path:
@@ -60,8 +61,9 @@ def size_rebalance(
     prices: dict[str, float],
     lot: int = LOT,
     max_single_weight: float = 0.08,
+    target_slots: int = TARGET_SLOTS,
 ) -> tuple[pd.DataFrame, dict]:
-    """Return (order sheet, summary). Equal-weight target with lot rounding under a cash constraint."""
+    """Return frozen net orders using the fixed Top-20 per-bond target unit."""
     target = target.copy()
     target["bond_code"] = target["bond_code"].astype(str).str.zfill(6)
     target_codes = list(dict.fromkeys(target["bond_code"]))
@@ -77,7 +79,9 @@ def size_rebalance(
     holdings_value = sum(held[c] * prices[c] for c in held)
     total_value = holdings_value + cash
     n = len(target_codes)
-    per = total_value / n
+    if target_slots <= 0:
+        raise ValueError("target_slots must be positive")
+    per = total_value / target_slots
     cap = max_single_weight * total_value
     per = min(per, cap)
 
@@ -103,15 +107,6 @@ def size_rebalance(
         c = max(candidates, key=lambda x: (rank[x], prices[x]))
         desired[c] -= lot
         left += prices[c] * lot
-    improved = True
-    while improved:
-        improved = False
-        for c in sorted(target_codes, key=lambda x: rank[x]):
-            if prices[c] * lot <= left and desired[c] + lot <= int(cap / prices[c]):
-                desired[c] += lot
-                left -= prices[c] * lot
-                improved = True
-
     rows = []
     for c in sorted(set(held) - set(target_codes)):
         rows.append(_row("SELL", c, name_map, prices, held[c], 0))
@@ -134,6 +129,8 @@ def size_rebalance(
         "per_target": per,
         "cash_left": left,
         "n_target": n,
+        "target_slot_count": target_slots,
+        "uninvestable_cash": max(0.0, left),
     }
     return sheet, summary
 
