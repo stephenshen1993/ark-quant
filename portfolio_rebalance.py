@@ -191,6 +191,7 @@ def _top_level_plan(
             ideal_deltas,
             b_limit,
             cash_available,
+            deviations,
         )
         for target, amount in executable_inflows.items():
             executed_actions.append(_inflow_action(target, amount, "half_band_repair", False))
@@ -262,6 +263,7 @@ def _constrained_hard_inflows(
     ideal_deltas: dict[str, float],
     b_limit: float,
     cash_available: float,
+    deviations: dict[str, float] | None = None,
 ) -> dict[str, float]:
     inflows: dict[str, float] = {}
     for target, amount in ideal_deltas.items():
@@ -283,10 +285,16 @@ def _constrained_hard_inflows(
         if amount * scale >= 1000
     }
     remaining = cash_available - sum(scaled.values())
-    for target, amount in sorted(inflows.items(), key=lambda item: (-item[1], item[0])):
+    deviations = deviations or {}
+    for target, amount in sorted(
+        inflows.items(),
+        key=lambda item: (-abs(deviations.get(item[0], 0.0)), -item[1], item[0]),
+    ):
         if remaining <= 0:
             break
         current = scaled.get(target, 0.0)
+        if current == 0 and remaining < 1000:
+            continue
         room = amount - current
         if room <= 0:
             continue
