@@ -29,7 +29,8 @@ def get_generated_plan(plan_id: str) -> dict | None:
     plan = record.get("plan")
     if not isinstance(plan, dict):
         return record
-    if record.get("status") not in {plan_lifecycle.COMPLETE, plan_lifecycle.STALE}:
+    record_status = record.get("status", plan_lifecycle.COMPLETE)
+    if record_status not in {plan_lifecycle.COMPLETE, plan_lifecycle.STALE}:
         return {
             **record,
             "plan": {
@@ -40,7 +41,7 @@ def get_generated_plan(plan_id: str) -> dict | None:
             },
         }
     execution_status = (
-        "executable" if record.get("status") == plan_lifecycle.COMPLETE else "stale"
+        "executable" if record_status == plan_lifecycle.COMPLETE else "stale"
     )
     return {
         **record,
