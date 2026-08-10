@@ -61,7 +61,6 @@ def size_rebalance(
     prices: dict[str, float],
     lot: int = LOT,
     max_single_weight: float = 0.08,
-    target_slots: int = TARGET_SLOTS,
 ) -> tuple[pd.DataFrame, dict]:
     """Return frozen net orders using the fixed Top-20 per-bond target unit."""
     target = target.copy()
@@ -79,13 +78,11 @@ def size_rebalance(
     holdings_value = sum(held[c] * prices[c] for c in held)
     total_value = holdings_value + cash
     n = len(target_codes)
-    if target_slots <= 0:
-        raise ValueError("target_slots must be positive")
-    per = total_value / target_slots
+    per = total_value / TARGET_SLOTS
     cap = max_single_weight * total_value
     per = min(per, cap)
 
-    # 向下取整到 lot，保证不超目标权重，后续再用余额贪心补足。
+    # 向下取整到 lot，保证不超目标权重；未占用余额保留在资金账户。
     desired = {c: max(int((per / prices[c]) // lot) * lot, 0) for c in target_codes}
 
     def cash_left() -> float:
@@ -98,7 +95,7 @@ def size_rebalance(
         return flow
 
     left = cash_left()
-    # 余额不足则从排名靠后的目标里减仓位；有余额则给排名靠前/便宜的加仓位。
+    # 余额不足则从排名靠后的目标里减仓位；剩余余额不再补仓。
     rank = {c: i for i, c in enumerate(target_codes)}
     while left < 0:
         candidates = [c for c in target_codes if desired[c] >= lot]
@@ -129,7 +126,7 @@ def size_rebalance(
         "per_target": per,
         "cash_left": left,
         "n_target": n,
-        "target_slot_count": target_slots,
+        "target_slot_count": TARGET_SLOTS,
         "uninvestable_cash": max(0.0, left),
     }
     return sheet, summary
