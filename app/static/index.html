@@ -2765,13 +2765,13 @@
           <span x-show="temperatureLabel()" x-text="temperatureLabel()"></span>
         </div>
         <div
-          x-show="hasCurrentGeneratedPlan()"
+          x-show="hasSavedGeneratedPlan()"
           x-cloak
           class="plan-masthead-revision"
           x-text="planRevisionText()">
         </div>
         <button
-          x-show="hasCurrentGeneratedPlan()"
+          x-show="hasSavedGeneratedPlan()"
           x-cloak
           type="button"
           class="plan-focus-toggle"
@@ -2807,6 +2807,44 @@
       <div class="plan-decision-mark" x-text="planRevisionText()"></div>
     </section>
 
+    <details class="ark-panel mb-4 px-4 py-3" aria-label="历史计划" @toggle="if ($event.currentTarget.open && !historyLoaded) loadPlanHistory()">
+      <summary class="cursor-pointer text-sm font-semibold text-gray-900">
+        历史计划
+        <span class="ml-2 text-xs font-normal text-gray-400" x-text="planHistorySummary()"></span>
+      </summary>
+      <div class="mt-3 space-y-2">
+        <p x-show="historyLoading" class="workspace-meta">正在读取历史计划…</p>
+        <p x-show="historyError" class="text-sm text-red-700" x-text="historyError"></p>
+        <p x-show="!historyLoading && !historyError && !planHistory.length" class="workspace-meta">尚无已完成的历史计划。</p>
+        <template x-for="item in planHistory" :key="item.plan_id">
+          <button
+            type="button"
+            @click="loadHistoricalPlan(item.plan_id)"
+            class="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 text-left text-sm hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900"
+            :class="selectedHistoricalPlanId === item.plan_id ? 'border-teal-700 bg-teal-50' : ''">
+            <span>
+              <span class="font-medium text-gray-900" x-text="historyPlanTitle(item)"></span>
+              <span class="ml-2 text-xs text-gray-400" x-text="historyPlanCreatedAt(item)"></span>
+            </span>
+            <span class="text-xs font-medium" :class="item.status === 'stale' ? 'text-amber-700' : 'text-teal-700'" x-text="historyPlanStatus(item)"></span>
+          </button>
+        </template>
+        <p class="workspace-meta">历史计划保留生成当时的输入与输出；查看后仅供追溯，不应据此执行交易。</p>
+        <button
+          x-show="isSelectedHistoricalPlan()"
+          type="button"
+          @click="returnToCurrentPlan()"
+          class="text-sm font-medium text-teal-700 underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">
+          返回当前计划
+        </button>
+      </div>
+    </details>
+
+    <details x-show="isHistoricalPlanSnapshot()" x-cloak class="ark-panel plan-snapshot-notice mb-4 px-4 py-3" :open="snapshotExpanded" @toggle="snapshotExpanded = $event.currentTarget.open" aria-label="已保存计划快照">
+      <summary class="cursor-pointer text-sm font-semibold text-gray-900">查看已保存计划快照</summary>
+      <p class="workspace-meta mt-1">计划输入或执行窗口已不再适用；下方内容仅供追溯，不应据此执行交易。</p>
+    </details>
+
     <section x-show="planReady && showStateChain()" x-cloak class="plan-state-chain" aria-label="计划状态链">
       <template x-for="item in workStateChainItems()" :key="item.label">
         <article class="plan-state-chain-item" :class="item.className">
@@ -2817,7 +2855,7 @@
     </section>
 
     <!-- 计划生成是计划页的明确动作，靠近系统判断但不抢状态链。 -->
-    <div x-show="planReady && (!hasCurrentGeneratedPlan() || planState() === 'expired')" x-cloak class="ark-panel plan-hero-panel flex flex-col xl:flex-row xl:items-center gap-4 mb-5 p-5">
+    <div x-show="planReady && !isSelectedHistoricalPlan() && (!hasCurrentGeneratedPlan() || planState() === 'expired')" x-cloak class="ark-panel plan-hero-panel flex flex-col xl:flex-row xl:items-center gap-4 mb-5 p-5">
       <div>
         <div class="text-sm font-semibold text-gray-900">计划生成</div>
         <div class="workspace-meta mt-2">按账户数据、计划条件和策略榜单生成当日可执行安排。</div>
@@ -2841,7 +2879,7 @@
     </div>
 
     <!-- 执行计划必须紧跟今日决策 -->
-    <template x-if="isReviewableExecutionPlan()">
+    <template x-if="isReviewableExecutionPlan() || (isHistoricalPlanSnapshot() && snapshotExpanded)">
     <div class="plan-execution-dossier" aria-label="计划执行卷宗">
       <template x-if="fundingPlan()">
         <section class="ark-panel plan-funding-plan p-5" aria-label="资金调拨计划">
@@ -3052,7 +3090,7 @@
     </template>
 
     <!-- 本次计划条件 -->
-    <details aria-label="计划条件" class="ark-panel plan-conditions-panel px-5 py-3 mb-4" :open="!plan">
+    <details x-show="!isSelectedHistoricalPlan()" aria-label="计划条件" class="ark-panel plan-conditions-panel px-5 py-3 mb-4" :open="!plan">
       <summary class="cursor-pointer select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">
         <div class="inline-flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span class="text-sm font-semibold">本次计划条件</span>
@@ -3112,7 +3150,7 @@
       </div>
     </section>
 
-    <details class="ark-panel plan-advanced-panel px-4 py-3 mb-4 text-sm">
+    <details x-show="!isSelectedHistoricalPlan()" class="ark-panel plan-advanced-panel px-4 py-3 mb-4 text-sm">
       <summary class="cursor-pointer text-xs text-gray-500 select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">高级操作</summary>
       <div class="flex flex-wrap items-center gap-2 mt-3">
         <button x-show="hasCurrentGeneratedPlan()" @click="generateCompletePlan()" :disabled="!canGenerateCompletePlan()" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">重新生成完整计划</button>
@@ -4608,7 +4646,8 @@
       tDate: localDate(), marketTemperature: null,
       // 资金分配 + 订单
       plan: null, transferPlan: null, accountReadModel: null, readiness: null, latestGeneration: null,
-      planError: '', readinessError: '', lifecycleError: '', loadingPlan: false, generatingPlan: false, planReady: false,
+      planHistory: [], historyLoaded: false, historyLoading: false, historyError: '', selectedHistoricalPlanId: '',
+      planError: '', readinessError: '', lifecycleError: '', loadingPlan: false, generatingPlan: false, planReady: false, snapshotExpanded: false,
       generationStage: '', componentErrors: { cb: '', stock: '' },
       expandedAccountId: new URL(window.location.href).searchParams.get('planAccount') || '',
       focusMode: new URL(window.location.href).searchParams.get('planFocus') === '1',
@@ -4699,8 +4738,62 @@
           this.transferPlan = savedPlan
           this.accountReadModel = savedPlan.account_read_model || this.accountReadModel
           this.marketTemperature = savedPlan.market_temperature || this.marketTemperature
+          this.selectedHistoricalPlanId = ''
+          this.snapshotExpanded = Boolean(this.readinessError)
         } catch (error) {
           this.lifecycleError = error.message || '计划状态读取失败'
+        }
+      },
+
+      async loadPlanHistory() {
+        this.historyLoading = true
+        this.historyError = ''
+        try {
+          const response = await fetch('/api/plan/generated/history')
+          if (!response.ok) throw new Error(`HTTP ${response.status}`)
+          const body = await response.json()
+          this.planHistory = Array.isArray(body?.history) ? body.history : []
+          this.historyLoaded = true
+        } catch (error) {
+          this.historyError = error.message || '无法读取历史计划'
+        } finally {
+          this.historyLoading = false
+        }
+      },
+
+      async loadHistoricalPlan(planId) {
+        if (planId === this.latestGeneration?.plan_id) {
+          await this.loadSavedGeneratedPlan()
+          return
+        }
+        this.historyError = ''
+        try {
+          const response = await fetch(`/api/plan/generated/${planId}`)
+          if (!response.ok) throw new Error(`HTTP ${response.status}`)
+          const savedRecord = await response.json()
+          const savedPlan = savedRecord?.plan || savedRecord
+          const generation = savedPlan?.generation || {}
+          if (generation.plan_id !== planId) {
+            throw new Error('历史计划与保存快照不一致')
+          }
+          this.plan = savedPlan
+          this.transferPlan = savedPlan
+          this.accountReadModel = savedPlan.account_read_model || this.accountReadModel
+          this.marketTemperature = savedPlan.market_temperature || this.marketTemperature
+          this.selectedHistoricalPlanId = planId
+          this.snapshotExpanded = true
+        } catch (error) {
+          this.historyError = error.message || '无法读取历史计划'
+        }
+      },
+
+      async returnToCurrentPlan() {
+        this.selectedHistoricalPlanId = ''
+        this.snapshotExpanded = Boolean(this.readinessError)
+        if (this.latestGeneration?.status === 'complete') {
+          await this.loadSavedGeneratedPlan()
+        } else {
+          await this.refreshFullPlan(false)
         }
       },
 
@@ -4902,6 +4995,7 @@
           return
         }
         this.plan = await res.json()
+        this.selectedHistoricalPlanId = ''
         this.accountReadModel = this.plan?.account_read_model || this.accountReadModel
         this.marketTemperature = this.plan?.market_temperature || null
         if (this.plan?.plan_date) {
@@ -5026,11 +5120,32 @@
         if (!generation.plan_date || generation.plan_date !== this.latestGeneration.plan_date) return false
         return !this.readiness?.plan_date || generation.plan_date === this.readiness.plan_date
       },
+      hasSavedGeneratedPlan() {
+        const generation = this.plan?.generation
+        return this.latestGeneration?.status === 'complete'
+          && generation?.status === 'complete'
+          && generation.plan_id === this.latestGeneration.plan_id
+      },
+      isSelectedHistoricalPlan() {
+        return Boolean(
+          this.selectedHistoricalPlanId
+          && this.selectedHistoricalPlanId !== this.latestGeneration?.plan_id
+          && this.plan?.generation?.plan_id === this.selectedHistoricalPlanId
+        )
+      },
+      isHistoricalPlanSnapshot() {
+        return this.isSelectedHistoricalPlan()
+          || (this.hasSavedGeneratedPlan() && !this.hasCurrentGeneratedPlan())
+      },
+      isReadablePlanSnapshot() {
+        return this.hasCurrentGeneratedPlan() || this.snapshotExpanded
+      },
       planState() {
         if (this.generatingPlan || this.latestGeneration?.status === 'running') return 'running'
         if (this.readinessError) return 'problem'
         if (this.readiness?.status === 'needs_facts') return 'needs-facts'
         if (this.lifecycleError) return 'problem'
+        if (this.isSelectedHistoricalPlan()) return 'historical'
         if (['stale', 'failed'].includes(this.latestGeneration?.status)) return 'problem'
         if (this.planReady && this.planError && !this.plan) return 'problem'
         if (!this.hasCurrentGeneratedPlan()) return 'pending'
@@ -5056,11 +5171,19 @@
             copy: `${names.join('、') || '账户'}不在计划输入窗口内，补齐后再生成完整计划。`,
           }
         }
+        if (state === 'historical') {
+          return {
+            title: '历史计划快照',
+            copy: '这是生成当时固化的输入与输出，仅供追溯；不可据此执行交易。',
+          }
+        }
         if (state === 'problem' || state === 'pending') {
           if (this.readinessError) {
             return {
               title: '无法确认账户数据',
-              copy: `${this.readinessError}；为避免误导，暂不展示任何操作。`,
+              copy: this.hasSavedGeneratedPlan()
+                ? `${this.readinessError}；下方保留最近一次已保存计划快照，仅供追溯。`
+                : `${this.readinessError}；为避免误导，暂不展示任何操作。`,
             }
           }
           if (this.latestGeneration?.status === 'stale') {
@@ -5129,15 +5252,17 @@
           : '等待事实校验'
       },
       planTimelineText() {
-        const dataDate = this.tDate || this.readiness?.plan_date || ''
+        const dataDate = this.plan?.plan_date || this.tDate || this.readiness?.plan_date || ''
         const tradeDate = this.executionDate()
+          || (this.isSelectedHistoricalPlan() ? this.plan?.stock?.trade_date || this.plan?.cb?.trade_date : '')
         if (dataDate && tradeDate) return `${dataDate} 收盘数据 → ${tradeDate} 开盘执行`
         if (dataDate) return `${dataDate} 收盘数据 → 等待生成执行计划`
         return '等待计划基准日'
       },
       planRevisionText() {
-        const createdAt = this.latestGeneration?.created_at
-        const planId = this.latestGeneration?.plan_id || this.plan?.generation?.plan_id || ''
+        const historyItem = this.planHistory.find(item => item.plan_id === this.selectedHistoricalPlanId)
+        const createdAt = historyItem?.created_at || this.latestGeneration?.created_at
+        const planId = historyItem?.plan_id || this.latestGeneration?.plan_id || this.plan?.generation?.plan_id || ''
         const generated = createdAt
           ? String(createdAt).replace('T', ' ').slice(0, 16)
           : ''
@@ -5145,6 +5270,19 @@
         if (generated && revision) return `生成 ${generated} · 版本 ${revision}`
         if (generated) return `生成 ${generated}`
         return this.planDecisionMark()
+      },
+      planHistorySummary() {
+        if (!this.historyLoaded) return '展开查看已保存快照'
+        return this.planHistory.length ? `${this.planHistory.length} 份已保存快照` : '暂无已完成计划'
+      },
+      historyPlanTitle(item) {
+        return `${item.plan_date || '未知日期'} 计划`
+      },
+      historyPlanCreatedAt(item) {
+        return item.created_at ? `生成 ${String(item.created_at).replace('T', ' ').slice(0, 16)}` : ''
+      },
+      historyPlanStatus(item) {
+        return item.status === 'stale' ? '已失效 · 可追溯' : '已完成 · 可追溯'
       },
       workStateChainItems() {
         const accountReady = this.readiness?.status === 'ready'
@@ -5199,10 +5337,10 @@
         ]
       },
       showStateChain() {
-        return !['action', 'future-action', 'no-action'].includes(this.planState())
+        return !['action', 'future-action', 'no-action', 'historical'].includes(this.planState())
       },
       executionReadModel() {
-        if (!this.hasCurrentGeneratedPlan()) return null
+        if (!this.isReadablePlanSnapshot()) return null
         return this.plan?.execution_read_model || null
       },
       fundingPlan() {
@@ -5432,7 +5570,7 @@
         return ''
       },
       showReadinessPanel() {
-        return !['action', 'future-action', 'no-action'].includes(this.planState())
+        return !['action', 'future-action', 'no-action', 'historical'].includes(this.planState())
       },
       positionActionText(action) {
         return {

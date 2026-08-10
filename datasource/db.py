@@ -1089,6 +1089,49 @@ def get_latest_generated_plan(plan_date: str) -> dict | None:
         }
 
 
+def get_latest_complete_generated_plan() -> dict | None:
+    with _conn() as conn:
+        row = conn.execute(
+            """SELECT plan_id, plan_date, status, error_json, created_at
+               FROM generated_plans
+               WHERE status='complete'
+               ORDER BY created_at DESC, plan_id DESC
+               LIMIT 1"""
+        ).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        return {
+            "plan_id": item["plan_id"],
+            "plan_date": item["plan_date"],
+            "status": item["status"],
+            "error": json.loads(item["error_json"]) if item.get("error_json") else None,
+            "created_at": item["created_at"],
+        }
+
+
+def list_generated_plan_history() -> list[dict]:
+    """List immutable plan snapshots that can be meaningfully reviewed later."""
+    with _conn() as conn:
+        rows = conn.execute(
+            """SELECT plan_id, plan_date, status, error_json, created_at
+               FROM generated_plans
+               WHERE status IN ('complete', 'stale')
+               ORDER BY created_at DESC, plan_id DESC"""
+        ).fetchall()
+    return [
+        {
+            "plan_id": item["plan_id"],
+            "plan_date": item["plan_date"],
+            "status": item["status"],
+            "error": json.loads(item["error_json"]) if item["error_json"] else None,
+            "created_at": item["created_at"],
+        }
+        for row in rows
+        for item in [dict(row)]
+    ]
+
+
 def get_running_generated_plan(plan_date: str) -> dict | None:
     with _conn() as conn:
         row = conn.execute(

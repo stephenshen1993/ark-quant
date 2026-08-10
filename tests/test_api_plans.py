@@ -496,9 +496,69 @@ class TestPlansApi(unittest.TestCase):
         self.assertNotIn("plan", generation)
         self.assertNotIn("orders", generation)
 
-    def test_latest_generated_plan_returns_a_structured_service_error(self):
+    def test_generated_plan_history_lists_complete_and_stale_snapshots(self):
+        complete_id = "plan-2026-06-27-complete"
+        stale_id = "plan-2026-06-28-stale"
+        legacy_stale_id = "plan-2026-06-30-legacy"
+        failed_id = "plan-2026-06-29-failed"
+        plan = {
+            "execution_read_model": {
+                "funding_plan": {"groups": [{"actions": [{"amount": 1}]}]},
+                "account_trading_plans": [{"account_id": "stock"}],
+            },
+        }
+        db.insert_generated_plan(complete_id, "2026-06-27", "complete", plan)
+        db.insert_generated_plan(stale_id, "2026-06-28", "stale", plan)
+        db.insert_generated_plan(failed_id, "2026-06-29", "failed", plan)
+        db.insert_generated_plan(
+            legacy_stale_id,
+            "2026-06-30",
+            "stale",
+            {"execution_read_model": None},
+        )
+
+        response = self.client.get("/api/plan/generated/history")
+
+        self.assertEqual(response.status_code, 200)
+        history = response.json()["history"]
+        self.assertEqual(
+            [item["plan_id"] for item in history],
+            [legacy_stale_id, stale_id, complete_id],
+        )
+        self.assertEqual(history[0]["status"], "stale")
+        self.assertEqual(history[0]["summary"], {
+            "funding_action_count": 0,
+            "account_trading_plan_count": 0,
+        })
+        self.assertEqual(history[1]["summary"]["funding_action_count"], 1)
+        self.assertEqual(history[1]["summary"]["account_trading_plan_count"], 1)
+        self.assertNotIn("plan", history[0])
+
+    def test_latest_generated_plan_is_readable_when_current_plan_inputs_are_unavailable(self):
+        plan_id = "plan-2026-06-28-deadbeef"
+        db.insert_generated_plan(
+            plan_id,
+            "2026-06-28",
+            "complete",
+            {
+                "plan_date": "2026-06-28",
+                "generation": {"plan_id": plan_id, "status": "complete"},
+                "execution_read_model": {"funding_plan": {"groups": []}, "account_trading_plans": []},
+            },
+        )
+
         with patch(
             "app.routers.plans.plan_lifecycle.get_latest_plan_status",
+            side_effect=AssertionError("current inputs must not be read"),
+        ):
+            response = self.client.get("/api/plan/generated")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["generation"]["plan_id"], plan_id)
+
+    def test_latest_generated_plan_returns_a_structured_service_error(self):
+        with patch(
+            "app.routers.plans.plan_lifecycle.get_latest_complete_plan_status",
             side_effect=RuntimeError("database offline"),
         ):
             response = self.client.get("/api/plan/generated")

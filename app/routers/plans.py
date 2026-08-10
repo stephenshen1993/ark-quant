@@ -53,13 +53,32 @@ def generate_plan():
 @router.get("/generated")
 def get_latest_generated_plan():
     try:
-        return {"generation": _with_generation_summary(plan_lifecycle.get_latest_plan_status())}
+        return {"generation": _with_generation_summary(plan_lifecycle.get_latest_complete_plan_status())}
     except Exception as exc:
         raise HTTPException(
             status_code=503,
             detail={
                 "code": "PLAN_LIFECYCLE_UNAVAILABLE",
                 "message": "无法读取当前计划生成状态，请稍后重试。",
+            },
+        ) from exc
+
+
+@router.get("/generated/history")
+def get_generated_plan_history():
+    try:
+        return {
+            "history": [
+                _with_generation_summary(item)
+                for item in plan_lifecycle.get_plan_history()
+            ]
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "PLAN_HISTORY_UNAVAILABLE",
+                "message": "无法读取历史计划，请稍后重试。",
             },
         ) from exc
 
@@ -79,17 +98,19 @@ def _with_generation_summary(generation: dict | None) -> dict | None:
         "funding_action_count": 0,
         "account_trading_plan_count": 0,
     }
-    if generation.get("status") == "complete" and generation.get("plan_id"):
+    if generation.get("status") in {"complete", "stale"} and generation.get("plan_id"):
         saved = plan_generation.get_generated_plan(generation["plan_id"]) or {}
         plan = saved.get("plan") if isinstance(saved, dict) else {}
         execution = plan.get("execution_read_model") if isinstance(plan, dict) else {}
-        funding_plan = execution.get("funding_plan") if isinstance(execution, dict) else {}
+        execution = execution if isinstance(execution, dict) else {}
+        funding_plan = execution.get("funding_plan")
+        funding_plan = funding_plan if isinstance(funding_plan, dict) else {}
+        account_trading_plans = execution.get("account_trading_plans")
+        account_trading_plans = account_trading_plans if isinstance(account_trading_plans, list) else []
         summary["funding_action_count"] = sum(
             len(group.get("actions") or []) for group in funding_plan.get("groups") or []
         )
-        summary["account_trading_plan_count"] = len(
-            execution.get("account_trading_plans") or []
-        )
+        summary["account_trading_plan_count"] = len(account_trading_plans)
     return {**generation, "summary": summary}
 
 

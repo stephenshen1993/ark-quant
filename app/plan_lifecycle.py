@@ -94,6 +94,16 @@ def get_latest_plan_status(plan_date: str | None = None) -> dict | None:
     return db.get_latest_generated_plan(plan_date)
 
 
+def get_latest_complete_plan_status() -> dict | None:
+    """Read the newest immutable complete plan without resolving current inputs."""
+    return db.get_latest_complete_generated_plan()
+
+
+def get_plan_history() -> list[dict]:
+    """List complete snapshots, including ones later marked stale by new facts."""
+    return db.list_generated_plan_history()
+
+
 def get_running_plan_status(plan_date: str) -> dict | None:
     return db.get_running_generated_plan(plan_date)
 

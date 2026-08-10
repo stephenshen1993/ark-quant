@@ -411,8 +411,14 @@ class TestTradingPageInteraction(unittest.TestCase):
 
     def test_no_action_does_not_render_an_empty_action_summary(self):
         self.assertIn("isReviewableExecutionPlan()", self.html)
-        self.assertIn('<template x-if="isReviewableExecutionPlan()">', self.html)
+        self.assertIn('<template x-if="isReviewableExecutionPlan() || (isHistoricalPlanSnapshot() && snapshotExpanded)">', self.html)
         self.assertNotIn('x-show="[\'action\', \'no-action\'].includes(planState())" class="ark-panel plan-action-summary', self.html)
+
+    def test_plan_page_exposes_read_only_history_snapshots(self):
+        self.assertIn('aria-label="历史计划"', self.html)
+        self.assertIn("fetch('/api/plan/generated/history')", self.html)
+        self.assertIn("async loadHistoricalPlan(planId)", self.html)
+        self.assertIn("仅供追溯，不应据此执行交易", self.html)
 
     def test_execution_copy_keeps_same_day_inflow_and_next_day_return_separate(self):
         self.assertIn("fundingPlan().groups", self.html)
@@ -666,7 +672,10 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("fetch('/api/plan/generated')", self.html)
         self.assertIn("fetch(`/api/plan/generated/${this.latestGeneration.plan_id}`)", self.html)
         self.assertIn("hasCurrentGeneratedPlan()", self.html)
-        self.assertIn("if (!this.hasCurrentGeneratedPlan()) return null", self.html)
+        self.assertIn("hasSavedGeneratedPlan()", self.html)
+        self.assertIn("isReadablePlanSnapshot()", self.html)
+        self.assertIn("已保存计划快照", self.html)
+        self.assertIn("if (!this.isReadablePlanSnapshot()) return null", self.html)
         self.assertIn("planState()", self.html)
         self.assertIn("planStateTitle()", self.html)
         self.assertIn("今日需要操作", self.html)
@@ -689,8 +698,8 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn('class="plan-execution-status"', self.html)
         self.assertNotIn("planReady && isReviewableExecutionPlan()\"", self.html)
         self.assertIn("planReady && !isReviewableExecutionPlan()", self.html)
-        self.assertIn('<template x-if="isReviewableExecutionPlan()">', self.html)
-        self.assertIn("if (!this.hasCurrentGeneratedPlan()) return null", self.html)
+        self.assertIn('<template x-if="isReviewableExecutionPlan() || (isHistoricalPlanSnapshot() && snapshotExpanded)">', self.html)
+        self.assertIn("if (!this.isReadablePlanSnapshot()) return null", self.html)
         self.assertIn("planTimelineText()", self.html)
         self.assertIn("planRevisionText()", self.html)
         status = self.html.index('class="plan-masthead-state"')
