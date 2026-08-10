@@ -99,13 +99,14 @@ def insert_account_value_snapshot(
     conn: sqlite3.Connection,
     account_id: str,
     snapshot_date: str,
-    total: float,
+    total: float | None,
     cash: float | None = None,
     frozen_cash: float | None = None,
 ) -> int:
     validate_account_id(account_id)
     validate_iso_date(snapshot_date)
-    total = validate_nonnegative_finite(total, "total")
+    if total is not None:
+        total = validate_nonnegative_finite(total, "total")
     if cash is not None:
         cash = validate_nonnegative_finite(cash, "cash")
     if frozen_cash is not None:
@@ -125,7 +126,7 @@ def insert_account_value_snapshot_row(
     conn: sqlite3.Connection,
     account_id: str,
     snapshot_date: str,
-    total: float,
+    total: float | None,
     cash: float | None,
     frozen_cash: float,
 ) -> int:
@@ -185,21 +186,47 @@ def insert_account_context(
     return cur.lastrowid
 
 
-def get_current_account_summary(conn: sqlite3.Connection) -> dict | None:
-    context = conn.execute(
-        "SELECT * FROM account_contexts ORDER BY id DESC LIMIT 1"
-    ).fetchone()
-    values = conn.execute(
-        """
-        SELECT v.*
-        FROM account_value_snapshots v
-        JOIN (
-            SELECT account_id, MAX(id) AS id
-            FROM account_value_snapshots
-            GROUP BY account_id
-        ) latest ON latest.id = v.id
-        """
-    ).fetchall()
+def get_account_summary(
+    conn: sqlite3.Connection, snapshot_date: str | None = None
+) -> dict | None:
+    """Return the latest facts, or the facts recorded for one exact date."""
+    if snapshot_date is None:
+        context = conn.execute(
+            "SELECT * FROM account_contexts ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        values = conn.execute(
+            """
+            SELECT v.*
+            FROM account_value_snapshots v
+            WHERE v.id = (
+                SELECT current.id
+                FROM account_value_snapshots current
+                WHERE current.account_id = v.account_id
+                ORDER BY current.snapshot_date DESC, current.id DESC
+                LIMIT 1
+            )
+            """
+        ).fetchall()
+    else:
+        validate_iso_date(snapshot_date)
+        context = conn.execute(
+            """SELECT * FROM account_contexts
+               WHERE snapshot_date=? ORDER BY id DESC LIMIT 1""",
+            (snapshot_date,),
+        ).fetchone()
+        values = conn.execute(
+            """
+            SELECT v.*
+            FROM account_value_snapshots v
+            JOIN (
+                SELECT account_id, MAX(id) AS id
+                FROM account_value_snapshots
+                WHERE snapshot_date=?
+                GROUP BY account_id
+            ) latest ON latest.id = v.id
+            """,
+            (snapshot_date,),
+        ).fetchall()
     if not context and not values:
         return None
     base = {}
@@ -268,14 +295,19 @@ def get_current_account_summary(conn: sqlite3.Connection) -> dict | None:
     snap["account_updated_at"] = updated_at
     snap["account_snapshot_dates"] = snapshot_dates
     snap["accounts"] = build_account_items(snap)
-    snap["total_assets"] = (
-        snap["stock_total"]
-        + snap["bond_total"]
-        + snap["changqian_total"]
-        + snap["cash_pool"]
-        + snap["overseas_total"]
-    )
+    totals = [
+        snap["stock_total"],
+        snap["bond_total"],
+        snap["changqian_total"],
+        snap["cash_pool"],
+        snap["overseas_total"],
+    ]
+    snap["total_assets"] = None if any(value is None for value in totals) else sum(totals)
     return snap
+
+
+def get_current_account_summary(conn: sqlite3.Connection) -> dict | None:
+    return get_account_summary(conn)
 
 
 def build_account_items(snap: dict) -> list[dict]:
@@ -289,7 +321,7 @@ def build_account_items(snap: dict) -> list[dict]:
             "id": account_id,
             "label": meta["label"],
             "sub": meta["sub"],
-            "total": snap.get(total_key, 0) or 0,
+            "total": snap.get(total_key, 0),
             "cash": (snap.get(cash_key, 0) or 0) if cash_key else None,
             "frozen_cash": (
                 snap.get(frozen_key, 0) if frozen_key else None

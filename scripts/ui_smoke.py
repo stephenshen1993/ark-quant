@@ -14,64 +14,73 @@ import time
 import uuid
 from datetime import date, datetime
 from pathlib import Path
+from unittest.mock import patch
 from urllib.request import urlopen
 from zoneinfo import ZoneInfo
 
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+from scripts.ui_smoke_quotes import CB_QUOTES, STOCK_QUOTES  # noqa: E402
+
 PYTHON = ROOT / ".venv" / "bin" / "python"
 DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "ui-smoke"
-VISUAL_GATE_NAME = "AIHOT 视觉回归闸门"
-WORKBENCH_WIDTH_RANGE = (1000, 1100)
-AIHOT_CHANGELOG_REFERENCE_METRICS = {
-    "nav_width": 179,
-    "shell_left": 429,
-    "content_top": 80,
-    "shell_width": 833,
-    "header_stream_gap": 61,
-    "date_group_gap": 72,
-    "date_header_height": 44,
-    "date_divider_y": 295.41,
-    "meta_width": 86,
-    "entry_column_gap": 22,
-    "entry_divider_x": 537,
-    "entry_copy_x": 562,
+VISUAL_GATE_NAME = "方舟计划视觉回归闸门"
+CLI_TIMEOUT_SECONDS = float(os.environ.get("ARK_UI_SMOKE_CLI_TIMEOUT_SECONDS", "60"))
+DESKTOP_NAV_WIDTH = 220
+WORKBENCH_WIDTH = 1140
+READING_WIDTH = 880
+NARROW_NAV_HEIGHT = 64
+NARROW_GUTTER = 18
+GEOMETRY_TOLERANCE = 2
+ARK_CHANGELOG_REFERENCE_METRICS = {
+    "nav_width": DESKTOP_NAV_WIDTH,
+    "shell_left": 426,
+    "content_top": 46,
+    "shell_width": READING_WIDTH,
+    "header_stream_gap": 44,
+    "date_group_gap": 50,
+    "date_header_height": 49,
+    "date_divider_y": 255,
+    "meta_width": 96,
+    "entry_column_gap": 24,
+    "entry_divider_x": 546,
+    "entry_copy_x": 546,
 }
-AIHOT_CHANGELOG_STYLE_METRICS = {
-    "canvas": "rgb(244, 245, 246)",
-    "surface": "rgb(255, 255, 255)",
-    "navBorder": "rgb(227, 228, 231)",
+ARK_CHANGELOG_STYLE_METRICS = {
+    "canvas": "rgb(241, 244, 243)",
+    "surface": "rgb(255, 254, 250)",
+    "navBorder": "rgb(210, 220, 219)",
     "navBorderWidth": 1,
-    "ink": "rgb(27, 39, 51)",
-    "secondary": "rgb(92, 102, 114)",
-    "tertiary": "rgb(133, 140, 150)",
-    "line": "rgb(227, 228, 231)",
-    "navActive": "rgb(233, 238, 240)",
-    "accent": "rgb(18, 94, 108)",
-    "update": "rgb(46, 126, 93)",
-    "neutral": "rgb(102, 113, 126)",
+    "ink": "rgb(20, 32, 42)",
+    "secondary": "rgb(102, 116, 127)",
+    "tertiary": "rgb(154, 164, 171)",
+    "line": "rgb(210, 220, 219)",
+    "navActive": "rgb(220, 239, 235)",
+    "accent": "rgb(8, 122, 120)",
+    "update": "rgb(47, 118, 86)",
+    "neutral": "rgb(102, 116, 127)",
     "kicker": {"fontSize": 11, "lineHeight": 16, "fontWeight": 650},
-    "title": {"fontSize": 32, "lineHeight": 39.04, "fontWeight": 680},
-    "subtitle": {"fontSize": 17, "lineHeight": 27.2, "fontWeight": 400},
-    "date": {"fontSize": 24, "lineHeight": 31.2, "fontWeight": 650},
-    "entryTitle": {"fontSize": 18, "lineHeight": 25.2, "fontWeight": 650},
-    "body": {"fontSize": 16, "lineHeight": 28, "fontWeight": 400},
+    "title": {"fontSize": 40, "lineHeight": 44, "fontWeight": 680},
+    "subtitle": {"fontSize": 16, "lineHeight": 28, "fontWeight": 400},
+    "date": {"fontSize": 30, "lineHeight": 36, "fontWeight": 650},
+    "entryTitle": {"fontSize": 17, "lineHeight": 26, "fontWeight": 650},
+    "body": {"fontSize": 15, "lineHeight": 27, "fontWeight": 400},
     "time": {"fontSize": 16, "lineHeight": 20, "fontWeight": 500},
     "label": {"fontSize": 14, "lineHeight": 18.9, "fontWeight": 560},
     "dotSize": 8,
 }
-AIHOT_CHANGELOG_RESPONSIVE_METRICS = {
+ARK_CHANGELOG_RESPONSIVE_METRICS = {
     "desktop": {
-        "navWidth": 179,
-        "shellLeft": 393,
-        "contentTop": 80,
-        "shellWidth": 833,
+        "navWidth": DESKTOP_NAV_WIDTH,
+        "shellLeft": 390,
+        "contentTop": 46,
+        "shellWidth": READING_WIDTH,
     },
     "narrow": {
-        "navHeight": 64,
-        "shellPaddingLeft": 22,
-        "shellPaddingRight": 22,
+        "navHeight": NARROW_NAV_HEIGHT,
+        "shellPaddingLeft": NARROW_GUTTER,
+        "shellPaddingRight": NARROW_GUTTER,
         "headerStreamGap": 50,
         "dateGroupGap": 58,
         "entryMainPaddingLeft": 16,
@@ -139,7 +148,7 @@ def main() -> int:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Run the AIHOT 视觉回归闸门 for ark-quant account, plan and changelog pages."
+            "运行方舟计划视觉回归闸门，检查概览、计划、账户和更新日志。"
         ),
     )
     parser.add_argument(
@@ -200,8 +209,31 @@ def seed_database(db_path: Path, plan_date: str) -> None:
     db.insert_account_value_snapshot("cash", plan_date, 32078.24)
     db.insert_account_value_snapshot("overseas", plan_date, 93468.85)
     db.insert_account_value_snapshot("changqian", plan_date, 115632.73)
-    db.append_position_snapshot("stock", plan_date, [])
-    db.append_position_snapshot("cb", plan_date, [])
+    db.append_position_snapshot("stock", plan_date, [
+        {"code": "600051", "name": "宁波联合", "shares": 100},
+    ])
+    db.append_position_snapshot("cb", plan_date, [
+        {"code": "113062", "name": "常银转债", "shares": 1000},
+    ])
+
+    from app import account_current_state
+
+    stock_quotes = pd.DataFrame([{
+        "stock_code": code,
+        "stock_name_q": quote["name"],
+        "price": quote["price"],
+    } for code, quote in STOCK_QUOTES.items()])
+    with patch(
+        "datasource.market.fetch_tencent_snapshot", return_value=stock_quotes
+    ), patch(
+        "datasource.market.fetch_cb_quotes_tencent", return_value=CB_QUOTES
+    ):
+        for account_id in ("stock", "cb"):
+            current = account_current_state.get_current_account(account_id)
+            account_current_state.confirm_current_account(
+                account_id,
+                expected_version=current["version"],
+            )
 
     cb_run_id = db.insert_strategy_run("cb", data_date)
     db.insert_cb_rankings(
@@ -232,6 +264,25 @@ def seed_database(db_path: Path, plan_date: str) -> None:
         ]),
     )
 
+    from app import plan_lifecycle
+    from app.plan_service import build_current_plan
+
+    with patch(
+        "datasource.market.fetch_tencent_snapshot", return_value=stock_quotes
+    ), patch(
+        "datasource.market.fetch_cb_quotes_tencent", return_value=CB_QUOTES
+    ):
+        saved_plan = build_current_plan()
+    plan_id = plan_lifecycle.new_plan_id(plan_date)
+    saved_plan["generation"] = {
+        "plan_id": plan_id,
+        "plan_date": plan_date,
+        "status": plan_lifecycle.DRAFT,
+        "stages": plan_lifecycle.generation_stages(),
+    }
+    plan_lifecycle.start(plan_id, plan_date, saved_plan)
+    plan_lifecycle.complete(plan_id, saved_plan)
+
 
 def find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -246,7 +297,7 @@ def start_server(db_path: Path, port: int, log_file) -> subprocess.Popen:
             str(PYTHON if PYTHON.exists() else sys.executable),
             "-m",
             "uvicorn",
-            "app.main:app",
+            "scripts.ui_smoke_app:app",
             "--host",
             "127.0.0.1",
             "--port",
@@ -287,6 +338,8 @@ def run_viewport(
     viewport = VIEWPORTS[viewport_name]
     account_screenshot_path = output_dir / f"{viewport_name}-account.png"
     plan_screenshot_path = output_dir / f"{viewport_name}-plan.png"
+    plan_expanded_screenshot_path = output_dir / f"{viewport_name}-plan-expanded.png"
+    rankings_screenshot_path = output_dir / f"{viewport_name}-rankings.png"
     screenshot_path = output_dir / f"{viewport_name}-changelog.png"
     failure_screenshot_path = output_dir / f"{viewport_name}-failure.png"
     failure_text_path = output_dir / f"{viewport_name}-failure.txt"
@@ -297,6 +350,8 @@ def run_viewport(
         viewport,
         account_screenshot_path,
         plan_screenshot_path,
+        plan_expanded_screenshot_path,
+        rankings_screenshot_path,
         screenshot_path,
         failure_screenshot_path,
         failure_text_path,
@@ -408,6 +463,8 @@ def browser_check_code(
     viewport: dict,
     account_screenshot_path: Path,
     plan_screenshot_path: Path,
+    plan_expanded_screenshot_path: Path,
+    rankings_screenshot_path: Path,
     screenshot_path: Path,
     failure_screenshot_path: Path,
     failure_text_path: Path,
@@ -415,6 +472,14 @@ def browser_check_code(
 ) -> str:
     account_screenshot = str(account_screenshot_path)
     plan_screenshot = str(plan_screenshot_path)
+    plan_expanded_screenshot = str(plan_expanded_screenshot_path)
+    rankings_screenshot = str(rankings_screenshot_path)
+    plan_future_screenshot = str(
+        plan_screenshot_path.with_name(f"{viewport_name}-plan-future-funding.png")
+    )
+    plan_no_action_screenshot = str(
+        plan_screenshot_path.with_name(f"{viewport_name}-plan-no-action.png")
+    )
     screenshot = str(screenshot_path)
     failure_screenshot = str(failure_screenshot_path)
     failure_text = str(failure_text_path)
@@ -423,6 +488,7 @@ def browser_check_code(
         async page => {{
           const consoleErrors = [];
           const pageErrors = [];
+          let smokeStep = 'bootstrap';
           page.on('console', msg => {{
             if (msg.type() === 'error') consoleErrors.push(msg.text());
           }});
@@ -484,6 +550,7 @@ def browser_check_code(
                 .filter(item => item.tableBeyondRoot && (!item.hasScroller || item.scrollerBeyondRoot));
               const clippedControls = Array.from(rootElement.querySelectorAll('button, input, select, summary, a[href]'))
                 .filter(element => isVisible(element))
+                .filter(element => !horizontalScroller(element))
                 .map(element => {{
                   const rect = element.getBoundingClientRect();
                   return {{
@@ -551,21 +618,34 @@ def browser_check_code(
             await page.waitForFunction(() => window.Alpine, {{ timeout: 10000 }});
             const navigation = page.getByRole('navigation', {{ name: '主导航' }});
             const main = page.getByRole('main', {{ name: '工作台内容' }});
-            const accountNav = navigation.getByRole('button', {{ name: '账户', exact: true }});
-            const planNav = navigation.getByRole('button', {{ name: '计划', exact: true }});
-            const changelogNav = navigation.getByRole('button', {{ name: '更新日志', exact: true }});
-            const assertActivePage = async (check, button, expectedHash) => {{
-              await button.waitFor({{ state: 'visible', timeout: 10000 }});
-              const label = await button.getAttribute('aria-label');
-              await page.waitForFunction(
-                ({{ label, expectedHash }}) => window.location.hash === expectedHash
-                  && document.querySelector(`button[aria-label="${{label}}"]`)?.getAttribute('aria-current') === 'page',
-                {{ label, expectedHash }},
-                {{ timeout: 10000 }},
-              );
+            const overviewNav = navigation.getByRole('link', {{ name: '概览', exact: true }});
+            const planNav = navigation.getByRole('link', {{ name: '计划', exact: true }});
+            const rankingsNav = navigation.getByRole('link', {{ name: '榜单', exact: true }});
+            const accountNav = navigation.getByRole('link', {{ name: '账户', exact: true }});
+            const changelogNav = navigation.getByRole('link', {{ name: '更新日志', exact: true }});
+            const assertActivePage = async (check, link, expectedHash) => {{
+              await link.waitFor({{ state: 'visible', timeout: 10000 }});
+              const label = await link.getAttribute('aria-label');
+              try {{
+                await page.waitForFunction(
+                  ({{ label, expectedHash }}) => window.location.hash === expectedHash
+                    && document.querySelector(`a[aria-label="${{label}}"]`)?.getAttribute('aria-current') === 'page',
+                  {{ label, expectedHash }},
+                  {{ timeout: 10000 }},
+                );
+              }} catch (error) {{
+                fail(check, check + ' 导航状态等待超时', [difference(
+                  check + '.state',
+                  {{ hash: expectedHash, ariaCurrent: 'page' }},
+                  {{
+                    hash: await page.evaluate(() => window.location.hash),
+                    ariaCurrent: await link.getAttribute('aria-current'),
+                  }},
+                )]);
+              }}
               const actual = {{
                 hash: await page.evaluate(() => window.location.hash),
-                ariaCurrent: await button.getAttribute('aria-current'),
+                ariaCurrent: await link.getAttribute('aria-current'),
               }};
               const differences = [];
               if (actual.hash !== expectedHash) {{
@@ -576,14 +656,14 @@ def browser_check_code(
               }}
               assertNoDifferences(check, check + ' 导航状态异常', differences);
             }};
-            await assertActivePage('account.initial', accountNav, '');
-            const navItems = await navigation.getByRole('button').evaluateAll(buttons => buttons.map(button => ({{
-              label: button.innerText.trim(),
-              ariaLabel: button.getAttribute('aria-label'),
-              disabled: button.disabled,
-              ariaDisabled: button.getAttribute('aria-disabled'),
+            await assertActivePage('overview.initial', overviewNav, '');
+            const navItems = await navigation.getByRole('link').evaluateAll(links => links.map(link => ({{
+              label: link.innerText.trim(),
+              ariaLabel: link.getAttribute('aria-label'),
+              disabled: link.hasAttribute('disabled'),
+              ariaDisabled: link.getAttribute('aria-disabled'),
             }})));
-            const expectedNavLabels = ['账户', '计划', '更新日志'];
+            const expectedNavLabels = ['概览', '计划', '榜单', '账户', '更新日志'];
             const actualNavLabels = navItems.map(item => (item.ariaLabel || item.label).split('，')[0]);
             const navigationDifferences = [];
             if (JSON.stringify(actualNavLabels) !== JSON.stringify(expectedNavLabels)) {{
@@ -598,98 +678,550 @@ def browser_check_code(
               ));
             }}
             assertNoDifferences('navigation', '全站导航顺序或可用状态异常', navigationDifferences);
+            const globalStatus = main.locator('.global-status-shell');
+            if (await globalStatus.isVisible()) {{
+              fail('globalStatus.removedFromTopLevel', '概览、计划和账户不应重复展示全局状态条');
+            }}
 
-            const accountPage = main.getByRole('region', {{ name: '账户工作台' }});
-            const accountHeading = accountPage.getByRole('heading', {{ name: '账户', level: 1 }});
-            await accountHeading.waitFor({{ state: 'visible', timeout: 10000 }});
-            const accountDate = accountPage.getByLabel('账户事实日', {{ exact: true }});
-            await accountDate.fill({json.dumps(expected_plan_date)});
-            const accountLedger = accountPage.getByRole('table', {{ name: '账户明细' }});
+            smokeStep = 'rankings.open';
+            await rankingsNav.click();
+            await assertActivePage('rankings.fromOverview', rankingsNav, '#rankings');
+            const rankingsPage = main.getByRole('region', {{ name: '策略榜单' }});
+            const rankingsHeading = rankingsPage.getByRole('heading', {{ name: '榜单', level: 1 }});
+            await rankingsHeading.waitFor({{ state: 'visible', timeout: 10000 }});
+            const rankingsTabs = rankingsPage.locator('.rankings-tab');
+            const rankingsTable = rankingsPage.locator('.rankings-table');
+            await rankingsTabs.first().waitFor({{ state: 'visible', timeout: 10000 }});
             await page.waitForFunction(
-              () => document.querySelector('[aria-label="账户明细"]')?.rows.length > 0,
+              () => {{
+                const root = document.querySelector('[aria-label="策略榜单"]');
+                return root && (
+                  root.querySelector('.rankings-table')
+                  || root.querySelector('.rankings-empty')
+                  || root.querySelector('[role="alert"]')
+                );
+              }},
+              null,
               {{ timeout: 10000 }},
             );
-            const accountTotal = accountPage.getByRole('region', {{ name: '账户资产总览' }});
-            const accountShell = accountPage.getByRole('region', {{ name: '账户内容区域' }});
-            const [accountShellBox, accountTotalBox, accountLedgerBox] = await Promise.all([
+            const rankingsMetrics = {{
+              tabCount: await rankingsTabs.count(),
+              hasTransferBondTab: await rankingsPage.getByRole('button', {{ name: '转债榜单', exact: true }}).isVisible(),
+              hasStockTab: await rankingsPage.getByRole('button', {{ name: '股票榜单', exact: true }}).isVisible(),
+              tableCount: await rankingsTable.count(),
+              exportVisible: await rankingsPage.getByRole('button', {{ name: '导出 Markdown', exact: true }}).isVisible(),
+            }};
+            const rankingsDifferences = [];
+            if (rankingsMetrics.tabCount !== 2) {{
+              rankingsDifferences.push(difference('rankings.tabCount', 2, rankingsMetrics.tabCount));
+            }}
+            if (!rankingsMetrics.hasTransferBondTab || !rankingsMetrics.hasStockTab) {{
+              rankingsDifferences.push(difference(
+                'rankings.tabs',
+                {{ cb: true, stock: true }},
+                {{ cb: rankingsMetrics.hasTransferBondTab, stock: rankingsMetrics.hasStockTab }},
+              ));
+            }}
+            if (!rankingsMetrics.exportVisible) {{
+              rankingsDifferences.push(difference('rankings.exportVisible', true, rankingsMetrics.exportVisible));
+            }}
+            assertNoDifferences('rankings.structure', '榜单页结构异常', rankingsDifferences);
+            const rankingsIntegrity = await assertPageIntegrity('rankings', main);
+            await main.evaluate(element => element.scrollTo({{ top: 0, left: 0 }}));
+            await page.screenshot({{ path: {json.dumps(rankings_screenshot)}, fullPage: true }});
+
+            const accountMaintenanceNarrowChecks = [];
+            const accountDataIdentityChecks = [];
+            const accountDataScenarioChecks = [];
+            smokeStep = 'account.open';
+            await accountNav.click();
+            await assertActivePage('account.fromPlan', accountNav, '#account');
+            if (await globalStatus.isVisible()) {{
+              fail('globalStatus.accountDemotion', '账户页不应展示计划状态条');
+            }}
+            const accountPage = main.getByRole('region', {{ name: '账户数据工作台' }});
+            const accountHeading = accountPage.getByRole('heading', {{ name: '账户数据', level: 1 }});
+            await accountHeading.waitFor({{ state: 'visible', timeout: 10000 }});
+            const accountLayout = accountPage.locator('.account-current-layout');
+            await accountLayout.waitFor({{ state: 'visible', timeout: 10000 }});
+            const accountShell = accountPage.locator('.account-current-workbench');
+            const accountRailRows = accountPage.locator('.account-current-rail-row');
+            const accountRailById = accountId => accountPage
+              .locator(`.account-current-rail-row[data-account-id="${{accountId}}"]`)
+              .first();
+            const accountMobileSelector = accountPage.locator('.account-current-mobile-selector select');
+            const chooseAccount = async accountId => {{
+              if ({json.dumps(viewport_name)} === 'narrow') {{
+                await accountMobileSelector.selectOption(accountId);
+              }} else {{
+                await accountRailById(accountId).click();
+              }}
+              await page.waitForFunction(id => {{
+                const workspace = document.querySelector('[aria-label="账户数据工作台"]');
+                return window.Alpine?.$data(workspace)?.selectedId === id;
+              }}, accountId, {{ timeout: 10000 }});
+            }};
+            const selectedHeading = accountPage.locator('.account-current-editor h2');
+            await selectedHeading.waitFor({{ state: 'visible', timeout: 10000 }});
+            const [accountShellBox, accountLayoutBox] = await Promise.all([
               accountShell.boundingBox(),
-              accountTotal.boundingBox(),
-              accountLedger.boundingBox(),
+              accountLayout.boundingBox(),
             ]);
+            const accountShellStyle = await accountShell.evaluate(element => {{
+              const style = window.getComputedStyle(element);
+              return {{
+                paddingLeft: Number.parseFloat(style.paddingLeft),
+                paddingRight: Number.parseFloat(style.paddingRight),
+              }};
+            }});
             const accountMetrics = {{
               shellWidth: accountShellBox?.width || 0,
-              totalWidth: accountTotalBox?.width || 0,
-              ledgerWidth: accountLedgerBox?.width || 0,
-              rowCount: await accountLedger.getByRole('row').count(),
-              editableDate: await accountDate.inputValue(),
+              layoutWidth: accountLayoutBox?.width || 0,
+              accountCount: await accountRailRows.count(),
+              selectedAccount: await selectedHeading.innerText(),
+              visibleFactDateInputs: await accountPage.locator('input[type="date"]:visible').count(),
+              mobileSelectorVisible: await accountMobileSelector.isVisible(),
+              shellStyle: accountShellStyle,
             }};
             const accountDifferences = [];
             if ({json.dumps(viewport_name)} !== 'narrow') {{
-              if (accountMetrics.shellWidth < {WORKBENCH_WIDTH_RANGE[0]} || accountMetrics.shellWidth > {WORKBENCH_WIDTH_RANGE[1]}) {{
+              if (Math.abs(accountMetrics.shellWidth - {WORKBENCH_WIDTH}) > {GEOMETRY_TOLERANCE}) {{
                 accountDifferences.push(difference(
-                  'account.shellWidth',
-                  {{ min: {WORKBENCH_WIDTH_RANGE[0]}, max: {WORKBENCH_WIDTH_RANGE[1]} }},
-                  accountMetrics.shellWidth,
+                  'account.shellWidth', {WORKBENCH_WIDTH}, accountMetrics.shellWidth, {GEOMETRY_TOLERANCE},
                 ));
               }}
-              if (Math.abs(accountMetrics.totalWidth - accountMetrics.ledgerWidth) > 2) {{
-                accountDifferences.push(difference(
-                  'account.ledgerWidth',
-                  accountMetrics.totalWidth,
-                  accountMetrics.ledgerWidth,
-                  2,
-                ));
-              }}
-            }}
-            if (accountMetrics.editableDate !== {json.dumps(expected_plan_date)}) {{
+            }} else if (
+              Math.abs(accountMetrics.shellStyle.paddingLeft - {NARROW_GUTTER}) > {GEOMETRY_TOLERANCE}
+              || Math.abs(accountMetrics.shellStyle.paddingRight - {NARROW_GUTTER}) > {GEOMETRY_TOLERANCE}
+            ) {{
               accountDifferences.push(difference(
-                'account.editableDate',
-                {json.dumps(expected_plan_date)},
-                accountMetrics.editableDate,
+                'account.narrowGutter', {NARROW_GUTTER}, accountMetrics.shellStyle, {GEOMETRY_TOLERANCE},
               ));
             }}
-            if (accountMetrics.rowCount < 1) {{
-              accountDifferences.push(difference('account.rowCount', {{ min: 1 }}, accountMetrics.rowCount));
+            if (accountMetrics.accountCount !== 5) {{
+              accountDifferences.push(difference('account.accountCount', 5, accountMetrics.accountCount));
             }}
-            assertNoDifferences('account.behavior', '账户页关键可见行为异常', accountDifferences);
-            const accountIntegrity = await assertPageIntegrity('account', main);
-            await page.screenshot({{ path: {json.dumps(account_screenshot)}, fullPage: true }});
-            await page.reload({{ waitUntil: 'domcontentloaded', timeout: 15000 }});
-            await assertActivePage('account.reload', accountNav, '');
-            await planNav.click();
-            await assertActivePage('plan.fromAccount', planNav, '#trading');
-            await page.goBack();
-            await assertActivePage('account.back', accountNav, '');
+            if (accountMetrics.selectedAccount !== '广发账户') {{
+              accountDifferences.push(difference('account.defaultSelection', '广发账户', accountMetrics.selectedAccount));
+            }}
+            if (accountMetrics.visibleFactDateInputs !== 0) {{
+              accountDifferences.push(difference('account.globalFactDateInputs', 0, accountMetrics.visibleFactDateInputs));
+            }}
+            if (accountMetrics.mobileSelectorVisible !== ({json.dumps(viewport_name)} === 'narrow')) {{
+              accountDifferences.push(difference(
+                'account.mobileSelector',
+                {json.dumps(viewport_name)} === 'narrow',
+                accountMetrics.mobileSelectorVisible,
+              ));
+            }}
+            accountMetrics.holdingSortOrder = await accountPage.evaluate(element => {{
+              const component = window.Alpine.$data(element);
+              return component.sortPositionsByMarketValue([
+                {{ code: '000001', quantity: 10, price: 2 }},
+                {{ code: '000003', quantity: 10, price: null }},
+                {{ code: '000002', quantity: 5, price: 10 }},
+                {{ code: '000004', quantity: 2, price: 10 }},
+              ]).map(item => item.code);
+            }});
+            const expectedHoldingSortOrder = ['000002', '000001', '000004', '000003'];
+            if (JSON.stringify(accountMetrics.holdingSortOrder) !== JSON.stringify(expectedHoldingSortOrder)) {{
+              accountDifferences.push(difference(
+                'account.holdingSortOrder', expectedHoldingSortOrder, accountMetrics.holdingSortOrder,
+              ));
+            }}
+            assertNoDifferences('account.behavior', '账户页没有按单账户当前数据组织', accountDifferences);
 
-            await page.goto({json.dumps(base_url + '#changelog')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
-            await assertActivePage('changelog.direct', changelogNav, '#changelog');
-            await main.getByRole('heading', {{ name: '更新日志', level: 1 }}).waitFor({{ state: 'visible', timeout: 10000 }});
-            await page.reload({{ waitUntil: 'domcontentloaded', timeout: 15000 }});
-            await assertActivePage('changelog.reload', changelogNav, '#changelog');
-            await accountNav.click();
-            await assertActivePage('account.fromChangelog', accountNav, '');
-            await page.goBack();
-            await assertActivePage('changelog.back', changelogNav, '#changelog');
+            const primaryAction = accountPage.locator('.account-current-primary');
+            const currentStockState = await page.request
+              .get({json.dumps(base_url + '/api/accounts/stock')})
+              .then(response => response.json());
+            const stockCashBefore = {{
+              available_cash: currentStockState.raw_data.available_cash,
+              frozen_cash: currentStockState.raw_data.frozen_cash,
+            }};
+            const holdingsClearPayloads = [];
+            const holdingsClearHandler = route => {{
+              if (route.request().method() !== 'PUT') return route.continue();
+              const payload = JSON.parse(route.request().postData() || '{{}}');
+              holdingsClearPayloads.push(payload);
+              return route.fulfill({{
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({{
+                  ...currentStockState,
+                  version: 'ui-smoke-holdings-clear-version',
+                  operation: 'update',
+                  raw_data: {{
+                    available_cash: payload.available_cash,
+                    frozen_cash: payload.frozen_cash,
+                    positions: payload.positions,
+                  }},
+                  valuation: {{
+                    status: 'available',
+                    total: payload.available_cash + payload.frozen_cash,
+                    missing_codes: [],
+                    items: [],
+                  }},
+                  holding_state: 'confirmed_empty',
+                  updated_at: new Date().toISOString(),
+                }}),
+              }});
+            }};
+            await page.route('**/api/accounts/stock', holdingsClearHandler);
+            await accountPage.locator('.account-current-remove').first().click();
+            await primaryAction.click();
+            const clearDialog = accountPage.getByRole('dialog');
+            await clearDialog.getByRole('heading', {{ name: '确认清空当前持仓？', exact: true }})
+              .waitFor({{ state: 'visible', timeout: 10000 }});
+            const focusedClearButton = await page.evaluate(() => document.activeElement?.textContent?.trim());
+            if (focusedClearButton !== '取消') {{
+              accountDifferences.push(difference('account.clearDialog.initialFocus', '取消', focusedClearButton));
+            }}
+            await clearDialog.getByRole('button', {{ name: '确认清空持仓并保存', exact: true }}).click();
+            await page.waitForFunction(() => !document.querySelector('.account-current-dialog')?.checkVisibility());
+            await page.unroute('**/api/accounts/stock', holdingsClearHandler);
+            await page.waitForFunction(() => {{
+              const workspace = document.querySelector('[aria-label="账户数据工作台"]');
+              const component = window.Alpine?.$data(workspace);
+              return component?.selectedId === 'stock' && !component.saving && !component.isDirty?.();
+            }}, {{ timeout: 10000 }});
+            const holdingsClearPayload = holdingsClearPayloads[0];
+            if (
+              holdingsClearPayloads.length !== 1
+              || holdingsClearPayload?.available_cash !== stockCashBefore.available_cash
+              || holdingsClearPayload?.frozen_cash !== stockCashBefore.frozen_cash
+              || (holdingsClearPayload?.positions || []).length !== 0
+            ) {{
+              accountDifferences.push(difference(
+                'account.clearHoldingsPreservesCash',
+                {{ count: 1, ...stockCashBefore, positions: [] }},
+                {{
+                  count: holdingsClearPayloads.length,
+                  available_cash: holdingsClearPayload?.available_cash,
+                  frozen_cash: holdingsClearPayload?.frozen_cash,
+                  positions: holdingsClearPayload?.positions,
+                }},
+              ));
+            }}
 
-            await page.goto({json.dumps(base_url + '#trading')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
-            await assertActivePage('plan.direct', planNav, '#trading');
-            await page.reload({{ waitUntil: 'domcontentloaded', timeout: 15000 }});
-            await assertActivePage('plan.reload', planNav, '#trading');
-            await accountNav.click();
-            await assertActivePage('account.fromPlan', accountNav, '');
-            await page.goBack();
-            await assertActivePage('plan.back', planNav, '#trading');
-            const planPage = main.getByRole('region', {{ name: '计划工作台' }});
-            await planPage.waitFor({{ state: 'visible', timeout: 10000 }});
-            await page.waitForFunction(
-              label => Array.from(document.querySelectorAll(`[role="region"][aria-label="${{label}}"]`))
-                .find(element => element.checkVisibility())
-                ?.getAttribute('aria-busy') === 'false',
-              '计划工作台',
+            await chooseAccount('cash');
+            const cashHeading = accountPage.locator('.account-current-editor h2');
+            await cashHeading.getByText('资金账户', {{ exact: true }}).waitFor({{ state: 'visible', timeout: 10000 }});
+            const cashAmount = accountPage.getByLabel('资金余额', {{ exact: true }});
+            const confirmRequest = page.waitForRequest(
+              request => request.url().includes('/api/accounts/cash/confirm') && request.method() === 'POST',
               {{ timeout: 10000 }},
             );
+            await primaryAction.click();
+            await confirmRequest;
+            await accountPage.getByText('已确认本账户数据', {{ exact: false }})
+              .waitFor({{ state: 'visible', timeout: 10000 }});
+            const currentCashAmount = Number(await cashAmount.inputValue());
+            await cashAmount.fill(String(currentCashAmount + 1));
+            if ({json.dumps(viewport_name)} === 'narrow') {{
+              await accountMobileSelector.selectOption('cb');
+            }} else {{
+              await accountRailById('cb').click();
+            }}
+            const unsavedAlert = accountPage.getByRole('alert').filter({{ hasText: '当前账户有未保存修改' }});
+            await unsavedAlert.waitFor({{ state: 'visible', timeout: 10000 }});
+            await unsavedAlert.getByRole('button', {{ name: '继续编辑', exact: true }}).click();
+            if ((await cashHeading.innerText()) !== '资金账户') {{
+              accountDifferences.push(difference('account.unsavedSwitchGuard', '资金账户', await cashHeading.innerText()));
+            }}
+            await planNav.click();
+            const unsavedNavigationAlert = accountPage.getByRole('alert').filter({{ hasText: '离开账户页不会自动保存' }});
+            await unsavedNavigationAlert.waitFor({{ state: 'visible', timeout: 10000 }});
+            if ((await accountNav.getAttribute('aria-current')) !== 'page' || !page.url().endsWith('#account')) {{
+              accountDifferences.push(difference(
+                'account.unsavedNavigationGuard',
+                {{ activePage: 'account', hash: '#account' }},
+                {{ activePage: await accountNav.getAttribute('aria-current'), url: page.url() }},
+              ));
+            }}
+            await unsavedNavigationAlert.getByRole('button', {{ name: '继续编辑', exact: true }}).click();
+            const currentCashState = await page.request.get({json.dumps(base_url + '/api/accounts/cash')}).then(r => r.json());
+            const changedPayloads = [];
+            const changedSaveHandler = route => {{
+              changedPayloads.push(JSON.parse(route.request().postData() || '{{}}'));
+              const amount = changedPayloads[0]?.amount;
+              route.fulfill({{
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({{
+                  ...currentCashState,
+                  version: 'ui-smoke-current-version',
+                  operation: 'update',
+                  raw_data: {{ amount }},
+                  valuation: {{ status: 'available', total: amount, missing_codes: [], items: [] }},
+                  updated_at: new Date().toISOString(),
+                }}),
+              }});
+            }};
+            await page.route('**/api/accounts/cash', changedSaveHandler);
+            smokeStep = 'account.changed-save';
+            await primaryAction.click();
+            await page.waitForFunction(() => document.querySelector('.account-current-primary')?.textContent.includes('确认数据仍准确'));
+            await page.unroute('**/api/accounts/cash', changedSaveHandler);
+            const readinessAfterAccount = await page.request
+              .get({json.dumps(base_url + '/api/plan/readiness')})
+              .then(response => response.json());
+            accountMetrics.readinessAfterAccount = readinessAfterAccount;
+            accountMetrics.holdingsClearPayloads = holdingsClearPayloads;
+            if (readinessAfterAccount.status !== 'ready') {{
+              accountDifferences.push(difference(
+                'account.confirmDoesNotChangeReadiness',
+                {{ status: 'ready', errors: [] }},
+                readinessAfterAccount,
+              ));
+            }}
+            if (changedPayloads.length !== 1 || changedPayloads[0]?.amount !== currentCashAmount + 1) {{
+              accountDifferences.push(difference(
+                'account.singleAccountSave',
+                {{ count: 1, amount: currentCashAmount + 1 }},
+                {{ count: changedPayloads.length, amount: changedPayloads[0]?.amount }},
+              ));
+            }}
+            if ((await cashHeading.innerText()) !== '资金账户') {{
+              accountDifferences.push(difference('account.staysInEditorAfterSave', '资金账户', await cashHeading.innerText()));
+            }}
+            assertNoDifferences('account.interaction', '单账户更新、未保存保护或保存完成态异常', accountDifferences);
+
+            if ({json.dumps(viewport_name)} === 'narrow') {{
+              const narrowAccountPage = await page.context().newPage();
+              await narrowAccountPage.setViewportSize({json.dumps(VIEWPORTS['narrow'])});
+              await narrowAccountPage.route('**/api/positions/stock/quote?code=*', route => route.fulfill({{
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({{ code: '000001', name: '平安银行', price: 10 }}),
+              }}));
+              await narrowAccountPage.goto({json.dumps(base_url + '#account')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
+              await narrowAccountPage.waitForFunction(() => window.Alpine, {{ timeout: 10000 }});
+              const narrowAccount = narrowAccountPage.getByRole('region', {{ name: '账户数据工作台' }});
+              await narrowAccount.getByRole('heading', {{ name: '账户数据', level: 1 }}).waitFor({{ state: 'visible', timeout: 10000 }});
+              const addSecurity = narrowAccount.getByRole('button', {{ name: '＋ 添加证券', exact: true }});
+              await addSecurity.click();
+              const codeInput = narrowAccount.getByLabel('证券代码').last();
+              const quantityInput = narrowAccount.getByLabel('持仓数量').last();
+              await codeInput.fill('000001');
+              await codeInput.dispatchEvent('change');
+              await quantityInput.fill('100');
+              await codeInput.focus();
+              const [scrollMetrics, focusMetrics, targetMetrics] = await Promise.all([
+                narrowAccount.evaluate(element => ({{
+                  clientWidth: element.clientWidth,
+                  scrollWidth: element.scrollWidth,
+                  documentClientWidth: document.documentElement.clientWidth,
+                  documentScrollWidth: document.documentElement.scrollWidth,
+                }})),
+                codeInput.evaluate(element => {{
+                  const style = window.getComputedStyle(element);
+                  return {{
+                    focused: document.activeElement === element,
+                    outlineStyle: style.outlineStyle,
+                    outlineWidth: Number.parseFloat(style.outlineWidth),
+                  }};
+                }}),
+                Promise.all([addSecurity, codeInput, quantityInput, narrowAccount.locator('.account-current-primary')].map(async control => {{
+                  const box = await control.boundingBox();
+                  return {{ label: await control.getAttribute('aria-label') || await control.innerText(), height: box?.height || 0 }};
+                }})),
+              ]);
+              const narrowDifferences = [];
+              if (scrollMetrics.scrollWidth > scrollMetrics.clientWidth + 2
+                  || scrollMetrics.documentScrollWidth > scrollMetrics.documentClientWidth + 2) {{
+                narrowDifferences.push(difference('account.narrow.scrollWidth', 'no overflow', scrollMetrics));
+              }}
+              if (!focusMetrics.focused || focusMetrics.outlineStyle === 'none' || focusMetrics.outlineWidth < 2) {{
+                narrowDifferences.push(difference(
+                  'account.narrow.focusVisible', {{ focused: true, outline: {{ minWidth: 2 }} }}, focusMetrics,
+                ));
+              }}
+              targetMetrics.forEach(target => {{
+                if (target.height < 36) narrowDifferences.push(difference(
+                  'account.narrow.touchTarget', {{ control: target.label, minHeight: 36 }}, target,
+                ));
+              }});
+              assertNoDifferences('account.narrow', '390px 账户编辑存在裁切、焦点或触达尺寸问题', narrowDifferences);
+              accountMaintenanceNarrowChecks.push({{ scrollMetrics, focusMetrics, targetMetrics }});
+              await narrowAccountPage.close();
+            }}
+
+            smokeStep = 'account.error-retry';
+            const scenarioPage = await page.context().newPage();
+            await scenarioPage.setViewportSize({json.dumps(viewport)});
+            let failAccountRead = true;
+            await scenarioPage.route('**/api/accounts', route => {{
+              if (!failAccountRead) return route.continue();
+              failAccountRead = false;
+              return route.fulfill({{
+                status: 503,
+                contentType: 'application/json',
+                body: JSON.stringify({{ detail: '账户数据服务暂不可用' }}),
+              }});
+            }});
+            await scenarioPage.goto({json.dumps(base_url + '#account')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
+            await scenarioPage.waitForFunction(() => window.Alpine, {{ timeout: 10000 }});
+            const failedAccountPage = scenarioPage.getByRole('region', {{ name: '账户数据工作台' }});
+            const failedAlert = failedAccountPage.getByRole('alert').filter({{ hasText: '账户数据读取失败' }});
+            await failedAlert.waitFor({{ state: 'visible', timeout: 10000 }});
+            await failedAlert.getByRole('button', {{ name: '重新读取', exact: true }}).click();
+            await failedAccountPage.locator('.account-current-layout').waitFor({{ state: 'visible', timeout: 10000 }});
+            accountDataScenarioChecks.push({{ name: 'accounts-http-error', retryVisible: true, recovered: true }});
+            await scenarioPage.close();
+
+            smokeStep = 'account.readiness-error';
+            const readinessErrorPage = await page.context().newPage();
+            await readinessErrorPage.setViewportSize({json.dumps(viewport)});
+            let failReadiness = true;
+            await readinessErrorPage.route('**/api/plan/readiness', route => {{
+              if (!failReadiness) return route.continue();
+              failReadiness = false;
+              return route.fulfill({{
+                status: 503,
+                contentType: 'application/json',
+                body: JSON.stringify({{ detail: {{ message: '计划输入校验暂不可用' }} }}),
+              }});
+            }});
+            await readinessErrorPage.goto({json.dumps(base_url + '#account')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
+            await readinessErrorPage.waitForFunction(() => window.Alpine, {{ timeout: 10000 }});
+            const readinessErrorWorkspace = readinessErrorPage.getByRole('region', {{ name: '账户数据工作台' }});
+            const readinessAlert = readinessErrorWorkspace.getByRole('alert')
+              .filter({{ hasText: '无法确认计划输入状态' }});
+            await readinessAlert.waitFor({{ state: 'visible', timeout: 10000 }});
+            const unknownOverview = await readinessErrorWorkspace.locator('.account-current-overview').innerText();
+            const unknownStatuses = await readinessErrorWorkspace.locator('.account-current-rail-meta > span').allTextContents();
+            if (unknownOverview.includes('已就绪') || unknownStatuses.filter(text => text.trim() === '待确认').length !== 5) {{
+              fail('account.readiness-error', '计划就绪度失败时账户页仍然 fail-open', [
+                difference(
+                  'account.readinessUnknown',
+                  {{ overviewIncludesReady: false, pendingStatusCount: 5 }},
+                  {{ overview: unknownOverview, statuses: unknownStatuses }},
+                ),
+              ]);
+            }}
+            await readinessAlert.getByRole('button', {{ name: '重新确认', exact: true }}).click();
+            await readinessErrorWorkspace.locator('.account-current-overview')
+              .filter({{ hasText: '5 / 5 个账户已就绪' }})
+              .waitFor({{ state: 'visible', timeout: 10000 }});
+            accountDataScenarioChecks.push({{
+              name: 'readiness-error',
+              failClosed: true,
+              retryVisible: true,
+              recovered: true,
+            }});
+            await readinessErrorPage.close();
+
+            smokeStep = 'account.version-conflict';
+            const conflictPage = await page.context().newPage();
+            await conflictPage.setViewportSize({json.dumps(viewport)});
+            await conflictPage.goto({json.dumps(base_url + '#account')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
+            await conflictPage.waitForFunction(() => window.Alpine, {{ timeout: 10000 }});
+            const conflictWorkspace = conflictPage.getByRole('region', {{ name: '账户数据工作台' }});
+            await conflictWorkspace.getByRole('heading', {{ name: '账户数据', level: 1 }})
+              .waitFor({{ state: 'visible', timeout: 10000 }});
+            if ({json.dumps(viewport_name)} === 'narrow') {{
+              await conflictWorkspace.locator('.account-current-mobile-selector select').selectOption('cash');
+            }} else {{
+              await conflictWorkspace.locator('.account-current-rail-row[data-account-id="cash"]').first().click();
+            }}
+            await conflictPage.waitForFunction(() => {{
+              const workspace = document.querySelector('[aria-label="账户数据工作台"]');
+              return window.Alpine?.$data(workspace)?.selectedId === 'cash';
+            }}, {{ timeout: 10000 }});
+            const conflictAmount = conflictWorkspace.getByLabel('资金余额', {{ exact: true }});
+            const conflictCurrent = await conflictPage.request
+              .get({json.dumps(base_url + '/api/accounts/cash')})
+              .then(response => response.json());
+            await conflictAmount.fill(String(Number(await conflictAmount.inputValue()) + 2));
+            const conflictHandler = route => route.fulfill({{
+              status: 409,
+              contentType: 'application/json',
+              body: JSON.stringify({{
+                detail: {{
+                  message: '账户数据已在别处更新，请刷新后合并你的修改',
+                  latest: conflictCurrent,
+                }},
+              }}),
+            }});
+            await conflictPage.route('**/api/accounts/cash', conflictHandler);
+            await conflictWorkspace.locator('.account-current-primary').click();
+            const conflictNotice = conflictWorkspace.getByRole('alert').filter({{ hasText: '账户数据已经在别处更新' }});
+            await conflictNotice.waitFor({{ state: 'visible', timeout: 10000 }});
+            if (!await conflictNotice.getByRole('button', {{ name: '重新读取最新数据', exact: true }}).isVisible()) {{
+              fail('account.version-conflict', '版本冲突没有提供恢复入口', [
+                difference('account.versionConflict.reloadAction', true, false),
+              ]);
+            }}
+            await conflictPage.unroute('**/api/accounts/cash', conflictHandler);
+            accountDataScenarioChecks.push({{ name: 'version-conflict', draftPreserved: true, reloadActionVisible: true }});
+            await conflictPage.close();
+            accountDataIdentityChecks.push({{
+              name: 'account-scoped-current-state',
+              globalFactDateInputs: accountMetrics.visibleFactDateInputs,
+              changedPayloads,
+            }});
+            await chooseAccount('changqian');
+            await chooseAccount('cash');
+            const accountIntegrity = await assertPageIntegrity('account', main);
+            await main.evaluate(element => element.scrollTo({{ top: 0, left: 0 }}));
+            await accountHeading.scrollIntoViewIfNeeded();
+            await page.waitForTimeout(100);
+            await page.screenshot({{ path: {json.dumps(account_screenshot)}, fullPage: true }});
+            smokeStep = 'account.reload';
+            await page.reload({{ waitUntil: 'domcontentloaded', timeout: 15000 }});
+            await assertActivePage('account.reload', accountNav, '#account');
+
+            smokeStep = 'plan.direct-after-account';
+            await page.goto({json.dumps(base_url + '#plan')}, {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
+            await page.waitForFunction(
+              () => window.Alpine?.store('page') === 'today'
+                && document.querySelector('a[aria-label="计划"]')?.getAttribute('aria-current') === 'page',
+              null,
+              {{ timeout: 10000 }},
+            );
+            const planPage = main.getByRole('region', {{ name: '计划工作台' }});
+            await planPage.waitFor({{ state: 'visible', timeout: 10000 }});
+            smokeStep = 'plan.ready';
+            try {{
+              await page.waitForFunction(
+                label => Array.from(document.querySelectorAll(`[role="region"][aria-label="${{label}}"]`))
+                  .find(element => element.checkVisibility())
+                  ?.getAttribute('aria-busy') === 'false',
+                '计划工作台',
+                {{ timeout: 10000 }},
+              );
+            }} catch (error) {{
+              const debug = await page.evaluate(() => ({{
+                url: window.location.href,
+                hash: window.location.hash,
+                pageStore: window.Alpine?.store('page'),
+                activeNav: document.querySelector('a[aria-current="page"]')?.getAttribute('aria-label'),
+                accountVisible: Array.from(document.querySelectorAll('[aria-label="账户数据工作台"]')).some(element => element.checkVisibility()),
+                todayRegions: Array.from(document.querySelectorAll('[aria-label="计划工作台"]')).map(element => ({{
+                  visible: element.checkVisibility(),
+                  busy: element.getAttribute('aria-busy'),
+                }})),
+              }}));
+              throw new Error(`计划页未就绪：${{JSON.stringify(debug)}}`);
+            }}
             const planHeading = planPage.getByRole('heading', {{ name: '计划', level: 1 }});
             await planHeading.waitFor({{ state: 'visible', timeout: 10000 }});
+            const decisionHero = planPage.locator('.plan-decision-hero');
+            const mastheadStatus = planPage.locator('.plan-masthead-state');
+            const planGeneratePanel = planPage.locator('.plan-hero-panel');
+            const stateChain = planPage.locator('.plan-state-chain');
+            const executionDossier = planPage.locator('.plan-execution-dossier');
+            const readinessPanel = planPage.locator('.plan-readiness-panel');
+            await mastheadStatus.waitFor({{ state: 'visible', timeout: 10000 }});
+            await decisionHero.waitFor({{ state: 'attached', timeout: 10000 }});
+            await planGeneratePanel.waitFor({{ state: 'attached', timeout: 10000 }});
+            await stateChain.waitFor({{ state: 'attached', timeout: 10000 }});
+            await executionDossier.waitFor({{ state: 'visible', timeout: 10000 }});
+            await readinessPanel.waitFor({{ state: 'attached', timeout: 10000 }});
+            const fundingPlanPanel = executionDossier.locator('.plan-funding-plan');
+            const accountPlanCards = executionDossier.locator('.plan-account-card');
+            await fundingPlanPanel.waitFor({{ state: 'visible', timeout: 10000 }});
             const planDetails = planPage.locator('details[aria-label="计划条件"]:visible');
             const planDetailsCount = await planDetails.count();
             if (planDetailsCount !== 1) {{
@@ -749,9 +1281,58 @@ def browser_check_code(
             const restoredResult = await clickAndReadDetailsState();
             const toggledOpen = toggledResult.open;
             const restoredOpen = restoredResult.open;
-            const planShellBox = await planPage.boundingBox();
+            const [planShellBox, statusBox, dossierBox] = await Promise.all([
+              planPage.boundingBox(),
+              planPage.locator('.workspace-title-row').boundingBox(),
+              executionDossier.boundingBox(),
+            ]);
+            const planStateTitle = await mastheadStatus.innerText();
+            const planSectionOrder = await planPage.evaluate(element => {{
+              const selectors = ['.workspace-title-row', '.plan-state-chain', '.plan-hero-panel', '.plan-execution-dossier', '.plan-readiness-panel'];
+              return selectors.map(selector => Array.from(element.children).findIndex(child => child.matches(selector)));
+            }});
+            const stateChainLabels = await stateChain.locator('.plan-state-chain-title').evaluateAll(
+              nodes => nodes.map(node => node.innerText.trim()),
+            );
+            const fundingBeforeAccounts = await executionDossier.evaluate(element => {{
+              const funding = element.querySelector('.plan-funding-plan');
+              const accounts = element.querySelector('[aria-label="账户交易计划"]');
+              if (!accounts) return true;
+              return Boolean(funding)
+                && Boolean(funding.compareDocumentPosition(accounts) & Node.DOCUMENT_POSITION_FOLLOWING);
+            }});
+            const fundingTableMetrics = await fundingPlanPanel.evaluate(panel => {{
+              const rows = Array.from(panel.querySelectorAll('.plan-funding-action'));
+              return {{
+                tableCount: panel.querySelectorAll('.plan-funding-table').length,
+                rowHeights: rows.map(row => row.getBoundingClientRect().height),
+                routeToAmountGaps: rows.map(row => {{
+                  const routeEnd = row.querySelector('.plan-funding-direction span:last-child')
+                    ?.getBoundingClientRect().right || 0;
+                  const amountStart = row.querySelector('.plan-funding-amount')
+                    ?.getBoundingClientRect().left || 0;
+                  return amountStart - routeEnd;
+                }}),
+              }};
+            }});
+            const accountsCollapsedByDefault = await accountPlanCards.evaluateAll(cards =>
+              cards.every(card => !card.open)
+            );
             const planMetrics = {{
               shellWidth: planShellBox?.width || 0,
+              decisionWidth: statusBox?.width || 0,
+              dossierWidth: dossierBox?.width || 0,
+              stateChainDemoted: !(await stateChain.isVisible()),
+              generationToolsDemoted: !(await planGeneratePanel.isVisible()),
+              readinessDemoted: !(await readinessPanel.isVisible()),
+              stateTitle: planStateTitle,
+              sectionOrder: planSectionOrder,
+              stateChainLabels,
+              fundingBeforeAccounts,
+              accountsCollapsedByDefault,
+              fundingTableMetrics,
+              fundingActionCount: await fundingPlanPanel.locator('.plan-funding-action').count(),
+              accountPlanCount: await accountPlanCards.count(),
               visibleDetails: planDetailsCount,
               wasOpen,
               toggledOpen,
@@ -768,13 +1349,100 @@ def browser_check_code(
             }};
             const planDifferences = [];
             if ({json.dumps(viewport_name)} !== 'narrow') {{
-              if (planMetrics.shellWidth < {WORKBENCH_WIDTH_RANGE[0]} || planMetrics.shellWidth > {WORKBENCH_WIDTH_RANGE[1]}) {{
+              if (Math.abs(planMetrics.shellWidth - {WORKBENCH_WIDTH}) > {GEOMETRY_TOLERANCE}) {{
                 planDifferences.push(difference(
                   'plan.shellWidth',
-                  {{ min: {WORKBENCH_WIDTH_RANGE[0]}, max: {WORKBENCH_WIDTH_RANGE[1]} }},
+                  {WORKBENCH_WIDTH},
                   planMetrics.shellWidth,
+                  {GEOMETRY_TOLERANCE},
                 ));
               }}
+            }}
+            for (const [metric, actual] of [['dossierWidth', planMetrics.dossierWidth]]) {{
+              if (Math.abs(planMetrics.decisionWidth - actual) > {GEOMETRY_TOLERANCE}) {{
+                planDifferences.push(difference(
+                  'plan.' + metric,
+                  planMetrics.decisionWidth,
+                  actual,
+                  {GEOMETRY_TOLERANCE},
+                ));
+              }}
+            }}
+            const validPlanStates = [
+              '正在生成完整计划',
+              '待更新账户数据',
+              '计划已失效',
+              '计划生成失败',
+              '计划待生成',
+              '执行窗口已过',
+              '本次无需操作',
+              '计划待执行',
+            ];
+            if (!validPlanStates.includes(planMetrics.stateTitle)
+                && !planMetrics.stateTitle.startsWith('今日需要操作')) {{
+              planDifferences.push(difference('plan.stateTitle', validPlanStates, planMetrics.stateTitle));
+            }}
+            const sectionOrderIsValid = planMetrics.sectionOrder.every(
+              (value, index, values) => value >= 0 && (index === 0 || value > values[index - 1]),
+            );
+            if (!sectionOrderIsValid) {{
+              planDifferences.push(difference(
+	                'plan.sectionOrder',
+	                'status < state-chain < generation < actions < readiness',
+	                planMetrics.sectionOrder,
+	              ));
+            }}
+            const expectedChainLabels = ['账户数据', '资金调拨', '账户交易计划', '执行窗口'];
+            if (JSON.stringify(planMetrics.stateChainLabels) !== JSON.stringify(expectedChainLabels)) {{
+              planDifferences.push(difference('plan.stateChain', expectedChainLabels, planMetrics.stateChainLabels));
+            }}
+            if (!planMetrics.fundingBeforeAccounts || !planMetrics.accountsCollapsedByDefault) {{
+              planDifferences.push(difference(
+                'plan.executionHierarchy',
+                {{ fundingBeforeAccounts: true, accountsCollapsedByDefault: true }},
+                {{
+                  fundingBeforeAccounts: planMetrics.fundingBeforeAccounts,
+                  accountsCollapsedByDefault: planMetrics.accountsCollapsedByDefault,
+                }},
+              ));
+            }}
+            if (planMetrics.fundingTableMetrics.tableCount !== 1) {{
+              planDifferences.push(difference(
+                'plan.fundingTableCount',
+                1,
+                planMetrics.fundingTableMetrics.tableCount,
+              ));
+            }}
+            if ({json.dumps(viewport_name)} !== 'narrow') {{
+              const oversizedFundingRows = planMetrics.fundingTableMetrics.rowHeights
+                .filter(height => height > 52);
+              if (oversizedFundingRows.length) {{
+                planDifferences.push(difference(
+                  'plan.fundingRowHeights',
+                  {{ max: 52 }},
+                  planMetrics.fundingTableMetrics.rowHeights,
+                ));
+              }}
+              const disconnectedFundingAmounts = planMetrics.fundingTableMetrics.routeToAmountGaps
+                .filter(gap => gap > 56);
+              if (disconnectedFundingAmounts.length) {{
+                planDifferences.push(difference(
+                  'plan.fundingRouteToAmountGaps',
+                  {{ max: 56 }},
+                  planMetrics.fundingTableMetrics.routeToAmountGaps,
+                ));
+              }}
+            }}
+            if (!planMetrics.stateChainDemoted || !planMetrics.generationToolsDemoted || !planMetrics.readinessDemoted) {{
+              planDifferences.push(difference(
+                'plan.secondaryPanels',
+                {{ stateChainDemoted: true, generationToolsDemoted: true, readinessDemoted: true }},
+                {{
+                  stateChainDemoted: planMetrics.stateChainDemoted,
+                  generationToolsDemoted: planMetrics.generationToolsDemoted,
+                  readinessDemoted: planMetrics.readinessDemoted,
+                }},
+              ));
             }}
             if (
               !planMetrics.toggleEvents.toggled
@@ -812,9 +1480,937 @@ def browser_check_code(
             }}
             assertNoDifferences('plan.behavior', '计划页关键可见行为异常', planDifferences);
             const planIntegrity = await assertPageIntegrity('plan', main);
+            await main.evaluate(element => element.scrollTo({{ top: 0, left: 0 }}));
+            await page.evaluate(() => window.scrollTo({{ top: 0, left: 0 }}));
             await planHeading.scrollIntoViewIfNeeded();
+            await page.evaluate(() => document.activeElement?.blur?.());
             await page.waitForTimeout(100);
             await page.screenshot({{ path: {json.dumps(plan_screenshot)}, fullPage: true }});
+            let expandedAccountPlanChecks = null;
+            let planFocusChecks = null;
+
+            const scenarioFixtures = await page.evaluate(async () => {{
+              const readiness = await fetch('/api/plan/readiness').then(response => response.json());
+              const generation = await fetch('/api/plan/generated')
+                .then(response => response.json())
+                .then(body => body.generation);
+              const savedRecord = await fetch(`/api/plan/generated/${{generation.plan_id}}`)
+                .then(response => response.json());
+              const plan = savedRecord.plan || savedRecord;
+              return {{ readiness, generation, plan }};
+            }});
+            const scenarioPlan = (planId, mode) => {{
+              const plan = JSON.parse(JSON.stringify(scenarioFixtures.plan));
+              const withActions = mode !== 'no-action';
+              const futureFunding = mode === 'future-funding';
+              plan.generation = {{
+                ...plan.generation,
+                plan_id: planId,
+                plan_date: scenarioFixtures.readiness.plan_date,
+                status: 'complete',
+              }};
+              plan.execution_sequence = withActions
+                ? [
+                    {{
+                      phase: 'sell',
+                      orders: [{{
+                        strategy: 'stock',
+                        action: 'SELL',
+                        stock_code: '600051',
+                        stock_name: '宁波联合',
+                        delta_shares: -100,
+                        price: 5.68,
+                        amount: 568,
+                      }}],
+                    }},
+                    {{ phase: 'transfer', orders: [] }},
+                    {{ phase: 'buy', orders: [] }},
+                  ]
+                : [
+                    {{ phase: 'sell', orders: [] }},
+                    {{ phase: 'transfer', orders: [] }},
+                    {{ phase: 'buy', orders: [] }},
+                  ];
+              plan.cb = {{
+                ...plan.cb,
+                orders: withActions ? [{{
+                  action: 'BUY',
+                  bond_code: '123456',
+                  bond_name: '测试转债',
+                  delta_shares: 10,
+                  price: 101.25,
+                  amount: 1012.5,
+                }}] : [],
+              }};
+              plan.stock = {{
+                ...plan.stock,
+                orders: withActions ? [{{
+                  action: 'SELL',
+                  stock_code: '600051',
+                  stock_name: '宁波联合',
+                  delta_shares: -100,
+                  price: 5.68,
+                  amount: 568,
+                }}] : [],
+              }};
+              if (plan.fund_transfer?.top_level) {{
+                plan.fund_transfer.top_level.executed_actions = [];
+                plan.fund_transfer.top_level.outflows = [];
+              }}
+              if (plan.fund_transfer?.a_internal) plan.fund_transfer.a_internal.actions = [];
+              const fundingAvailability = futureFunding ? 'deferred' : 'same_day';
+              const fundingLabel = futureFunding ? '等待未来资金可用' : '当日可用';
+              const fundingState = futureFunding ? 'waits_for_funds' : 'needs_same_day_transfer';
+              const fundingDate = plan.stock?.trade_date || plan.cb?.trade_date || null;
+              const fundingDisplayDate = futureFunding ? '日期待确认' : fundingDate;
+              plan.execution_read_model = {{
+                plan_date: scenarioFixtures.readiness.plan_date,
+                funding_plan: withActions ? {{
+                  groups: [{{
+                    availability: fundingAvailability,
+                    label: fundingLabel,
+                    available_date: futureFunding ? null : fundingDate,
+                    display_date: fundingDisplayDate,
+                    actions: [{{
+                      source_account_id: 'cash',
+                      source_account_name: '资金账户',
+                      target_account_id: 'stock',
+                      target_account_name: '广发账户',
+                      amount: 6000,
+                      reason: 'a_internal_rebalance',
+                      reason_label: '完成主动组合内部资金调整',
+                      availability: fundingAvailability,
+                      available_date: futureFunding ? null : fundingDate,
+                      display_date: fundingDisplayDate,
+                      cash_effect: futureFunding ? 'deferred_cash_in' : 'immediate_cash_in',
+                    }}],
+                  }}],
+                }} : null,
+                account_trading_plans: withActions ? [
+                  {{
+                    account_id: 'stock',
+                    account_name: '广发账户',
+                    portfolio_name: '主动组合',
+                    strategy_id: 'stock',
+                    strategy_name: '小市值股票策略',
+                    trade_date: fundingDate,
+                    execution_guardrails: {{
+                      price_basis_date: scenarioFixtures.readiness.plan_date,
+                      reference_price_is_limit: false,
+                      rules: [{{
+                        kind: 'single_position_cap',
+                        max_weight: 0.10,
+                        check: 'validated_at_generation',
+                      }}],
+                    }},
+                    funding: {{
+                      state: fundingState,
+                      available_on: fundingAvailability,
+                      available_date: futureFunding ? null : fundingDate,
+                      display_date: fundingDisplayDate,
+                      transfer_in: 6000,
+                      transfer_out: 0,
+                      incoming_actions: [{{
+                          source_account_id: 'cash',
+                          source_account_name: '资金账户',
+                          target_account_id: 'stock',
+                          target_account_name: '广发账户',
+                          amount: 6000,
+                          availability: fundingAvailability,
+                          available_date: futureFunding ? null : fundingDate,
+                          display_date: fundingDisplayDate,
+                      }}],
+                      blocked_reason: null,
+                    }},
+                    trade_summary: {{
+                      sell_count: 1,
+                      sell_estimated_amount: 568,
+                      buy_count: 1,
+                      buy_estimated_amount: 1012.5,
+                    }},
+                    cash: {{
+                      starting_available: 12000,
+                      transfer_in: 6000,
+                      transfer_out: 0,
+                      expected_sell: 568,
+                      expected_buy: 1012.5,
+                      expected_ending: 17555.5,
+                    }},
+                    phases: [
+                      {{
+                        phase: 'sell',
+                        orders: [{{
+                          action: 'SELL',
+                          code: '600051',
+                          name: '宁波联合',
+                          current_quantity: 100,
+                          target_quantity: 0,
+                          quantity: 100,
+                          unit: '股',
+                          reference_price: 5.68,
+                          max_execution_price: null,
+                          estimated_amount: 568,
+                        }}],
+                      }},
+                      {{
+                        phase: 'buy',
+                        orders: [{{
+                          action: 'BUY',
+                          code: '600052',
+                          name: '东望时代',
+                          current_quantity: 0,
+                          target_quantity: 100,
+                          quantity: 100,
+                          unit: '股',
+                          reference_price: 10.125,
+                          max_execution_price: null,
+                          estimated_amount: 1012.5,
+                        }}],
+                      }},
+                    ],
+                  }},
+                  {{
+                    account_id: 'cb',
+                    account_name: '华泰账户',
+                    portfolio_name: '主动组合',
+                    strategy_id: 'cb',
+                    strategy_name: '多因子可转债策略',
+                    trade_date: fundingDate,
+                    execution_guardrails: {{
+                      price_basis_date: scenarioFixtures.readiness.plan_date,
+                      reference_price_is_limit: false,
+                      rules: [{{
+                        kind: 'buy_price_ceiling',
+                        applies_to: ['BUY', 'ADD'],
+                        comparison: 'strictly_below',
+                        max_price: 130,
+                        check: 'at_execution',
+                      }}],
+                    }},
+                    funding: {{
+                      state: 'ready',
+                      available_on: null,
+                      available_date: fundingDate,
+                      display_date: fundingDate,
+                      transfer_in: 0,
+                      transfer_out: 0,
+                      incoming_actions: [],
+                      blocked_reason: null,
+                    }},
+                    trade_summary: {{
+                      sell_count: 0,
+                      sell_estimated_amount: 0,
+                      buy_count: 1,
+                      buy_estimated_amount: 1012.5,
+                    }},
+                    cash: {{
+                      starting_available: 8000,
+                      transfer_in: 0,
+                      transfer_out: 0,
+                      expected_sell: 0,
+                      expected_buy: 1012.5,
+                      expected_ending: 6987.5,
+                    }},
+                    phases: [{{
+                      phase: 'buy',
+                      orders: [{{
+                        action: 'ADD',
+                        code: '123456',
+                        name: '测试转债',
+                        current_quantity: 10,
+                        target_quantity: 20,
+                        quantity: 10,
+                        unit: '张',
+                        reference_price: 101.25,
+                        max_execution_price: 130,
+                        estimated_amount: 1012.5,
+                      }}],
+                    }}],
+                  }},
+                ] : [],
+              }};
+              return plan;
+            }};
+            const actionPlan = scenarioPlan('scenario-action', 'action');
+            const futurePlan = scenarioPlan('scenario-future-funding', 'future-funding');
+            const noActionPlan = scenarioPlan('scenario-no-action', 'no-action');
+            const expiredPlan = JSON.parse(JSON.stringify(actionPlan));
+            expiredPlan.generation.plan_id = 'scenario-expired';
+            expiredPlan.stock.trade_date = '2000-01-01';
+            expiredPlan.cb.trade_date = '2000-01-01';
+            expiredPlan.execution_read_model.account_trading_plans.forEach(accountPlan => {{
+              accountPlan.trade_date = '2000-01-01';
+            }});
+            const completeGeneration = planId => ({{
+              ...scenarioFixtures.generation,
+              plan_id: planId,
+              plan_date: scenarioFixtures.readiness.plan_date,
+              status: 'complete',
+              error: null,
+            }});
+            const needsFactsReadiness = JSON.parse(JSON.stringify(scenarioFixtures.readiness));
+            needsFactsReadiness.status = 'needs_facts';
+            needsFactsReadiness.accounts[0] = {{
+              ...needsFactsReadiness.accounts[0],
+              status: 'missing',
+              snapshot_date: null,
+            }};
+            needsFactsReadiness.errors = [{{
+              account_id: needsFactsReadiness.accounts[0].account_id,
+              message: '缺少账户数据',
+            }}];
+            const planScenarios = [
+              {{
+                name: 'needs-facts',
+                readiness: needsFactsReadiness,
+                generation: completeGeneration('scenario-action'),
+                plan: actionPlan,
+                expectedTitle: '待更新账户数据',
+                executionDossierVisible: false,
+                fundingPlanVisible: false,
+                expectedAccountPlanCount: 0,
+                generateDisabled: true,
+                focusAccountId: needsFactsReadiness.accounts[0].account_id,
+              }},
+              {{
+                name: 'running',
+                readiness: scenarioFixtures.readiness,
+                generation: {{
+                  ...scenarioFixtures.generation,
+                  plan_id: 'scenario-running',
+                  status: 'running',
+                }},
+                plan: null,
+                expectedTitle: '正在生成完整计划',
+                executionDossierVisible: false,
+                fundingPlanVisible: false,
+                expectedAccountPlanCount: 0,
+                generateDisabled: true,
+              }},
+              {{
+                name: 'no-action',
+                readiness: scenarioFixtures.readiness,
+                generation: completeGeneration('scenario-no-action'),
+                plan: noActionPlan,
+                expectedTitle: '本次无需操作',
+                executionDossierVisible: false,
+                fundingPlanVisible: false,
+                expectedAccountPlanCount: 0,
+                generateDisabled: false,
+              }},
+              {{
+                name: 'action',
+                readiness: scenarioFixtures.readiness,
+                generation: completeGeneration('scenario-action'),
+                plan: actionPlan,
+                expectedTitle: '计划待执行',
+                executionDossierVisible: true,
+                fundingPlanVisible: true,
+                expectedAccountPlanCount: 2,
+                generateDisabled: false,
+              }},
+              {{
+                name: 'future-funding',
+                readiness: scenarioFixtures.readiness,
+                generation: completeGeneration('scenario-future-funding'),
+                plan: futurePlan,
+                expectedTitle: '计划待执行',
+                executionDossierVisible: true,
+                fundingPlanVisible: true,
+                expectedAccountPlanCount: 2,
+                generateDisabled: false,
+              }},
+              {{
+                name: 'expired',
+                readiness: scenarioFixtures.readiness,
+                generation: completeGeneration('scenario-expired'),
+                plan: expiredPlan,
+                expectedTitle: '执行窗口已过',
+                executionDossierVisible: false,
+                fundingPlanVisible: false,
+                expectedAccountPlanCount: 0,
+                generateDisabled: false,
+              }},
+              {{
+                name: 'readiness-error',
+                readiness: null,
+                readinessStatus: 503,
+                readinessBody: {{
+                  detail: {{
+                    code: 'PLAN_READINESS_UNAVAILABLE',
+                    message: '无法读取计划输入就绪度，请稍后重试。',
+                  }},
+                }},
+                generation: completeGeneration('scenario-action'),
+                plan: actionPlan,
+                expectedTitle: '无法确认账户数据',
+                executionDossierVisible: false,
+                fundingPlanVisible: false,
+                expectedAccountPlanCount: 0,
+                generateDisabled: true,
+                retryReadiness: true,
+              }},
+              {{
+                name: 'stale',
+                readiness: scenarioFixtures.readiness,
+                generation: {{
+                  ...scenarioFixtures.generation,
+                  plan_id: 'scenario-stale',
+                  status: 'stale',
+                  error: {{ code: 'PLAN_INPUTS_CHANGED', message: '计划输入已变化' }},
+                }},
+                plan: null,
+                expectedTitle: '计划已失效',
+                executionDossierVisible: false,
+                fundingPlanVisible: false,
+                expectedAccountPlanCount: 0,
+                generateDisabled: false,
+              }},
+              {{
+                name: 'failed',
+                readiness: scenarioFixtures.readiness,
+                generation: {{
+                  ...scenarioFixtures.generation,
+                  plan_id: 'scenario-failed',
+                  status: 'failed',
+                  error: {{ code: 'PLAN_GENERATION_FAILED', message: '计划生成失败' }},
+                }},
+                plan: null,
+                expectedTitle: '计划生成失败',
+                executionDossierVisible: false,
+                fundingPlanVisible: false,
+                expectedAccountPlanCount: 0,
+                generateDisabled: false,
+              }},
+            ];
+            const planScenarioChecks = [];
+            for (const scenario of planScenarios) {{
+              smokeStep = `plan.scenario.${{scenario.name}}`;
+              let scenarioPlanFocusChecks = null;
+              const consoleErrorStart = consoleErrors.length;
+              const scenarioRequests = [];
+              const readinessHandler = route => {{
+                scenarioRequests.push('/' + route.request().url().split('/').slice(3).join('/').split('?')[0]);
+                return route.fulfill({{
+                  status: scenario.readinessStatus || 200,
+                  contentType: 'application/json',
+                  body: JSON.stringify(scenario.readinessBody || scenario.readiness),
+                }});
+              }};
+              const generationHandler = route => {{
+                const path = '/' + route.request().url().split('/').slice(3).join('/').split('?')[0];
+                scenarioRequests.push(path);
+                if (path === '/api/plan/generated') {{
+                  return route.fulfill({{
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify({{ generation: scenario.generation }}),
+                  }});
+                }}
+                if (path.startsWith('/api/plan/generated/') && scenario.plan) {{
+                  return route.fulfill({{
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify(scenario.plan),
+                  }});
+                }}
+                return route.fulfill({{ status: 404, body: 'not found' }});
+              }};
+              await page.route('**/api/plan/readiness', readinessHandler);
+              await page.route('**/api/plan/generated**', generationHandler);
+              await page.goto('about:blank', {{ waitUntil: 'domcontentloaded', timeout: 15000 }});
+              await page.goto(
+                {json.dumps(base_url)} + `?ui_scenario=${{scenario.name}}#plan`,
+                {{ waitUntil: 'domcontentloaded', timeout: 15000 }},
+              );
+              await page.waitForFunction(() => window.Alpine, {{ timeout: 10000 }});
+              await page.evaluate(() => {{
+                window.Alpine.store('page', 'today');
+                history.replaceState(null, '', `${{window.location.pathname}}${{window.location.search}}#plan`);
+              }});
+              await page.waitForFunction(
+                () => window.Alpine?.store('page') === 'today',
+                {{ timeout: 10000 }},
+              );
+              await page.waitForFunction(
+                () => Array.from(document.querySelectorAll('[role="region"][aria-label="计划工作台"]'))
+                  .find(element => element.checkVisibility())
+                  ?.getAttribute('aria-busy') === 'false',
+                {{ timeout: 10000 }},
+              );
+              const scenarioPage = main.getByRole('region', {{ name: '计划工作台' }});
+              const scenarioHero = scenarioPage.locator('.plan-decision-hero');
+              const scenarioStatus = scenarioPage.locator('.plan-masthead-state');
+              const scenarioDossier = scenarioPage.locator('.plan-execution-dossier');
+              const scenarioFundingPlan = scenarioPage.locator('.plan-funding-plan');
+              const scenarioAccountPlans = scenarioPage.locator('.plan-account-card');
+              const scenarioStateChain = scenarioPage.locator('.plan-state-chain');
+              const generateButton = scenarioPage.locator('.plan-generate-action');
+              const generateButtonText = (await generateButton.innerText()).trim();
+              const statusVisible = await scenarioStatus.isVisible();
+              const actualTitle = statusVisible
+                ? await scenarioStatus.innerText()
+                : await scenarioHero.getByRole('heading', {{ level: 2 }}).innerText();
+              const executionDossierVisible = await scenarioDossier.isVisible();
+              const executionDossierCount = await scenarioDossier.count();
+              const fundingPlanVisible = await scenarioFundingPlan.isVisible();
+              const accountPlanCount = await scenarioAccountPlans.count();
+              const accountsCollapsedByDefault = accountPlanCount > 0
+                ? await scenarioAccountPlans.evaluateAll(cards => cards.every(card => !card.open))
+                : true;
+	              const noActionConclusion = scenario.name === 'no-action'
+	                ? {{
+	                    decisionCopy: await scenarioHero.locator('.plan-decision-copy').innerText(),
+	                    decisionMark: await scenarioHero.locator('.plan-decision-mark').innerText(),
+	                  }}
+                : null;
+              const stateChainVisible = await scenarioStateChain.isVisible();
+              const expectedFundingDate = scenario.name === 'future-funding'
+                ? '日期待确认'
+                : scenario.plan?.stock?.trade_date;
+              const fundingDatesVisible = !scenario.fundingPlanVisible || (
+                (await scenarioFundingPlan.innerText()).includes(expectedFundingDate)
+                && (await scenarioAccountPlans.first().innerText()).includes(expectedFundingDate)
+              );
+              const generateDisabled = await generateButton.isDisabled();
+              const legacyPanelsVisible = await scenarioPage
+                .locator('.legacy-plan-transfer-panel:visible, .legacy-plan-order-panel:visible')
+                .count();
+              const scenarioDifferences = [];
+              if (!scenarioRequests.includes('/api/plan/readiness')) {{
+                scenarioDifferences.push(difference(
+                  `plan.scenarios.${{scenario.name}}.requests`,
+                  ['/api/plan/readiness'],
+                  scenarioRequests,
+                ));
+              }}
+              if (actualTitle !== scenario.expectedTitle) {{
+                scenarioDifferences.push(difference(
+                  `plan.scenarios.${{scenario.name}}.title`,
+                  scenario.expectedTitle,
+                  actualTitle,
+                ));
+              }}
+              if (executionDossierVisible !== scenario.executionDossierVisible) {{
+                scenarioDifferences.push(difference(
+                  `plan.scenarios.${{scenario.name}}.executionDossierVisible`,
+                  scenario.executionDossierVisible,
+                  executionDossierVisible,
+                ));
+              }}
+              if (scenario.name === 'no-action' && executionDossierCount !== 0) {{
+                scenarioDifferences.push(difference(
+                  `plan.scenarios.${{scenario.name}}.executionDossierRendered`,
+                  0,
+                  executionDossierCount,
+                ));
+              }}
+              if (scenario.name === 'no-action' && (
+                !noActionConclusion.decisionCopy.includes('完整计划已检查')
+                || !noActionConclusion.decisionMark.includes('生成 ')
+                || !noActionConclusion.decisionMark.includes('版本 ')
+              )) {{
+                scenarioDifferences.push(difference(
+                  `plan.scenarios.${{scenario.name}}.noActionConclusion`,
+                  {{
+                    decisionCopyIncludes: '完整计划已检查',
+                    decisionMarkIncludes: ['生成 ', '版本 '],
+                  }},
+                  noActionConclusion,
+                ));
+              }}
+              if (fundingPlanVisible !== scenario.fundingPlanVisible) {{
+                scenarioDifferences.push(difference(
+                  `plan.scenarios.${{scenario.name}}.fundingPlanVisible`,
+                  scenario.fundingPlanVisible,
+                  fundingPlanVisible,
+                ));
+              }}
+              if (accountPlanCount !== scenario.expectedAccountPlanCount) {{
+                scenarioDifferences.push(difference(
+                  `plan.scenarios.${{scenario.name}}.accountPlanCount`,
+                  scenario.expectedAccountPlanCount,
+                  accountPlanCount,
+                ));
+              }}
+              if (!fundingDatesVisible) {{
+                scenarioDifferences.push(difference(
+                  `plan.scenarios.${{scenario.name}}.fundingDatesVisible`,
+                  expectedFundingDate,
+                  {{ fundingDatesVisible }},
+                ));
+              }}
+              if (!accountsCollapsedByDefault || legacyPanelsVisible !== 0) {{
+                scenarioDifferences.push(difference(
+                  `plan.scenarios.${{scenario.name}}.planHierarchy`,
+                  {{ accountsCollapsedByDefault: true, legacyPanelsVisible: 0 }},
+                  {{ accountsCollapsedByDefault, legacyPanelsVisible }},
+                ));
+              }}
+              const expectedStateChainVisible = !['action', 'future-funding', 'no-action'].includes(scenario.name);
+              if (stateChainVisible !== expectedStateChainVisible) {{
+                scenarioDifferences.push(difference(
+                  `plan.scenarios.${{scenario.name}}.stateChainVisible`,
+                  expectedStateChainVisible,
+                  stateChainVisible,
+                ));
+              }}
+              if (generateDisabled !== scenario.generateDisabled) {{
+                scenarioDifferences.push(difference(
+                  `plan.scenarios.${{scenario.name}}.generateDisabled`,
+                  scenario.generateDisabled,
+                  generateDisabled,
+                ));
+              }}
+              const expectedGenerateText = ['action', 'future-funding', 'no-action', 'expired'].includes(scenario.name)
+                ? '重新生成计划'
+                : '生成完整计划';
+              if (!generateDisabled && generateButtonText !== expectedGenerateText) {{
+                scenarioDifferences.push(difference(
+                  `plan.scenarios.${{scenario.name}}.generateButtonText`,
+                  expectedGenerateText,
+                  generateButtonText,
+                ));
+              }}
+	              if (scenario.name === 'action' && accountPlanCount > 0) {{
+	                const firstAccountPlan = scenarioAccountPlans.first();
+	                const readExpandedAccountPlan = async (accountPlan, expectedIndex) => {{
+	                  if (!(await accountPlan.evaluate(card => card.open))) {{
+	                    await accountPlan.locator(':scope > summary').click();
+	                  }}
+	                  const check = await accountPlan.evaluate((card, context) => {{
+	                    const rows = Array.from(card.querySelectorAll('.plan-trade-row'));
+	                    const cashLabels = Array.from(card.querySelectorAll('.plan-cash-label'))
+	                      .map(label => label.textContent.trim());
+		                    const requiredLabels = ['证券代码', '证券名称', '仓位', '买卖', '交易数量', '参考价', '估算金额'];
+	                    const completeRows = rows.every(row => {{
+	                      const labels = Array.from(row.querySelectorAll('[data-label]'))
+	                        .map(cell => cell.dataset.label);
+	                      return requiredLabels.every(label => labels.includes(label));
+	                    }});
+	                    const scrollContainers = Array.from(card.querySelectorAll('.plan-trade-table-scroll'));
+	                    const noHorizontalOverflow = scrollContainers.every(container =>
+	                      container.scrollWidth <= container.clientWidth + 2
+	                    );
+	                    const title = card.querySelector('.plan-account-folio-title')?.innerText || '';
+	                    const rowHeights = rows.map(row => row.getBoundingClientRect().height);
+	                    const tradeTableWidth = card.querySelector('.plan-trade-table')?.getBoundingClientRect().width || 0;
+	                    const sideLabels = rows
+	                      .map(row => row.querySelector('.plan-trade-side')?.innerText.trim())
+	                      .filter(Boolean);
+	                    const actionLabels = rows
+	                      .map(row => row.querySelector('.plan-trade-action')?.innerText.trim())
+	                      .filter(Boolean);
+	                    const noActionGroupRows = card.querySelectorAll('.plan-trade-action-group-row').length === 0
+	                      && card.querySelectorAll('.plan-trade-action-group').length === 0;
+	                    const sideRanks = sideLabels.map(label => label === '卖出' ? 0 : label === '买入' ? 1 : -1);
+	                    const tradeDirectionsOrdered = sideRanks.every(rank => rank >= 0)
+	                      && sideRanks.every((rank, idx) => idx === 0 || rank >= sideRanks[idx - 1]);
+                    const actionRanks = actionLabels.map(label => (
+                      {{ '清仓': 0, '减仓': 1, '建仓': 2, '加仓': 3 }}[label] ?? -1
+                    ));
+	                    const positionActionsOrdered = actionRanks.every(rank => rank >= 0)
+	                      && actionRanks.every((rank, idx) => idx === 0 || rank >= actionRanks[idx - 1]);
+	                    const metrics = {{
+	                      accountLabel: title,
+	                      open: card.open,
+	                      tradeTableCount: card.querySelectorAll('.plan-trade-table').length,
+	                      rowCount: rows.length,
+	                      rowHeights,
+	                      completeRows,
+	                      noHorizontalOverflow,
+	                      hasCashEquation: Boolean(card.querySelector('.plan-cash-equation')),
+	                      cashEquationDeferred: Boolean(card.querySelector('.plan-account-detail .plan-cash-audit .plan-cash-equation'))
+	                        && !card.querySelector(':scope > summary .plan-cash-equation')
+	                        && !card.querySelector('.plan-cash-audit')?.open,
+	                      compactWhenOpen: !card.querySelector('.plan-cash-equation')?.checkVisibility()
+	                        && Boolean(card.querySelector('.plan-account-open-summary')?.checkVisibility()),
+	                      hasEndingBalance: cashLabels.includes('计划后预计资金余额'),
+	                      hasStickyFolio: window.getComputedStyle(card.querySelector('.plan-account-folio')).position === 'sticky',
+	                      folioIsMinimal: title.includes(`账户 ${{context.expectedIndex}}/${{context.total}}`)
+	                        && !title.includes('账户交易计划')
+	                        && !title.includes('→')
+	                        && !title.includes('开盘执行')
+	                        && !card.querySelector('.plan-account-folio-meta'),
+	                      noScreenshotToggle: !Array.from(card.querySelectorAll('.plan-account-folio-actions button'))
+	                        .some(button => button.innerText.includes('截图模式')),
+	                      hasGuardrails: card.querySelectorAll('.plan-execution-guardrail').length >= 2,
+		                      rowSideVisible: rows.length > 0 && sideLabels.length === rows.length
+		                        && sideLabels.every(label => ['卖出', '买入'].includes(label)),
+		                      rowPositionActionVisible: rows.length > 0 && actionLabels.length === rows.length
+		                        && actionLabels.every(label => ['清仓', '减仓', '建仓', '加仓'].includes(label)),
+		                      quantityFirst: rows.every(row => row.querySelector('.plan-trade-quantity')?.innerText.match(/\\d/)),
+		                      noVisiblePositionRoutes: rows.every(row => !row.querySelector('.plan-trade-position-route')),
+		                      positionRouteInTitle: rows.every(row => row.querySelector('.plan-trade-position')?.title.includes('持仓变化：')),
+	                      codeNameSplit: rows.every(row => row.querySelector('.plan-trade-code') && row.querySelector('.plan-trade-name')),
+	                      noActionGroupRows,
+	                      tradeDirectionsOrdered,
+	                      positionActionsOrdered,
+	                      noRepeatedActionColumn: rows.every(row => !row.querySelector('[data-label="仓位动作"]')),
+	                      noExecutionStepColumn: !Array.from(card.querySelectorAll('th'))
+	                        .some(th => th.innerText.trim() === '顺序')
+	                        && rows.every(row => !row.querySelector('.plan-trade-step')),
+	                      compactTradeRows: context.isNarrow || rowHeights.every(height => height <= 46),
+	                      compactTradeWidth: context.isNarrow || tradeTableWidth <= 760,
+	                      noPhaseHeadings: !card.querySelector('.plan-trade-phase-heading')
+	                        && !card.innerText.includes('卖出阶段')
+	                        && !card.innerText.includes('买入阶段'),
+	                      urlKeepsAccount: Boolean(new URL(window.location.href).searchParams.get('planAccount')),
+	                      noRowPriceCap: !card.querySelector('.plan-trade-price-cap'),
+	                    }};
+	                    return {{
+	                      ...metrics,
+	                      passes: metrics.open
+	                        && metrics.tradeTableCount === 1
+	                        && metrics.rowCount >= 1
+	                        && metrics.completeRows
+	                        && metrics.noHorizontalOverflow
+	                        && metrics.hasCashEquation
+	                        && metrics.cashEquationDeferred
+	                        && metrics.compactWhenOpen
+	                        && metrics.hasEndingBalance
+	                        && metrics.hasStickyFolio
+	                        && metrics.folioIsMinimal
+	                        && metrics.noScreenshotToggle
+		                        && metrics.hasGuardrails
+		                        && metrics.rowSideVisible
+		                        && metrics.rowPositionActionVisible
+		                        && metrics.quantityFirst
+		                        && metrics.noVisiblePositionRoutes
+	                        && metrics.positionRouteInTitle
+	                        && metrics.codeNameSplit
+	                        && metrics.noActionGroupRows
+	                        && metrics.tradeDirectionsOrdered
+	                        && metrics.positionActionsOrdered
+	                        && metrics.noRepeatedActionColumn
+	                        && metrics.noExecutionStepColumn
+	                        && metrics.compactTradeRows
+	                        && metrics.compactTradeWidth
+	                        && metrics.noPhaseHeadings
+	                        && metrics.noRowPriceCap
+	                        && metrics.urlKeepsAccount,
+	                    }};
+	                  }}, {{ expectedIndex, total: accountPlanCount, isNarrow: {json.dumps(viewport_name)} === 'narrow' }});
+	                  check.exclusiveAfterOpen = (await scenarioAccountPlans.evaluateAll(cards =>
+	                    cards.filter(card => card.open).length === 1
+	                  ));
+	                  return check;
+	                }};
+	                const accountChecks = [];
+	                for (let index = 0; index < accountPlanCount; index += 1) {{
+	                  accountChecks.push(await readExpandedAccountPlan(scenarioAccountPlans.nth(index), index + 1));
+	                }}
+	                expandedAccountPlanChecks = {{
+	                  accountCount: accountPlanCount,
+	                  accountChecks,
+	                  allAccountsPass: accountChecks.every(check => check.passes),
+	                  exclusiveExpansion: accountChecks.every(check => check.exclusiveAfterOpen),
+	                  noRowPriceCap: accountChecks.every(check => check.noRowPriceCap),
+	                  firstAccount: accountChecks[0] || null,
+	                }};
+	                if (!(await firstAccountPlan.evaluate(card => card.open))) {{
+	                  await firstAccountPlan.locator(':scope > summary').click();
+	                }}
+	                if (
+	                  !expandedAccountPlanChecks.allAccountsPass
+	                  || !expandedAccountPlanChecks.noRowPriceCap
+	                  || !expandedAccountPlanChecks.exclusiveExpansion
+	                ) {{
+	                  scenarioDifferences.push(difference(
+	                    'plan.expandedAccountPlanChecks',
+	                    {{
+	                      allAccountsPass: true,
+	                      noRowPriceCap: true,
+	                      exclusiveExpansion: true,
+	                    }},
+	                    expandedAccountPlanChecks,
+                  ));
+                }}
+                if ({json.dumps(viewport_name)} === 'narrow') {{
+                  await firstAccountPlan.locator('.plan-trade-row').first().scrollIntoViewIfNeeded();
+                  await page.screenshot({{ path: {json.dumps(plan_expanded_screenshot)} }});
+                }} else {{
+                  await firstAccountPlan.screenshot({{ path: {json.dumps(plan_expanded_screenshot)} }});
+                }}
+                const focusToggle = scenarioPage.getByRole('button', {{ name: '进入专注视图' }});
+                await focusToggle.click();
+                const focused = await page.evaluate(() => ({{
+                  classApplied: document.documentElement.classList.contains('plan-focus-mode'),
+                  urlApplied: new URL(window.location.href).searchParams.get('planFocus') === '1',
+                  navHidden: !document.querySelector('.app-nav')?.checkVisibility(),
+                  conditionsHidden: !document.querySelector('.plan-conditions-panel')?.checkVisibility(),
+                }}));
+                await scenarioPage.getByRole('button', {{ name: '退出专注视图' }}).click();
+                const restored = await page.evaluate(() => ({{
+                  classRemoved: !document.documentElement.classList.contains('plan-focus-mode'),
+                  urlRemoved: !new URL(window.location.href).searchParams.has('planFocus'),
+                }}));
+                scenarioPlanFocusChecks = {{ focused, restored }};
+                planFocusChecks = scenarioPlanFocusChecks;
+                if (!Object.values(focused).every(Boolean) || !Object.values(restored).every(Boolean)) {{
+                  scenarioDifferences.push(difference(
+                    'plan.focusMode',
+                    {{ focused: 'all true', restored: 'all true' }},
+                    scenarioPlanFocusChecks,
+                  ));
+                }}
+              }}
+              let orderEntryNarrowChecks = null;
+              if ({json.dumps(viewport_name)} === 'narrow' && scenario.name === 'action') {{
+                const orderRows = scenarioPage.locator('.plan-trade-row:visible');
+		                const requiredOrderLabels = ['证券代码', '证券名称', '仓位', '买卖', '交易数量', '参考价', '估算金额'];
+                const orderEntryMetrics = await scenarioPage.evaluate(() => {{
+                  const rows = Array.from(document.querySelectorAll('.plan-trade-row'))
+                    .filter(row => row.checkVisibility());
+                  return {{
+                    rowCount: rows.length,
+                    completeRows: rows.map(row => ({{
+                      labels: Array.from(row.querySelectorAll('[data-label]')).map(cell => cell.dataset.label),
+                      text: row.innerText,
+                      gridTemplateAreas: window.getComputedStyle(row).gridTemplateAreas,
+                    }})),
+                    horizontalOverflow: Array.from(document.querySelectorAll('.plan-trade-table-scroll'))
+                      .filter(container => container.checkVisibility())
+                      .map(container => ({{
+                        clientWidth: container.clientWidth,
+                        scrollWidth: container.scrollWidth,
+                      }})),
+                  }};
+                }});
+                const completeRows = orderEntryMetrics.completeRows.every(row =>
+                  requiredOrderLabels
+                    .every(label => row.labels.includes(label))
+                    && (
+                      row.text.includes('宁波联合')
+                      || row.text.includes('东望时代')
+                      || row.text.includes('测试转债')
+                    )
+                );
+                const noHorizontalOverflow = orderEntryMetrics.horizontalOverflow
+                  .every(size => size.scrollWidth <= size.clientWidth + 2);
+                const compactLayout = orderEntryMetrics.completeRows.every(row =>
+	                  row.gridTemplateAreas.includes('code name action side amount')
+	                  && row.gridTemplateAreas.includes('position position position price amount')
+                );
+                if (await orderRows.count() < 2 || !completeRows || !noHorizontalOverflow || !compactLayout) {{
+                  scenarioDifferences.push(difference(
+                    'plan.orderEntries.narrow',
+                    {{ minRows: 2, completeRows: true, noHorizontalOverflow: true, compactLayout: true }},
+                    {{ ...orderEntryMetrics, completeRows, noHorizontalOverflow, compactLayout }},
+                  ));
+                }}
+                orderEntryNarrowChecks = {{
+                  ...orderEntryMetrics,
+                  completeRows,
+                  noHorizontalOverflow,
+                  compactLayout,
+                }};
+              }}
+              if (scenario.retryReadiness) {{
+                const requestsBeforeRetry = scenarioRequests.filter(path => path === '/api/plan/readiness').length;
+                await scenarioHero.getByRole('button', {{ name: '重新读取计划输入就绪度' }}).click();
+                await page.waitForTimeout(100);
+                const requestsAfterRetry = scenarioRequests.filter(path => path === '/api/plan/readiness').length;
+                if (requestsAfterRetry <= requestsBeforeRetry) {{
+                  scenarioDifferences.push(difference(
+                    `plan.scenarios.${{scenario.name}}.readinessRetry`,
+                    `>${{requestsBeforeRetry}}`,
+                    requestsAfterRetry,
+                  ));
+                }}
+              }}
+              if (scenario.focusAccountId) {{
+                await scenarioHero.getByRole('button', {{ name: '前往账户页更新数据' }}).click();
+                const accountId = scenario.focusAccountId;
+                await page.waitForFunction(
+                  expected => {{
+                    const workspace = document.querySelector('[aria-label="账户数据工作台"]');
+                    const component = window.Alpine?.$data(workspace);
+                    const mobileSelector = document.querySelector('.account-current-mobile-selector select');
+                    const target = document.querySelector(
+                      `.account-current-rail-row[data-account-id="${{expected}}"][aria-current="true"]`,
+                    );
+                    const editor = document.querySelector('.account-current-editor');
+                    return window.location.hash === '#account'
+                      && component?.selectedId === expected
+                      && (
+                        Boolean(target?.checkVisibility())
+                        || (Boolean(mobileSelector?.checkVisibility()) && mobileSelector.value === expected)
+                      )
+                      && Boolean(editor?.checkVisibility());
+                  }},
+                  accountId,
+                  {{ timeout: 10000 }},
+                );
+                const focusResult = await page.evaluate(expected => {{
+                  const workspace = document.querySelector('[aria-label="账户数据工作台"]');
+                  const component = window.Alpine?.$data(workspace);
+                  const mobileSelector = document.querySelector('.account-current-mobile-selector select');
+                  const target = document.querySelector(
+                    `.account-current-rail-row[data-account-id="${{expected}}"][aria-current="true"]`,
+                  );
+                  const editor = document.querySelector('.account-current-editor');
+                  return {{
+                    selectedId: component?.selectedId,
+                    visible: Boolean(target?.checkVisibility())
+                      || (Boolean(mobileSelector?.checkVisibility()) && mobileSelector.value === expected),
+                    editorVisible: Boolean(editor?.checkVisibility()),
+                  }};
+                }}, accountId);
+                if (!focusResult.visible || !focusResult.editorVisible) {{
+                  scenarioDifferences.push(difference(
+                    `plan.scenarios.${{scenario.name}}.accountFocus`,
+                    {{ visible: true, editorVisible: true }},
+                    focusResult,
+                  ));
+                }}
+              }}
+              if (scenario.readinessStatus >= 400) {{
+                await page.waitForTimeout(100);
+                const expectedNetworkMessage = `status of ${{scenario.readinessStatus}}`;
+                const controlledReadinessConsoleErrors = consoleErrors.splice(consoleErrorStart);
+                const unexpectedConsoleErrors = controlledReadinessConsoleErrors
+                  .filter(message => !message.includes(expectedNetworkMessage));
+                if (unexpectedConsoleErrors.length) {{
+                  scenarioDifferences.push(difference(
+                    `plan.scenarios.${{scenario.name}}.consoleErrors`,
+                    [],
+                    unexpectedConsoleErrors,
+                  ));
+                }}
+              }}
+              assertNoDifferences(
+                `plan.scenarios.${{scenario.name}}`,
+                `计划状态 ${{scenario.name}} 行为异常`,
+                scenarioDifferences,
+              );
+              if (scenario.name === 'future-funding') {{
+                await page.screenshot({{ path: {json.dumps(plan_future_screenshot)}, fullPage: true }});
+              }}
+              if (scenario.name === 'no-action') {{
+                await page.screenshot({{ path: {json.dumps(plan_no_action_screenshot)}, fullPage: true }});
+              }}
+              planScenarioChecks.push({{
+                name: scenario.name,
+                title: actualTitle,
+                executionDossierVisible,
+                executionDossierCount,
+                fundingPlanVisible,
+                accountPlanCount,
+                accountsCollapsedByDefault,
+                noActionConclusion,
+                legacyPanelsVisible,
+                stateChainVisible,
+                fundingDatesVisible,
+                generateDisabled,
+                requests: scenarioRequests,
+                orderEntryNarrowChecks,
+                planFocusChecks: scenarioPlanFocusChecks,
+              }});
+              await page.unroute('**/api/plan/readiness', readinessHandler);
+              await page.unroute('**/api/plan/generated**', generationHandler);
+            }}
+
 
             await changelogNav.click();
             await assertActivePage('changelog.fromPlan', changelogNav, '#changelog');
@@ -829,6 +2425,7 @@ def browser_check_code(
               hasDatedTime: Boolean(article.querySelector('time[datetime]')),
               hasHeading: Boolean(article.querySelector('h3')?.innerText.trim()),
               hasBody: Boolean(article.querySelector('p')?.innerText.trim()),
+              scopeTagCount: article.querySelectorAll('.changelog-scope-tag').length,
             }}));
             const changelogBehavior = {{
               h1Count: await changelogHeading.count(),
@@ -850,10 +2447,13 @@ def browser_check_code(
                 ));
               }}
             }});
-            if (Object.values(firstArticleContract).some(value => !value)) {{
+            if (!firstArticleContract.hasDatedTime
+                || !firstArticleContract.hasHeading
+                || !firstArticleContract.hasBody
+                || firstArticleContract.scopeTagCount < 1) {{
               changelogBehaviorDifferences.push(difference(
                 'changelog.firstArticle',
-                {{ hasDatedTime: true, hasHeading: true, hasBody: true }},
+                {{ hasDatedTime: true, hasHeading: true, hasBody: true, scopeTagCount: {{ min: 1 }} }},
                 firstArticleContract,
               ));
             }}
@@ -1063,10 +2663,12 @@ def browser_check_code(
             const collectNumericDrift = (actual, expected, tolerance = 2) => Object.entries(expected)
               .filter(([key, value]) => Math.abs(actual[key] - value) > tolerance)
               .map(([key, value]) => difference(key, value, actual[key], tolerance));
-            const expectedStyleMetrics = {json.dumps(AIHOT_CHANGELOG_STYLE_METRICS)};
+            const expectedStyleMetrics = {json.dumps(ARK_CHANGELOG_STYLE_METRICS)};
             if ({json.dumps(viewport_name)} === 'narrow') {{
-              expectedStyleMetrics.subtitle = {{ fontSize: 15, lineHeight: 27.2, fontWeight: 400 }};
-              expectedStyleMetrics.entryTitle = {{ fontSize: 19, lineHeight: 25.2, fontWeight: 650 }};
+              expectedStyleMetrics.title = {{ fontSize: 32, lineHeight: 44, fontWeight: 680 }};
+              expectedStyleMetrics.subtitle = {{ fontSize: 15, lineHeight: 28, fontWeight: 400 }};
+              expectedStyleMetrics.date = {{ fontSize: 24, lineHeight: 36, fontWeight: 650 }};
+              expectedStyleMetrics.entryTitle = {{ fontSize: 19, lineHeight: 26, fontWeight: 650 }};
               expectedStyleMetrics.body = {{ fontSize: 15, lineHeight: 25.5, fontWeight: 400 }};
             }}
             const styleDrift = [];
@@ -1101,18 +2703,18 @@ def browser_check_code(
             );
             if ({json.dumps(viewport_name)} === 'wide') {{
               const expectedStructure = {{
-                navWidth: {AIHOT_CHANGELOG_REFERENCE_METRICS["nav_width"]},
-                shellLeft: {AIHOT_CHANGELOG_REFERENCE_METRICS["shell_left"]},
-                contentTop: {AIHOT_CHANGELOG_REFERENCE_METRICS["content_top"]},
-                shellWidth: {AIHOT_CHANGELOG_REFERENCE_METRICS["shell_width"]},
-                headerStreamGap: {AIHOT_CHANGELOG_REFERENCE_METRICS["header_stream_gap"]},
-                dateGroupGap: {AIHOT_CHANGELOG_REFERENCE_METRICS["date_group_gap"]},
-                dateHeaderHeight: {AIHOT_CHANGELOG_REFERENCE_METRICS["date_header_height"]},
-                dateDividerY: {AIHOT_CHANGELOG_REFERENCE_METRICS["date_divider_y"]},
-                metaWidth: {AIHOT_CHANGELOG_REFERENCE_METRICS["meta_width"]},
-                entryColumnGap: {AIHOT_CHANGELOG_REFERENCE_METRICS["entry_column_gap"]},
-                entryDividerX: {AIHOT_CHANGELOG_REFERENCE_METRICS["entry_divider_x"]},
-                entryCopyX: {AIHOT_CHANGELOG_REFERENCE_METRICS["entry_copy_x"]},
+                navWidth: {ARK_CHANGELOG_REFERENCE_METRICS["nav_width"]},
+                shellLeft: {ARK_CHANGELOG_REFERENCE_METRICS["shell_left"]},
+                contentTop: {ARK_CHANGELOG_REFERENCE_METRICS["content_top"]},
+                shellWidth: {ARK_CHANGELOG_REFERENCE_METRICS["shell_width"]},
+                headerStreamGap: {ARK_CHANGELOG_REFERENCE_METRICS["header_stream_gap"]},
+                dateGroupGap: {ARK_CHANGELOG_REFERENCE_METRICS["date_group_gap"]},
+                dateHeaderHeight: {ARK_CHANGELOG_REFERENCE_METRICS["date_header_height"]},
+                dateDividerY: {ARK_CHANGELOG_REFERENCE_METRICS["date_divider_y"]},
+                metaWidth: {ARK_CHANGELOG_REFERENCE_METRICS["meta_width"]},
+                entryColumnGap: {ARK_CHANGELOG_REFERENCE_METRICS["entry_column_gap"]},
+                entryDividerX: {ARK_CHANGELOG_REFERENCE_METRICS["entry_divider_x"]},
+                entryCopyX: {ARK_CHANGELOG_REFERENCE_METRICS["entry_copy_x"]},
               }};
               const structureDrift = collectNumericDrift(readingMetrics, expectedStructure);
               assertNoDifferences(
@@ -1122,7 +2724,7 @@ def browser_check_code(
               );
             }}
             if ({json.dumps(viewport_name)} === 'desktop') {{
-              const expected = {json.dumps(AIHOT_CHANGELOG_RESPONSIVE_METRICS["desktop"])};
+              const expected = {json.dumps(ARK_CHANGELOG_RESPONSIVE_METRICS["desktop"])};
               const drift = collectNumericDrift(readingMetrics, expected);
               assertNoDifferences(
                 'changelog.desktop.geometry',
@@ -1131,7 +2733,7 @@ def browser_check_code(
               );
             }}
             if ({json.dumps(viewport_name)} === 'narrow') {{
-              const expected = {json.dumps(AIHOT_CHANGELOG_RESPONSIVE_METRICS["narrow"])};
+              const expected = {json.dumps(ARK_CHANGELOG_RESPONSIVE_METRICS["narrow"])};
               const actual = {{
                 ...readingMetrics,
                 titleFontSize: styleMetrics.title.fontSize,
@@ -1196,8 +2798,8 @@ def browser_check_code(
                 narrowLayoutDrift,
               );
               const accessibilityExpected = {{
-                activeTag: 'BUTTON',
-                activeLabel: '计划',
+                activeTag: 'A',
+                activeLabel: '更新日志',
                 activeCurrent: 'page',
               }};
               const accessibilityDrift = Object.entries(accessibilityExpected)
@@ -1239,11 +2841,30 @@ def browser_check_code(
               size: {json.dumps(viewport)},
               accountScreenshot: {json.dumps(account_screenshot)},
               planScreenshot: {json.dumps(plan_screenshot)},
+              planExpandedScreenshot: {json.dumps(plan_expanded_screenshot)},
+              planFutureFundingScreenshot: {json.dumps(plan_future_screenshot)},
+              planNoActionScreenshot: {json.dumps(plan_no_action_screenshot)},
+              rankingsScreenshot: {json.dumps(rankings_screenshot)},
               screenshot: {json.dumps(screenshot)},
               pageChecks: {{
                 navigation: {{ items: navItems.length }},
-                account: {{ metrics: accountMetrics, integrity: accountIntegrity }},
-                plan: {{ metrics: planMetrics, integrity: planIntegrity }},
+                rankings: {{
+                  metrics: rankingsMetrics,
+                  integrity: rankingsIntegrity,
+                }},
+                account: {{
+                  metrics: accountMetrics,
+                  integrity: accountIntegrity,
+                  scenarios: accountDataScenarioChecks,
+                  dataIdentity: accountDataIdentityChecks,
+                  narrowMaintenance: accountMaintenanceNarrowChecks,
+                }},
+                plan: {{
+                  metrics: planMetrics,
+                  integrity: planIntegrity,
+                  expandedAccountPlanChecks,
+                  scenarios: planScenarioChecks,
+                }},
                 changelog: {{ behavior: changelogBehavior, integrity: changelogIntegrity }},
               }},
               readingMetrics,
@@ -1258,7 +2879,7 @@ def browser_check_code(
             const caughtDifferences = error.differences?.length
               ? error.differences
               : [difference(
-                  error.check || 'browser.execution',
+                  error.check || smokeStep,
                   'check completed without exception',
                   String(error),
                 )];
@@ -1266,7 +2887,7 @@ def browser_check_code(
               ok: false,
               visualGate: {json.dumps(VISUAL_GATE_NAME)},
               viewport: {json.dumps(viewport_name)},
-              check: error.check || 'browser.execution',
+              check: error.check || smokeStep,
               error: String(error),
               differences: caughtDifferences,
               failureScreenshot: {json.dumps(failure_screenshot)},
@@ -1282,12 +2903,19 @@ def browser_check_code(
 
 
 def run_cli(session: str, args: list[str]) -> str:
-    result = subprocess.run(
-        ["playwright-cli", f"-s={session}", *args],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
+    command = ["playwright-cli", f"-s={session}", *args]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=CLI_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise SmokeFailure(
+            f"playwright-cli timed out after {CLI_TIMEOUT_SECONDS:g}s: {' '.join(command)}"
+        ) from exc
     if result.returncode != 0:
         raise SmokeFailure((result.stderr or result.stdout).strip())
     return result.stdout.strip()

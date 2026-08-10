@@ -22,7 +22,13 @@ def preview_current_plan(refresh_temperature: bool = False) -> dict:
 
 
 def get_generated_plan(plan_id: str) -> dict | None:
-    return plan_lifecycle.get_plan(plan_id)
+    record = plan_lifecycle.get_plan(plan_id)
+    if record is None:
+        return None
+    plan = record.get("plan")
+    if not isinstance(plan, dict):
+        return record
+    return {**record, "plan": plan_service.hydrate_execution_read_model(plan)}
 
 
 def generate_complete_plan(
@@ -30,22 +36,45 @@ def generate_complete_plan(
     size_cb_orders: Callable[..., dict],
     size_stock_orders: Callable[..., dict],
 ) -> dict:
-    plan_date, account, market_temperature, fund_transfer = prepare_complete_plan_generation()
+    plan_date = plan_service.current_plan_date()
+    running_generation = plan_lifecycle.get_running_plan_status(plan_date)
+    if running_generation is not None:
+        raise _generation_in_progress_error(plan_date, running_generation)
+
     plan_id = plan_lifecycle.new_plan_id(plan_date)
     failed_stage = "cb_orders"
-    plan = plan_service.build_generated_plan_response(
-        plan_id=plan_id,
-        status=plan_lifecycle.RUNNING,
-        plan_date=plan_date,
-        market_temperature=market_temperature,
-        account=account,
-        fund_transfer=fund_transfer,
-        cb_result=None,
-        stock_result=None,
-    )
-    plan_lifecycle.start(plan_id, plan_date, plan)
+    plan = {
+        "plan_date": plan_date,
+        "generation": {
+            "plan_id": plan_id,
+            "plan_date": plan_date,
+            "status": plan_lifecycle.RUNNING,
+            "stages": plan_lifecycle.generation_stages(),
+        },
+    }
+    if not plan_lifecycle.start(plan_id, plan_date, plan):
+        running_generation = plan_lifecycle.get_running_plan_status(plan_date)
+        raise _generation_in_progress_error(plan_date, running_generation)
 
     try:
+        plan_date, account, market_temperature, fund_transfer = prepare_complete_plan_generation(plan_date)
+        plan = plan_service.build_generated_plan_response(
+            plan_id=plan_id,
+            status=plan_lifecycle.RUNNING,
+            plan_date=plan_date,
+            market_temperature=market_temperature,
+            account=account,
+            fund_transfer=fund_transfer,
+            cb_result=None,
+            stock_result=None,
+        )
+        if not plan_lifecycle.capture_inputs(plan_id, plan):
+            raise plan_service.PlanServiceError(409, {
+                "stage": "account",
+                "code": "PLAN_INPUTS_CHANGED",
+                "message": "生成期间账户数据已更新，本次计划已作废，请重新生成。",
+                "plan_id": plan_id,
+            })
         _, deltas, _ = plan_service.fund_transfer_compatibility(fund_transfer)
         cb_result = size_cb_orders(
             plan_service.strategy_cash_after_transfer("cb", account, deltas),
@@ -83,9 +112,21 @@ def generate_complete_plan(
             cb_result=cb_result,
             stock_result=stock_result,
         )
-        plan_lifecycle.complete(plan_id, plan)
+        if not plan_lifecycle.complete(plan_id, plan):
+            raise plan_service.PlanServiceError(409, {
+                "stage": "account",
+                "code": "PLAN_INPUTS_CHANGED",
+                "message": "生成期间账户数据已更新，本次计划已作废，请重新生成。",
+                "plan_id": plan_id,
+            })
         return plan
     except Exception as exc:
+        if (
+            isinstance(exc, plan_service.PlanServiceError)
+            and isinstance(exc.detail, dict)
+            and exc.detail.get("code") == "PLAN_INPUTS_CHANGED"
+        ):
+            raise
         status_code = getattr(exc, "status_code", 500)
         detail = getattr(exc, "detail", str(exc))
         error = plan_service.generation_error(
@@ -96,9 +137,26 @@ def generate_complete_plan(
         raise plan_service.PlanServiceError(status_code, {**error, "plan_id": plan_id}) from exc
 
 
-def prepare_complete_plan_generation() -> tuple[str, dict, object, dict]:
-    plan_date = plan_service.current_plan_date()
-    account = db.get_current_account_summary()
+def _generation_in_progress_error(plan_date: str, generation: dict | None) -> plan_service.PlanServiceError:
+    return plan_service.PlanServiceError(
+        409,
+        {
+            "stage": "generation",
+            "code": "PLAN_GENERATION_IN_PROGRESS",
+            "message": "当前计划日已有生成正在进行，请等待完成后刷新状态。",
+            "plan_date": plan_date,
+            "generation": {
+                "plan_id": generation.get("plan_id") if generation else None,
+                "plan_date": plan_date,
+                "status": plan_lifecycle.RUNNING,
+            },
+        },
+    )
+
+
+def prepare_complete_plan_generation(plan_date: str | None = None) -> tuple[str, dict, object, dict]:
+    plan_date = plan_date or plan_service.current_plan_date()
+    account = plan_service.current_account_summary()
     account_errors = plan_service.validate_account_inputs(
         plan_date,
         account,
@@ -212,7 +270,7 @@ def size_strategy_orders(
 
 def prepare_strategy_order_context() -> tuple[str, dict, dict]:
     plan_date = plan_service.current_plan_date()
-    account = db.get_current_account_summary()
+    account = plan_service.current_account_summary()
     errors = plan_service.validate_plan_inputs(plan_date, account)
     if errors:
         raise plan_service.PlanServiceError(

@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>方舟计划｜全站信息架构重设计原型</title>
+  <!-- PROTOTYPE — Three full-site IA variants, switchable via ?variant=A|B|C and ?state=ready|action|none|stale|failed. Run: python3 -m http.server 8010 --directory app/static -->
+  <style>
+    :root {
+      color-scheme: light;
+      --sea-950: #10262c;
+      --sea-800: #21434a;
+      --sea-650: #376069;
+      --sea-500: #0c7773;
+      --sea-100: #dfeeea;
+      --paper: #fbfcfa;
+      --paper-raised: #ffffff;
+      --wash: #f1f5f3;
+      --wash-blue: #edf3f5;
+      --ink: #16272d;
+      --muted: #65757a;
+      --soft: #8a989b;
+      --line: #d6e0dd;
+      --line-strong: #afc1bd;
+      --amber: #a86b10;
+      --amber-bg: #faf0dc;
+      --red: #963f3b;
+      --red-bg: #f7e9e7;
+      --green: #276847;
+      --green-bg: #e5f2e9;
+      --blue: #346783;
+      --blue-bg: #e7f0f5;
+      --display: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+      --body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --data: "SFMono-Regular", "Roboto Mono", Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--wash); }
+    body {
+      margin: 0;
+      background: var(--wash);
+      color: var(--ink);
+      font-family: var(--body);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    button, input, select { font: inherit; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
+      outline: 3px solid rgba(12, 119, 115, .25);
+      outline-offset: 2px;
+    }
+    a { color: inherit; text-decoration: none; }
+    h1, h2, h3, p { margin-top: 0; }
+    [hidden] { display: none !important; }
+    .data { font-family: var(--data); font-variant-numeric: tabular-nums; }
+    .muted { color: var(--muted); }
+    .soft { color: var(--soft); }
+    .eyebrow {
+      margin-bottom: 7px;
+      color: var(--sea-500);
+      font: 700 10px/1.2 var(--data);
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper-raised);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .tag.green { border-color: #bddbc8; background: var(--green-bg); color: var(--green); }
+    .tag.amber { border-color: #e6cb97; background: var(--amber-bg); color: var(--amber); }
+    .tag.red { border-color: #e1b8b4; background: var(--red-bg); color: var(--red); }
+    .tag.blue { border-color: #bfd2de; background: var(--blue-bg); color: var(--blue); }
+    .primary, .secondary, .ghost, .danger {
+      min-height: 42px;
+      padding: 0 16px;
+      border-radius: 5px;
+      font-weight: 750;
+    }
+    .primary { border: 1px solid var(--sea-950); background: var(--sea-950); color: white; }
+    .secondary { border: 1px solid var(--line-strong); background: white; color: var(--ink); }
+    .ghost { border: 0; background: transparent; color: var(--sea-500); }
+    .danger { border: 1px solid var(--red); background: var(--red); color: white; }
+    .link-button { border: 0; background: transparent; color: var(--sea-500); font-weight: 750; padding: 0; }
+    .prototype-mark {
+      position: fixed;
+      top: 10px;
+      right: 12px;
+      z-index: 90;
+      padding: 5px 9px;
+      border: 1px solid #496168;
+      background: rgba(16, 38, 44, .95);
+      color: white;
+      font: 700 9px/1.2 var(--data);
+      letter-spacing: .14em;
+    }
+    .variant-root { display: none; min-height: 100vh; }
+    .variant-root.is-current { display: block; }
+    .prototype-page { display: none; }
+    .prototype-page.is-current { display: block; }
+    .plan-state { display: none; }
+    .plan-state.is-current { display: block; }
+
+    /* Shared semantic content */
+    .allocation-row {
+      display: grid;
+      grid-template-columns: minmax(150px, 1.2fr) 1fr 1fr minmax(180px, 1.45fr);
+      gap: 16px;
+      align-items: center;
+      padding: 15px 0;
+      border-top: 1px solid var(--line);
+    }
+    .allocation-row:first-child { border-top: 0; }
+    .allocation-name strong { display: block; font-size: 15px; }
+    .allocation-name span { color: var(--soft); font-size: 11px; }
+    .allocation-value span { display: block; color: var(--soft); font-size: 10px; }
+    .allocation-value strong { font: 750 16px/1.4 var(--data); }
+    .rail-pair { display: grid; gap: 7px; }
+    .rail-line { position: relative; height: 5px; border-radius: 999px; background: #e4ebe8; overflow: hidden; }
+    .rail-line i { display: block; height: 100%; border-radius: inherit; }
+    .rail-line.current i { background: var(--sea-500); }
+    .rail-line.target i { background: var(--sea-800); }
+    .rail-legend { display: flex; justify-content: space-between; color: var(--soft); font-size: 9px; }
+    .sub-allocation { padding-left: 22px; }
+    .sub-allocation .allocation-name strong { font-size: 13px; }
+
+    .identity-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 18px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .identity-line b { color: var(--ink); }
+    .decision-copy h2 { margin-bottom: 6px; font-family: var(--display); font-size: 30px; font-weight: 650; letter-spacing: -.03em; }
+    .decision-copy p { margin-bottom: 0; color: var(--muted); }
+    .scope-choice {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 13px 15px;
+      border: 1px solid var(--line-strong);
+      background: var(--paper-raised);
+    }
+    .scope-choice input { width: 17px; height: 17px; accent-color: var(--sea-500); }
+    .scope-choice strong { display: block; }
+    .scope-choice span { color: var(--muted); font-size: 11px; }
+    .readiness-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: center;
+      padding: 14px 0;
+      border-top: 1px solid var(--line);
+    }
+    .readiness-line:first-child { border-top: 0; }
+    .readiness-line p { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
+    .notice {
+      padding: 16px 18px;
+      border-left: 4px solid var(--blue);
+      background: var(--blue-bg);
+    }
+    .notice.warn { border-left-color: var(--amber); background: var(--amber-bg); }
+    .notice.danger { border-left-color: var(--red); background: var(--red-bg); }
+    .notice h3 { margin-bottom: 5px; font-size: 15px; }
+    .notice p { margin: 0; color: var(--muted); }
+
+    .execution-table, .matrix-table, .holding-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-variant-numeric: tabular-nums;
+    }
+    .execution-table th, .matrix-table th, .holding-table th {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line-strong);
+      color: var(--soft);
+      font-size: 10px;
+      font-weight: 700;
+      text-align: left;
+    }
+    .execution-table td, .matrix-table td, .holding-table td {
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: middle;
+    }
+    .execution-table tbody tr:last-child td, .matrix-table tbody tr:last-child td, .holding-table tbody tr:last-child td { border-bottom: 0; }
+    .num { text-align: right !important; font-family: var(--data); }
+    .action-sell { color: var(--red); font-weight: 800; }
+    .action-buy { color: var(--green); font-weight: 800; }
+    .account-plan-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: start;
+      padding-bottom: 13px;
+      border-bottom: 1px solid var(--line-strong);
+    }
+    .account-plan-head h3 { margin-bottom: 3px; font-size: 18px; }
+    .account-plan-head p { margin: 0; color: var(--muted); font-size: 11px; }
+
+    .account-list-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      width: 100%;
+      padding: 14px 15px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+      color: var(--ink);
+      text-align: left;
+    }
+    .account-list-item strong { display: block; }
+    .account-list-item span { color: var(--soft); font-size: 10px; }
+    .account-list-item .amount { color: var(--ink); font: 750 12px/1.5 var(--data); }
+    .account-list-item.active { background: var(--sea-100); box-shadow: inset 3px 0 var(--sea-500); }
+    .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .field label { display: block; margin-bottom: 5px; color: var(--muted); font-size: 11px; font-weight: 700; }
+    .field input {
+      width: 100%;
+      min-height: 42px;
+      padding: 0 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 4px;
+      background: #fcfdfc;
+      color: var(--ink);
+      font-family: var(--data);
+    }
+    .qty-input { width: 86px; min-height: 38px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 4px; font-family: var(--data); text-align: right; }
+    .save-bar {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: center;
+      padding: 15px 17px;
+      border-top: 2px solid var(--sea-500);
+      background: var(--paper-raised);
+    }
+    .save-bar p { margin: 0; color: var(--muted); font-size: 11px; }
+
+    /* Variant A — vertical atlas ledger */
+    .va-shell { min-height: 100vh; padding-left: 224px; }
+    .va-nav {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 20;
+      width: 224px;
+      padding: 30px 22px;
+      border-right: 1px solid var(--line);
+      background: rgba(251, 252, 250, .97);
+    }
+    .va-brand { padding: 0 5px 24px; border-bottom: 1px solid var(--line); }
+    .va-brand strong { display: block; font: 650 23px/1.35 var(--display); letter-spacing: .08em; }
+    .va-brand span { color: var(--soft); font-size: 11px; }
+    .va-links { display: grid; gap: 4px; margin-top: 24px; }
+    .va-link {
+      display: flex;
+      align-items: center;
+      min-height: 42px;
+      padding: 0 12px;
+      border-radius: 5px;
+      color: var(--muted);
+      font-weight: 750;
+    }
+    .va-link.active { background: var(--sea-100); color: var(--sea-500); }
+    .va-system { position: absolute; right: 22px; bottom: 28px; left: 22px; padding-top: 13px; border-top: 1px solid var(--line); }
+    .va-system a { color: var(--muted); font-size: 12px; font-weight: 700; }
+    .va-main { width: min(1120px, calc(100% - 70px)); margin: 0 auto; padding: 44px 0 120px; }
+    .va-page-head { display: flex; justify-content: space-between; gap: 28px; align-items: end; margin-bottom: 28px; padding-bottom: 22px; border-bottom: 1px solid var(--line-strong); }
+    .va-page-head h1 { margin-bottom: 6px; font: 650 clamp(34px, 4vw, 48px)/1.15 var(--display); letter-spacing: -.035em; }
+    .va-page-head p { margin: 0; color: var(--muted); }
+    .va-ledger { border: 1px solid var(--line); background: var(--paper-raised); }
+    .va-ledger-head { display: flex; justify-content: space-between; gap: 20px; align-items: start; padding: 20px 24px 14px; border-bottom: 1px solid var(--line); }
+    .va-ledger-head h2 { margin-bottom: 3px; font-size: 18px; }
+    .va-ledger-head p { margin: 0; color: var(--muted); font-size: 11px; }
+    .va-ledger-body { padding: 4px 24px 12px; }
+    .va-context-strip { display: grid; grid-template-columns: 1fr 1fr 1.2fr; margin-bottom: 16px; border: 1px solid var(--line); background: var(--paper-raised); }
+    .va-context-strip > div { padding: 13px 15px; border-right: 1px solid var(--line); }
+    .va-context-strip > div:last-child { border-right: 0; }
+    .va-context-strip span { display: block; color: var(--soft); font-size: 10px; }
+    .va-context-strip strong { font: 750 13px/1.5 var(--data); }
+    .va-section { margin-top: 18px; border: 1px solid var(--line); background: var(--paper-raised); }
+    .va-section-body { padding: 20px 24px; }
+    .va-section-title { display: flex; justify-content: space-between; gap: 18px; align-items: start; margin-bottom: 14px; }
+    .va-section-title h2 { margin-bottom: 3px; font-size: 18px; }
+    .va-section-title p { margin: 0; color: var(--muted); font-size: 11px; }
+    .va-account-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); border: 1px solid var(--line); background: var(--paper-raised); }
+    .va-account-list { border-right: 1px solid var(--line); }
+    .va-editor { min-width: 0; }
+    .va-editor-head { display: flex; justify-content: space-between; gap: 20px; align-items: end; padding: 19px 22px; border-bottom: 1px solid var(--line); }
+    .va-editor-head h2 { margin-bottom: 3px; font-size: 20px; }
+    .va-editor-head p { margin: 0; color: var(--muted); font-size: 11px; }
+    .va-editor-body { padding: 20px 22px; }
+    .va-editor-section + .va-editor-section { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line); }
+    .va-editor-section h3 { margin-bottom: 11px; font-size: 15px; }
+
+    /* Variant B — split workbench */
+    .vb-shell { min-height: 100vh; background: #edf2f2; }
+    .vb-top {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      display: grid;
+      grid-template-columns: 250px 1fr auto;
+      align-items: center;
+      min-height: 70px;
+      padding: 0 28px;
+      border-bottom: 1px solid #bdccca;
+      background: rgba(255, 255, 255, .96);
+    }
+    .vb-brand { font: 650 21px var(--display); letter-spacing: .06em; }
+    .vb-nav { display: flex; justify-content: center; gap: 4px; }
+    .vb-link { min-height: 38px; padding: 9px 15px; border-radius: 999px; color: var(--muted); font-weight: 750; }
+    .vb-link.active { background: var(--sea-950); color: white; }
+    .vb-system-link { color: var(--muted); font-size: 11px; font-weight: 700; }
+    .vb-main { width: min(1320px, calc(100% - 44px)); margin: 0 auto; padding: 28px 0 120px; }
+    .vb-head { display: flex; justify-content: space-between; gap: 22px; align-items: end; margin-bottom: 18px; }
+    .vb-head h1 { margin-bottom: 4px; font: 650 34px/1.2 var(--display); }
+    .vb-head p { margin: 0; color: var(--muted); }
+    .vb-split { display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 16px; align-items: start; }
+    .vb-rail { position: sticky; top: 88px; display: grid; gap: 12px; }
+    .vb-rail-card { padding: 17px 18px; border: 1px solid var(--line); background: var(--paper-raised); }
+    .vb-rail-card h3 { margin-bottom: 5px; font-size: 14px; }
+    .vb-rail-card p { margin: 0; color: var(--muted); font-size: 11px; }
+    .vb-rail-card .big { display: block; margin: 5px 0; font: 750 22px var(--data); }
+    .vb-work { min-width: 0; }
+    .vb-panel { margin-bottom: 14px; border: 1px solid var(--line); background: var(--paper-raised); }
+    .vb-panel-head { display: flex; justify-content: space-between; gap: 20px; padding: 17px 20px 12px; border-bottom: 1px solid var(--line); }
+    .vb-panel-head h2 { margin-bottom: 3px; font-size: 17px; }
+    .vb-panel-head p { margin: 0; color: var(--muted); font-size: 11px; }
+    .vb-panel-body { padding: 18px 20px; }
+    .vb-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .vb-compare > section { padding: 16px 18px; border: 1px solid var(--line); background: var(--paper-raised); }
+    .vb-compare h3 { margin-bottom: 12px; font-size: 14px; }
+    .vb-bar-row { display: grid; grid-template-columns: 75px 1fr 54px; gap: 10px; align-items: center; padding: 8px 0; }
+    .vb-bar { height: 9px; background: #e1e8e6; }
+    .vb-bar i { display: block; height: 100%; background: var(--sea-500); }
+    .vb-bar.target i { background: var(--sea-800); }
+    .vb-plan-layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 14px; }
+    .vb-plan-index { position: sticky; top: 88px; align-self: start; border: 1px solid var(--line); background: white; }
+    .vb-index-item { padding: 13px 15px; border-bottom: 1px solid var(--line); }
+    .vb-index-item:last-child { border-bottom: 0; }
+    .vb-index-item strong { display: block; font-size: 12px; }
+    .vb-index-item span { color: var(--soft); font-size: 10px; }
+    .vb-index-item.current { box-shadow: inset 3px 0 var(--sea-500); background: var(--sea-100); }
+    .vb-account-grid { display: grid; grid-template-columns: 240px minmax(0, 1fr) 270px; gap: 14px; align-items: start; }
+    .vb-account-list, .vb-account-editor, .vb-review { border: 1px solid var(--line); background: white; }
+    .vb-review { position: sticky; top: 88px; padding: 17px; }
+    .vb-review h3 { margin-bottom: 7px; font-size: 14px; }
+    .vb-review p { color: var(--muted); font-size: 11px; }
+    .vb-review .primary { width: 100%; }
+
+    /* Variant C — compact matrix */
+    .vc-shell { min-height: 100vh; background: #f5f7f6; }
+    .vc-top { border-bottom: 2px solid var(--sea-950); background: white; }
+    .vc-mast { display: flex; justify-content: space-between; align-items: end; width: min(1420px, calc(100% - 36px)); margin: 0 auto; padding: 17px 0 11px; }
+    .vc-brand { font: 700 22px var(--display); letter-spacing: .08em; }
+    .vc-brand span { margin-left: 10px; color: var(--soft); font: 10px var(--body); letter-spacing: 0; }
+    .vc-nav { display: flex; gap: 0; border-top: 1px solid var(--line); }
+    .vc-nav-inner { display: flex; width: min(1420px, calc(100% - 36px)); margin: 0 auto; }
+    .vc-link { min-width: 118px; padding: 10px 15px; border-right: 1px solid var(--line); color: var(--muted); font-size: 12px; font-weight: 800; text-align: center; }
+    .vc-link:first-child { border-left: 1px solid var(--line); }
+    .vc-link.active { background: var(--sea-100); color: var(--sea-950); }
+    .vc-main { width: min(1420px, calc(100% - 36px)); margin: 0 auto; padding: 24px 0 116px; }
+    .vc-head { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: end; padding-bottom: 12px; border-bottom: 1px solid var(--sea-950); }
+    .vc-head h1 { margin-bottom: 3px; font: 700 30px var(--display); }
+    .vc-head p { margin: 0; color: var(--muted); font-size: 11px; }
+    .vc-sheet { margin-top: 14px; border: 1px solid var(--line-strong); background: white; }
+    .vc-sheet-head { display: flex; justify-content: space-between; gap: 18px; align-items: center; padding: 11px 13px; border-bottom: 1px solid var(--line-strong); background: #eef3f1; }
+    .vc-sheet-head h2 { margin: 0; font-size: 14px; }
+    .vc-sheet-head p { margin: 0; color: var(--muted); font-size: 10px; }
+    .vc-sheet-body { padding: 0 13px; }
+    .vc-metrics { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line-strong); border-top: 0; background: white; }
+    .vc-metric { padding: 11px 13px; border-right: 1px solid var(--line); }
+    .vc-metric:last-child { border-right: 0; }
+    .vc-metric span { display: block; color: var(--soft); font-size: 9px; }
+    .vc-metric strong { font: 750 13px var(--data); }
+    .vc-scope-row { display: grid; grid-template-columns: 1fr auto auto; gap: 14px; align-items: center; padding: 12px 13px; border: 1px solid var(--line-strong); background: white; }
+    .vc-scope-row p { margin: 0; color: var(--muted); font-size: 10px; }
+    .vc-account-tabs { display: flex; gap: 0; margin-top: 14px; border: 1px solid var(--line-strong); background: white; overflow: auto; }
+    .vc-account-tab { min-width: 170px; padding: 10px 12px; border: 0; border-right: 1px solid var(--line); background: white; text-align: left; }
+    .vc-account-tab strong { display: block; }
+    .vc-account-tab span { color: var(--soft); font-size: 9px; }
+    .vc-account-tab.active { background: var(--sea-100); }
+    .vc-editor-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; border: 1px solid var(--line-strong); border-top: 0; background: white; }
+    .vc-editor-main { min-width: 0; padding: 15px; }
+    .vc-editor-side { padding: 15px; border-left: 1px solid var(--line); background: #f7f9f8; }
+    .vc-editor-side h3 { margin-bottom: 7px; font-size: 13px; }
+    .vc-editor-side p { color: var(--muted); font-size: 10px; }
+    .vc-editor-side .primary { width: 100%; }
+
+    /* Prototype control */
+    .prototype-switcher {
+      position: fixed;
+      right: 50%;
+      bottom: 15px;
+      z-index: 100;
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      padding: 7px;
+      border: 1px solid #486068;
+      border-radius: 999px;
+      background: rgba(16, 38, 44, .97);
+      box-shadow: 0 14px 38px rgba(16, 38, 44, .28);
+      color: white;
+      transform: translateX(50%);
+    }
+    .prototype-switcher button {
+      width: 38px;
+      height: 38px;
+      border: 0;
+      border-radius: 50%;
+      background: #29454d;
+      color: white;
+      font-size: 17px;
+    }
+    .prototype-switcher strong { min-width: 154px; text-align: center; font-size: 11px; }
+    .prototype-switcher select {
+      min-height: 36px;
+      border: 1px solid #4f6870;
+      border-radius: 999px;
+      background: #1c353c;
+      color: white;
+      padding: 0 28px 0 11px;
+      font-size: 10px;
+    }
+
+    dialog { width: min(480px, calc(100% - 30px)); padding: 0; border: 1px solid var(--line-strong); border-radius: 7px; color: var(--ink); }
+    dialog::backdrop { background: rgba(11, 29, 34, .46); }
+    .dialog-body { padding: 22px; }
+    .dialog-body h2 { margin-bottom: 6px; font-family: var(--display); font-size: 24px; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 13px 22px; border-top: 1px solid var(--line); background: var(--wash); }
+
+    @media (max-width: 1000px) {
+      .vb-account-grid { grid-template-columns: 230px minmax(0, 1fr); }
+      .vb-review { position: static; grid-column: 1 / -1; }
+      .vc-editor-grid { grid-template-columns: 1fr; }
+      .vc-editor-side { border-top: 1px solid var(--line); border-left: 0; }
+    }
+
+    @media (max-width: 720px) {
+      .prototype-mark { top: 6px; right: 7px; }
+      .va-shell { padding-left: 0; }
+      .va-nav { position: static; width: auto; padding: 14px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .va-brand { padding: 0; border: 0; }
+      .va-brand strong { font-size: 18px; }
+      .va-brand span { display: none; }
+      .va-links { display: flex; margin-top: 10px; overflow: auto; }
+      .va-link { flex: 0 0 auto; min-height: 36px; padding: 0 10px; font-size: 12px; }
+      .va-system { position: static; margin-top: 8px; padding: 8px 10px 0; }
+      .va-main { width: auto; padding: 22px 14px 126px; }
+      .va-page-head, .vb-head { display: block; }
+      .va-page-head h1 { font-size: 34px; }
+      .va-page-head > :last-child, .vb-head > :last-child { margin-top: 12px; }
+      .va-context-strip { grid-template-columns: 1fr; }
+      .va-context-strip > div { border-right: 0; border-bottom: 1px solid var(--line); }
+      .va-context-strip > div:last-child { border-bottom: 0; }
+      .allocation-row { grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+      .allocation-name, .rail-pair { grid-column: 1 / -1; }
+      .sub-allocation { padding-left: 12px; }
+      .va-account-layout { grid-template-columns: 1fr; }
+      .va-account-list { display: block; overflow: visible; border-right: 0; border-bottom: 1px solid var(--line); }
+      .account-list-item { width: 100%; border-right: 0; }
+      .vb-top { position: static; grid-template-columns: 1fr; gap: 9px; padding: 14px; }
+      .vb-brand { font-size: 18px; }
+      .vb-nav { justify-content: flex-start; overflow: auto; }
+      .vb-link { flex: 0 0 auto; min-height: 36px; padding: 8px 11px; font-size: 12px; }
+      .vb-system-link { display: none; }
+      .vb-main { width: auto; padding: 20px 14px 126px; }
+      .vb-split, .vb-plan-layout, .vb-account-grid { grid-template-columns: 1fr; }
+      .vb-rail, .vb-plan-index, .vb-review { position: static; }
+      .vb-rail { grid-template-columns: 1fr 1fr; }
+      .vb-compare { grid-template-columns: 1fr; }
+      .vb-account-list { display: block; overflow: visible; }
+      .vc-mast, .vc-nav-inner, .vc-main { width: auto; margin-right: 14px; margin-left: 14px; }
+      .vc-mast { display: block; }
+      .vc-brand span { display: block; margin: 2px 0 0; }
+      .vc-nav-inner { overflow: auto; }
+      .vc-link { flex: 0 0 96px; min-width: 96px; }
+      .vc-head { grid-template-columns: 1fr; }
+      .vc-metrics { grid-template-columns: 1fr 1fr; }
+      .vc-metric:nth-child(2) { border-right: 0; }
+      .vc-metric:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .vc-scope-row { grid-template-columns: 1fr; }
+      .vc-sheet { min-width: 0; }
+      .vc-sheet-body { max-width: 100%; overflow-x: auto; }
+      .vc-sheet-body > .matrix-table { min-width: 640px; }
+      .vc-account-tabs { display: grid; grid-template-columns: 1fr; overflow: visible; }
+      .vc-account-tab { width: 100%; min-width: 0; border-right: 0; border-bottom: 1px solid var(--line); }
+      .vc-account-tab:last-child { border-bottom: 0; }
+      .field-grid { grid-template-columns: 1fr; }
+      .save-bar { display: grid; grid-template-columns: 1fr; }
+      .save-bar .primary { width: 100%; }
+      .execution-table, .holding-table { display: block; }
+      .execution-table thead, .holding-table thead { display: none; }
+      .execution-table tbody, .execution-table tr, .execution-table td,
+      .holding-table tbody, .holding-table tr, .holding-table td { display: block; width: 100%; }
+      .execution-table tr, .holding-table tr { padding: 11px 0; border-bottom: 1px solid var(--line); }
+      .execution-table td, .holding-table td { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 9px; padding: 4px 0; border: 0; text-align: left !important; }
+      .execution-table td::before, .holding-table td::before { content: attr(data-label); color: var(--soft); font-size: 10px; }
+      .prototype-switcher { width: calc(100% - 20px); justify-content: space-between; }
+      .prototype-switcher strong { min-width: 0; }
+      .prototype-switcher select { max-width: 112px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="prototype-mark">THROWAWAY PROTOTYPE</div>
+
+  <!-- Variant A -->
+  <div class="variant-root va-shell" data-variant-root="A">
+    <aside class="va-nav">
+      <div class="va-brand"><strong>方舟计划</strong><span>个人投资系统</span></div>
+      <nav class="va-links" aria-label="一级导航">
+        <a class="va-link" href="#overview" data-page-link="overview">概览</a>
+        <a class="va-link" href="#plan" data-page-link="plan">计划</a>
+        <a class="va-link" href="#account" data-page-link="account">账户</a>
+      </nav>
+      <div class="va-system"><a href="#log" data-page-link="log">系统信息 · 更新日志</a></div>
+    </aside>
+    <main class="va-main">
+      <section class="prototype-page" data-page="overview">
+        <header class="va-page-head">
+          <div><div class="eyebrow">Portfolio atlas</div><h1>投资概览</h1><p>看清资金当前所在的位置，以及它与投资体系目标之间的距离。</p></div>
+          <div><span class="soft">全体系总资产</span><strong class="data" style="display:block;font-size:22px">¥582,460.00</strong></div>
+        </header>
+        <div class="va-context-strip">
+          <div><span>全市场温度</span><strong>40° · 中性偏低</strong></div>
+          <div><span>目标基准</span><strong>2026-08-08 收盘</strong></div>
+          <div><span>数据构成</span><strong>5 个账户独立更新 · 最早 08-07 22:56</strong></div>
+        </div>
+        <section class="va-ledger">
+          <div class="va-ledger-head"><div><h2>顶层组合</h2><p>偏离只描述结构，不等同于需要调仓。</p></div><span class="tag blue">当前 / 目标</span></div>
+          <div class="va-ledger-body">
+            <div class="allocation-row"><div class="allocation-name"><strong>A · 自主管理组合</strong><span>小市值、可转债与资金余额</span></div><div class="allocation-value"><span>当前</span><strong>68.4%</strong><small class="soft data"> ¥398,405</small></div><div class="allocation-value"><span>目标</span><strong>66.0%</strong><small class="soft data"> ¥384,424</small></div><div class="rail-pair"><div class="rail-line current"><i style="width:68.4%"></i></div><div class="rail-line target"><i style="width:66%"></i></div><div class="rail-legend"><span>当前高于目标 2.4pp</span><span class="data">+¥13,981</span></div></div></div>
+            <div class="allocation-row"><div class="allocation-name"><strong>B · 海外长钱</strong><span>当前执行能力可维护</span></div><div class="allocation-value"><span>当前</span><strong>16.1%</strong><small class="soft data"> ¥93,776</small></div><div class="allocation-value"><span>目标</span><strong>19.0%</strong><small class="soft data"> ¥110,667</small></div><div class="rail-pair"><div class="rail-line current"><i style="width:16.1%"></i></div><div class="rail-line target"><i style="width:19%"></i></div><div class="rail-legend"><span>低于目标 2.9pp</span><button class="link-button" data-open-b type="button">可申购 ¥10,000 · 更新状态</button></div></div></div>
+            <div class="allocation-row"><div class="allocation-name"><strong>C · 国内长钱</strong><span>国内市场平均收益来源</span></div><div class="allocation-value"><span>当前</span><strong>15.5%</strong><small class="soft data"> ¥90,279</small></div><div class="allocation-value"><span>目标</span><strong>15.0%</strong><small class="soft data"> ¥87,369</small></div><div class="rail-pair"><div class="rail-line current"><i style="width:15.5%"></i></div><div class="rail-line target"><i style="width:15%"></i></div><div class="rail-legend"><span>接近目标</span><span class="data">+¥2,910</span></div></div></div>
+          </div>
+        </section>
+        <section class="va-section">
+          <div class="va-section-body"><div class="va-section-title"><div><h2>A 组合内部</h2><p>同一组合内的三项资金职责。</p></div><span class="tag">占 A 组合</span></div>
+            <div class="allocation-row sub-allocation"><div class="allocation-name"><strong>小市值股票策略</strong></div><div class="allocation-value"><span>当前</span><strong>48.7%</strong></div><div class="allocation-value"><span>目标</span><strong>46.0%</strong></div><div class="rail-pair"><div class="rail-line current"><i style="width:48.7%"></i></div><div class="rail-line target"><i style="width:46%"></i></div></div></div>
+            <div class="allocation-row sub-allocation"><div class="allocation-name"><strong>多因子可转债策略</strong></div><div class="allocation-value"><span>当前</span><strong>36.1%</strong></div><div class="allocation-value"><span>目标</span><strong>38.0%</strong></div><div class="rail-pair"><div class="rail-line current"><i style="width:36.1%"></i></div><div class="rail-line target"><i style="width:38%"></i></div></div></div>
+            <div class="allocation-row sub-allocation"><div class="allocation-name"><strong>资金余额</strong></div><div class="allocation-value"><span>当前</span><strong>15.2%</strong></div><div class="allocation-value"><span>目标</span><strong>16.0%</strong></div><div class="rail-pair"><div class="rail-line current"><i style="width:15.2%"></i></div><div class="rail-line target"><i style="width:16%"></i></div></div></div>
+          </div>
+        </section>
+      </section>
+
+      <section class="prototype-page" data-page="plan">
+        <header class="va-page-head"><div><div class="eyebrow">Next move</div><h1>计划</h1><p>选择本次计算范围，生成并复核一份完整的人工执行安排。</p></div><button class="secondary" data-page-link="history" type="button">历史计划</button></header>
+        <div class="plan-state" data-plan-state="ready">
+          <section class="va-section" style="margin-top:0"><div class="va-section-body"><div class="va-section-title"><div><h2>准备生成计划</h2><p>组合内轮动始终包含；只决定是否扩大到组合间再平衡。</p></div><span class="tag green">所需数据已齐备</span></div><label class="scope-choice"><input type="checkbox"><span><strong>同时进行组合间再平衡</strong><span>默认关闭；开启后才校验 B、C 组合相关数据。</span></span></label><div style="margin-top:16px"><div class="readiness-line"><div><strong>A 组合账户数据</strong><p>广发、华泰、资金账户均在输入窗口内</p></div><span class="tag green">就绪</span></div><div class="readiness-line"><div><strong>市场温度与策略数据</strong><p>2026-08-08 收盘数据完整</p></div><span class="tag green">就绪</span></div></div><div style="display:flex;justify-content:flex-end;margin-top:18px"><button class="primary">生成计划</button></div></div></section>
+        </div>
+        <div class="plan-state" data-plan-state="action">
+          <div class="va-context-strip"><div><span>本次范围</span><strong>仅组合内轮动</strong></div><div><span>执行日期</span><strong>2026-08-10 开盘</strong></div><div><span>版本</span><strong>08-09 00:33 · 7baadb85</strong></div></div>
+          <section class="va-section" style="margin-top:0;border-left:4px solid var(--blue)"><div class="va-section-body decision-copy"><h2>计划待执行</h2><p>先完成资金调拨，再按账户复核并执行证券交易；未到执行窗口不要交易。</p></div></section>
+          <section class="va-section"><div class="va-section-body"><div class="va-section-title"><div><h2>资金调拨</h2><p>只保留执行所需的时间、路线和金额。</p></div><span class="tag amber">2 笔</span></div><table class="execution-table"><thead><tr><th>可用时点</th><th>从</th><th>到</th><th class="num">金额</th></tr></thead><tbody><tr><td data-label="可用时点">当日可用 · 08-10</td><td data-label="从">资金账户</td><td data-label="到">华泰账户</td><td data-label="金额" class="num">¥6,037.49</td></tr><tr><td data-label="可用时点">下一交易日 · 08-11</td><td data-label="从">广发账户</td><td data-label="到">资金账户</td><td data-label="金额" class="num">¥7,615.77</td></tr></tbody></table></div></section>
+          <section class="va-section"><div class="va-section-body"><div class="account-plan-head"><div><h3>广发账户</h3><p>资金已具备 · 2026-08-10 开盘执行</p></div><span class="tag green">卖出后买入</span></div><table class="execution-table"><thead><tr><th>动作</th><th>代码</th><th>名称</th><th class="num">数量</th><th class="num">参考价</th><th class="num">估算金额</th></tr></thead><tbody><tr><td data-label="动作" class="action-sell">减仓</td><td data-label="代码" class="data">600455</td><td data-label="名称">博通股份</td><td data-label="数量" class="num">200 股</td><td data-label="参考价" class="num">23.770</td><td data-label="估算金额" class="num">¥4,754.00</td></tr><tr><td data-label="动作" class="action-buy">新买入</td><td data-label="代码" class="data">603118</td><td data-label="名称">共进股份</td><td data-label="数量" class="num">300 股</td><td data-label="参考价" class="num">14.210</td><td data-label="估算金额" class="num">¥4,263.00</td></tr></tbody></table></div></section>
+          <section class="va-section"><div class="va-section-body"><div class="account-plan-head"><div><h3>华泰账户</h3><p>需要当日调入 · 调拨完成后执行</p></div><span class="tag amber">先调拨</span></div><table class="execution-table"><thead><tr><th>动作</th><th>代码</th><th>名称</th><th class="num">数量</th><th class="num">最高执行价</th><th class="num">估算金额</th></tr></thead><tbody><tr><td data-label="动作" class="action-sell">清仓卖出</td><td data-label="代码" class="data">111014</td><td data-label="名称">李子转债</td><td data-label="数量" class="num">70 张</td><td data-label="最高执行价" class="num">—</td><td data-label="估算金额" class="num">¥8,788.50</td></tr><tr><td data-label="动作" class="action-buy">新买入</td><td data-label="代码" class="data">113682</td><td data-label="名称">益丰转债</td><td data-label="数量" class="num">80 张</td><td data-label="最高执行价" class="num">129.551</td><td data-label="估算金额" class="num">¥10,364.08</td></tr></tbody></table></div></section>
+        </div>
+        <div class="plan-state" data-plan-state="none"><div class="va-context-strip"><div><span>本次范围</span><strong>仅组合内轮动</strong></div><div><span>执行日期</span><strong>2026-08-10</strong></div><div><span>版本</span><strong>08-09 00:33 · 7baadb85</strong></div></div><section class="va-section" style="margin-top:0;border-left:4px solid var(--green)"><div class="va-section-body decision-copy"><h2>无需操作</h2><p>当前配置与策略筛选结果均未形成达到执行条件的资金调拨或证券交易。</p></div></section></div>
+        <div class="plan-state" data-plan-state="stale"><div class="notice warn"><h3>输入已变化，原计划不可再执行</h3><p>华泰账户数据已更新。旧明细已收起，可进入历史计划追溯；请按当前输入重新生成。</p><div style="margin-top:13px;display:flex;gap:9px"><button class="primary">重新生成</button><button class="secondary" data-page-link="history">查看失效版本</button></div></div></div>
+        <div class="plan-state" data-plan-state="failed"><div class="notice danger"><h3>计划生成失败，不可执行</h3><p>可转债策略数据不完整，本次没有形成可执行的新计划。已经算出的局部结果不会展示为执行单。</p><div style="margin-top:13px"><button class="danger">重试生成</button></div></div></div>
+      </section>
+
+      <section class="prototype-page" data-page="account">
+        <header class="va-page-head"><div><div class="eyebrow">Account data</div><h1>账户数据</h1><p>每个账户独立维护；从当前数据开始，只修改实际变化。</p></div><span class="tag blue" id="vaReturn">当前账户 · 广发</span></header>
+        <div class="va-account-layout"><aside class="va-account-list"><button class="account-list-item active" data-account="gf"><span><strong>广发账户</strong><span>更新 08-08 22:58</span></span><span class="amount">¥148,560</span></button><button class="account-list-item" data-account="ht"><span><strong>华泰账户</strong><span>更新 08-08 22:57</span></span><span class="amount">¥117,332</span></button><button class="account-list-item" data-account="cash"><span><strong>资金账户</strong><span>更新 08-08 22:56</span></span><span class="amount">¥60,761</span></button><button class="account-list-item" data-account="overseas"><span><strong>海外长钱</strong><span>更新 08-07 21:10</span></span><span class="amount">¥93,776</span></button><button class="account-list-item" data-account="domestic"><span><strong>国内长钱</strong><span>更新 08-07 21:08</span></span><span class="amount">¥90,279</span></button></aside><div class="va-editor"><div class="va-editor-head"><div><h2>广发账户</h2><p>小市值股票策略 · 当前数据已预填</p></div><strong class="data">¥148,560.24</strong></div><div class="va-editor-body"><section class="va-editor-section"><h3>账户资金</h3><div class="field-grid"><div class="field"><label>可用现金</label><input value="1081.23"></div><div class="field"><label>冻结现金</label><input value="0.00"></div></div></section><section class="va-editor-section"><h3>当前持仓</h3><table class="holding-table"><thead><tr><th>代码</th><th>名称</th><th>数量</th><th class="num">最新价</th><th class="num">持仓市值</th></tr></thead><tbody><tr><td data-label="代码" class="data">000856</td><td data-label="名称">冀东装备</td><td data-label="数量"><input class="qty-input" value="1800"></td><td data-label="最新价" class="num">18.42</td><td data-label="持仓市值" class="num">¥33,156.00</td></tr><tr><td data-label="代码" class="data">001336</td><td data-label="名称">楚环科技</td><td data-label="数量"><input class="qty-input" value="900"></td><td data-label="最新价" class="num">27.65</td><td data-label="持仓市值" class="num">¥24,885.00</td></tr><tr><td data-label="代码" class="data">002144</td><td data-label="名称">宏达高科</td><td data-label="数量"><input class="qty-input" value="1300"></td><td data-label="最新价" class="num">14.91</td><td data-label="持仓市值" class="num">¥19,383.00</td></tr></tbody></table><button class="ghost" type="button">＋ 添加证券</button></section></div><div class="save-bar"><p>没有修改时确认数据仍准确；发生变化后按钮切换为保存账户数据。</p><button class="primary">确认数据仍准确</button></div></div></div>
+      </section>
+
+      <section class="prototype-page" data-page="history"><header class="va-page-head"><div><div class="eyebrow">Plan archive</div><h1>历史计划</h1><p>仅供追溯，不作为当前执行依据。</p></div><button class="secondary" data-page-link="plan">返回当前计划</button></header><div class="notice warn"><h3>历史计划，仅供追溯</h3><p>按适用执行日倒序；同日多个版本默认只显示最后版本。</p></div><section class="va-section"><div class="va-section-body"><div class="readiness-line"><div><strong>2026-08-08</strong><p>仅组合内轮动 · 生成 08-07 22:14 · 版本 a03f12c8 · 共 2 个版本</p></div><span class="tag amber">执行窗口已过</span></div><div class="readiness-line"><div><strong>2026-08-01</strong><p>组合间再平衡 + 组合内轮动 · 生成 07-31 21:48 · 版本 7c28ab45</p></div><span class="tag red">已失效</span></div></div></section></section>
+      <section class="prototype-page" data-page="log"><header class="va-page-head"><div><div class="eyebrow">System information</div><h1>更新日志</h1><p>记录面向使用者的功能与体验变化。</p></div></header><section class="va-ledger"><div class="va-ledger-body"><div class="readiness-line"><div><strong>全站信息架构重设计进入原型</strong><p>2026-08-09 01:10 · 概览 / 计划 / 账户</p></div><span class="tag blue">设计</span></div><div class="readiness-line"><div><strong>账户数据更新改为逐账户当前状态</strong><p>2026-08-08 23:10 · 账户</p></div><span class="tag green">优化</span></div></div></section></section>
+    </main>
+  </div>
+
+  <!-- Variant B -->
+  <div class="variant-root vb-shell" data-variant-root="B">
+    <header class="vb-top"><div class="vb-brand">方舟计划</div><nav class="vb-nav"><a class="vb-link" href="#overview" data-page-link="overview">概览</a><a class="vb-link" href="#plan" data-page-link="plan">计划</a><a class="vb-link" href="#account" data-page-link="account">账户</a></nav><a class="vb-system-link" href="#log" data-page-link="log">系统信息 / 更新日志</a></header>
+    <main class="vb-main">
+      <section class="prototype-page" data-page="overview"><header class="vb-head"><div><div class="eyebrow">Current allocation</div><h1>投资概览</h1><p>整体配置事实，与下一步计划分开阅读。</p></div><strong class="data" style="font-size:22px">¥582,460.00</strong></header><div class="vb-split"><aside class="vb-rail"><section class="vb-rail-card"><h3>全市场温度</h3><span class="big">40°</span><p>中性偏低 · 08-08 收盘</p></section><section class="vb-rail-card"><h3>B 申购能力</h3><span class="big" style="font-size:17px">可申购 ¥10,000</span><p>08-08 21:40 核验</p><button class="link-button" data-open-b>更新状态</button></section><section class="vb-rail-card"><h3>数据时间</h3><p>5 个账户独立更新<br>最早 08-07 21:08</p></section></aside><div class="vb-work"><div class="vb-compare"><section><h3>当前配置</h3><div class="vb-bar-row"><strong>A</strong><div class="vb-bar"><i style="width:68.4%"></i></div><span class="num">68.4%</span></div><div class="vb-bar-row"><strong>B</strong><div class="vb-bar"><i style="width:16.1%"></i></div><span class="num">16.1%</span></div><div class="vb-bar-row"><strong>C</strong><div class="vb-bar"><i style="width:15.5%"></i></div><span class="num">15.5%</span></div></section><section><h3>目标配置</h3><div class="vb-bar-row"><strong>A</strong><div class="vb-bar target"><i style="width:66%"></i></div><span class="num">66.0%</span></div><div class="vb-bar-row"><strong>B</strong><div class="vb-bar target"><i style="width:19%"></i></div><span class="num">19.0%</span></div><div class="vb-bar-row"><strong>C</strong><div class="vb-bar target"><i style="width:15%"></i></div><span class="num">15.0%</span></div></section></div><section class="vb-panel" style="margin-top:14px"><div class="vb-panel-head"><div><h2>A 组合内部</h2><p>当前与目标并排核对，不展开到具体账户。</p></div><span class="tag">占 A 组合</span></div><div class="vb-panel-body"><table class="matrix-table"><thead><tr><th>策略 / 资金职责</th><th class="num">当前</th><th class="num">目标</th><th class="num">偏离</th><th class="num">当前金额</th></tr></thead><tbody><tr><td>小市值股票策略</td><td class="num">48.7%</td><td class="num">46.0%</td><td class="num">+2.7pp</td><td class="num">¥194,012</td></tr><tr><td>多因子可转债策略</td><td class="num">36.1%</td><td class="num">38.0%</td><td class="num">−1.9pp</td><td class="num">¥143,824</td></tr><tr><td>资金余额</td><td class="num">15.2%</td><td class="num">16.0%</td><td class="num">−0.8pp</td><td class="num">¥60,569</td></tr></tbody></table></div></section></div></div></section>
+
+      <section class="prototype-page" data-page="plan"><header class="vb-head"><div><div class="eyebrow">Plan workspace</div><h1>计划</h1><p>当前范围、输入与完整执行文档在同一工作区内分层。</p></div><button class="secondary" data-page-link="history">历史计划</button></header><div class="plan-state" data-plan-state="ready"><div class="vb-split"><aside class="vb-rail"><section class="vb-rail-card"><h3>本次范围</h3><p>固定包含组合内轮动</p><span class="tag green" style="margin-top:8px">默认范围</span></section><section class="vb-rail-card"><h3>所需输入</h3><p>A 组合账户、温度与策略数据均已就绪。</p></section></aside><div class="vb-work"><section class="vb-panel"><div class="vb-panel-head"><div><h2>准备生成计划</h2><p>是否进行组合间再平衡由你决定。</p></div><span class="tag green">可以生成</span></div><div class="vb-panel-body"><label class="scope-choice"><input type="checkbox"><span><strong>同时进行组合间再平衡</strong><span>开启后扩大账户与约束校验范围。</span></span></label><div style="display:flex;justify-content:flex-end;margin-top:18px"><button class="primary">生成计划</button></div></div></section></div></div></div>
+        <div class="plan-state" data-plan-state="action"><div class="vb-plan-layout"><aside class="vb-plan-index"><div class="vb-index-item current"><strong>计划结论</strong><span>计划待执行</span></div><div class="vb-index-item"><strong>资金调拨</strong><span>2 笔 · 先复核</span></div><div class="vb-index-item"><strong>广发账户</strong><span>卖出后买入</span></div><div class="vb-index-item"><strong>华泰账户</strong><span>调入后执行</span></div><div class="vb-index-item"><strong>计划身份</strong><span>08-10 · 7baadb85</span></div></aside><div><section class="vb-panel"><div class="vb-panel-body"><div class="identity-line"><b>仅组合内轮动</b><span>数据 2026-08-08</span><span>执行 2026-08-10 开盘</span><span>生成 08-09 00:33</span><span>版本 7baadb85</span></div><div class="decision-copy" style="margin-top:18px"><h2>计划待执行</h2><p>先完成资金调拨，再按账户复核并执行交易。</p></div></div></section><section class="vb-panel"><div class="vb-panel-head"><div><h2>资金调拨</h2><p>按可用时点排列。</p></div><span class="tag amber">2 笔</span></div><div class="vb-panel-body"><table class="execution-table"><tbody><tr><td data-label="可用时点"><strong>当日可用</strong><br><span class="soft">08-10</span></td><td data-label="路线">资金账户 → 华泰账户</td><td data-label="金额" class="num">¥6,037.49</td></tr><tr><td data-label="可用时点"><strong>下一交易日</strong><br><span class="soft">08-11</span></td><td data-label="路线">广发账户 → 资金账户</td><td data-label="金额" class="num">¥7,615.77</td></tr></tbody></table></div></section><section class="vb-panel"><div class="vb-panel-head"><div><h2>广发账户</h2><p>资金已具备 · 卖出后买入</p></div><span class="tag green">08-10</span></div><div class="vb-panel-body"><table class="execution-table"><thead><tr><th>动作</th><th>代码</th><th>名称</th><th class="num">数量</th><th class="num">参考价</th><th class="num">金额</th></tr></thead><tbody><tr><td data-label="动作" class="action-sell">减仓</td><td data-label="代码" class="data">600455</td><td data-label="名称">博通股份</td><td data-label="数量" class="num">200 股</td><td data-label="参考价" class="num">23.770</td><td data-label="金额" class="num">¥4,754</td></tr><tr><td data-label="动作" class="action-buy">新买入</td><td data-label="代码" class="data">603118</td><td data-label="名称">共进股份</td><td data-label="数量" class="num">300 股</td><td data-label="参考价" class="num">14.210</td><td data-label="金额" class="num">¥4,263</td></tr></tbody></table></div></section><section class="vb-panel"><div class="vb-panel-head"><div><h2>华泰账户</h2><p>需要当日调入 · 完成后执行</p></div><span class="tag amber">先调拨</span></div><div class="vb-panel-body"><table class="execution-table"><thead><tr><th>动作</th><th>代码</th><th>名称</th><th class="num">数量</th><th class="num">价格约束</th><th class="num">金额</th></tr></thead><tbody><tr><td data-label="动作" class="action-sell">清仓卖出</td><td data-label="代码" class="data">111014</td><td data-label="名称">李子转债</td><td data-label="数量" class="num">70 张</td><td data-label="价格约束" class="num">—</td><td data-label="金额" class="num">¥8,788</td></tr><tr><td data-label="动作" class="action-buy">新买入</td><td data-label="代码" class="data">113682</td><td data-label="名称">益丰转债</td><td data-label="数量" class="num">80 张</td><td data-label="价格约束" class="num">≤129.551</td><td data-label="金额" class="num">¥10,364</td></tr></tbody></table></div></section></div></div></div>
+        <div class="plan-state" data-plan-state="none"><section class="vb-panel"><div class="vb-panel-body decision-copy"><div class="identity-line"><b>仅组合内轮动</b><span>执行 2026-08-10</span><span>版本 7baadb85</span></div><h2 style="margin-top:18px">无需操作</h2><p>完整计划已计算，本次没有达到执行条件的调拨或交易。</p></div></section></div>
+        <div class="plan-state" data-plan-state="stale"><div class="notice warn"><h3>输入已变化，原计划不可再执行</h3><p>旧明细已移入历史。按当前输入重新生成后才会形成新的执行文档。</p><button class="primary" style="margin-top:12px">重新生成</button></div></div>
+        <div class="plan-state" data-plan-state="failed"><div class="notice danger"><h3>完整计划生成失败</h3><p>缺少必要的可转债策略结果，没有可执行的新版本。</p><button class="danger" style="margin-top:12px">重试生成</button></div></div>
+      </section>
+
+      <section class="prototype-page" data-page="account"><header class="vb-head"><div><div class="eyebrow">Account workbench</div><h1>账户数据</h1><p>账户选择、当前数据与保存影响并排核对。</p></div><span class="tag blue">当前 · 广发账户</span></header><div class="vb-account-grid"><aside class="vb-account-list"><button class="account-list-item active"><span><strong>广发账户</strong><span>08-08 22:58</span></span><span class="amount">¥148,560</span></button><button class="account-list-item"><span><strong>华泰账户</strong><span>08-08 22:57</span></span><span class="amount">¥117,332</span></button><button class="account-list-item"><span><strong>海外长钱</strong><span>08-07 21:10</span></span><span class="amount">¥93,776</span></button><button class="account-list-item"><span><strong>国内长钱</strong><span>08-07 21:08</span></span><span class="amount">¥90,279</span></button><button class="account-list-item"><span><strong>资金账户</strong><span>08-08 22:56</span></span><span class="amount">¥60,761</span></button></aside><section class="vb-account-editor"><div class="vb-panel-head"><div><h2>广发账户</h2><p>现有现金与持仓已经预填</p></div><strong class="data">¥148,560.24</strong></div><div class="vb-panel-body"><div class="field-grid"><div class="field"><label>可用现金</label><input value="1081.23"></div><div class="field"><label>冻结现金</label><input value="0.00"></div></div><h3 style="margin:22px 0 9px">当前持仓</h3><table class="holding-table"><thead><tr><th>代码</th><th>名称</th><th>数量</th><th class="num">价格</th><th class="num">市值</th></tr></thead><tbody><tr><td data-label="代码" class="data">000856</td><td data-label="名称">冀东装备</td><td data-label="数量"><input class="qty-input" value="1800"></td><td data-label="价格" class="num">18.42</td><td data-label="市值" class="num">¥33,156</td></tr><tr><td data-label="代码" class="data">001336</td><td data-label="名称">楚环科技</td><td data-label="数量"><input class="qty-input" value="900"></td><td data-label="价格" class="num">27.65</td><td data-label="市值" class="num">¥24,885</td></tr><tr><td data-label="代码" class="data">002144</td><td data-label="名称">宏达高科</td><td data-label="数量"><input class="qty-input" value="1300"></td><td data-label="价格" class="num">14.91</td><td data-label="市值" class="num">¥19,383</td></tr></tbody></table><button class="ghost">＋ 添加证券</button></div></section><aside class="vb-review"><h3>本次状态</h3><p>尚未修改。确认后只刷新广发账户的数据时间，不影响其他账户。</p><div class="identity-line" style="display:grid;margin:14px 0"><span>持仓市值 <b class="data">¥147,479.01</b></span><span>账户总额 <b class="data">¥148,560.24</b></span></div><button class="primary">确认数据仍准确</button></aside></div></section>
+      <section class="prototype-page" data-page="history"><header class="vb-head"><div><h1>历史计划</h1><p>历史版本与当前计划分离，仅供追溯。</p></div><button class="secondary" data-page-link="plan">返回当前计划</button></header><div class="notice warn"><h3>历史计划，仅供追溯</h3><p>2026-08-08 · 仅组合内轮动 · 共 2 个版本 · 执行窗口已过</p></div></section>
+      <section class="prototype-page" data-page="log"><header class="vb-head"><div><h1>更新日志</h1><p>系统信息，不占用一级投资工作区。</p></div></header><section class="vb-panel"><div class="vb-panel-body"><div class="readiness-line"><div><strong>全站信息架构重设计进入原型</strong><p>2026-08-09 01:10 · 概览 / 计划 / 账户</p></div><span class="tag blue">设计</span></div></div></section></section>
+    </main>
+  </div>
+
+  <!-- Variant C -->
+  <div class="variant-root vc-shell" data-variant-root="C">
+    <header class="vc-top"><div class="vc-mast"><div class="vc-brand">方舟计划<span>个人投资系统 / 矩阵台账</span></div><a class="soft" href="#log" data-page-link="log">系统信息 · 更新日志</a></div><nav class="vc-nav"><div class="vc-nav-inner"><a class="vc-link" href="#overview" data-page-link="overview">概览</a><a class="vc-link" href="#plan" data-page-link="plan">计划</a><a class="vc-link" href="#account" data-page-link="account">账户</a></div></nav></header>
+    <main class="vc-main">
+      <section class="prototype-page" data-page="overview"><header class="vc-head"><div><div class="eyebrow">Allocation matrix</div><h1>投资概览</h1><p>占比为主，金额为辅；所有结构在一张矩阵中完成比较。</p></div><div class="data"><span class="soft">总资产</span> ¥582,460.00</div></header><div class="vc-metrics"><div class="vc-metric"><span>全市场温度</span><strong>40° · 中性偏低</strong></div><div class="vc-metric"><span>目标基准</span><strong>2026-08-08</strong></div><div class="vc-metric"><span>账户数据</span><strong>5 个独立时间</strong></div><div class="vc-metric"><span>B 申购能力</span><button class="link-button" data-open-b>可申购 ¥10,000</button></div></div><section class="vc-sheet"><div class="vc-sheet-head"><h2>组合与策略配置矩阵</h2><p>偏离不是交易指令</p></div><div class="vc-sheet-body"><table class="matrix-table"><thead><tr><th>层级</th><th>组合 / 策略</th><th class="num">当前占比</th><th class="num">目标占比</th><th class="num">偏离</th><th class="num">当前金额</th><th class="num">目标金额</th><th>数据状态</th></tr></thead><tbody><tr><td>顶层</td><td><strong>A · 自主管理组合</strong></td><td class="num">68.4%</td><td class="num">66.0%</td><td class="num">+2.4pp</td><td class="num">¥398,405</td><td class="num">¥384,424</td><td><span class="tag green">可用</span></td></tr><tr><td>顶层</td><td><strong>B · 海外长钱</strong></td><td class="num">16.1%</td><td class="num">19.0%</td><td class="num">−2.9pp</td><td class="num">¥93,776</td><td class="num">¥110,667</td><td><span class="tag green">可用</span></td></tr><tr><td>顶层</td><td><strong>C · 国内长钱</strong></td><td class="num">15.5%</td><td class="num">15.0%</td><td class="num">+0.5pp</td><td class="num">¥90,279</td><td class="num">¥87,369</td><td><span class="tag green">可用</span></td></tr><tr style="background:#f7faf8"><td>A 内部</td><td>↳ 小市值股票策略</td><td class="num">48.7%</td><td class="num">46.0%</td><td class="num">+2.7pp</td><td class="num">¥194,012</td><td class="num">¥183,266</td><td>08-08 22:58</td></tr><tr style="background:#f7faf8"><td>A 内部</td><td>↳ 多因子可转债策略</td><td class="num">36.1%</td><td class="num">38.0%</td><td class="num">−1.9pp</td><td class="num">¥143,824</td><td class="num">¥151,394</td><td>08-08 22:57</td></tr><tr style="background:#f7faf8"><td>A 内部</td><td>↳ 资金余额</td><td class="num">15.2%</td><td class="num">16.0%</td><td class="num">−0.8pp</td><td class="num">¥60,569</td><td class="num">¥63,745</td><td>08-08 22:56</td></tr></tbody></table></div></section></section>
+
+      <section class="prototype-page" data-page="plan"><header class="vc-head"><div><div class="eyebrow">Execution ledger</div><h1>计划</h1><p>范围、身份、资金动作和账户交易使用同一套表格语法。</p></div><button class="secondary" data-page-link="history">历史计划</button></header><div class="plan-state" data-plan-state="ready"><div class="vc-scope-row"><div><strong>固定包含：A 组合内轮动</strong><p>日常默认范围；数据已经就绪。</p></div><label><input type="checkbox"> 同时进行组合间再平衡</label><button class="primary">生成计划</button></div><section class="vc-sheet"><div class="vc-sheet-head"><h2>当前范围的前置条件</h2><p>只列实际依赖</p></div><div class="vc-sheet-body"><table class="matrix-table"><tbody><tr><td>A 组合账户数据</td><td>广发、华泰、资金账户</td><td><span class="tag green">就绪</span></td></tr><tr><td>策略输入</td><td>温度、小市值、可转债</td><td><span class="tag green">就绪</span></td></tr></tbody></table></div></section></div>
+        <div class="plan-state" data-plan-state="action"><div class="vc-metrics"><div class="vc-metric"><span>本次范围</span><strong>仅组合内轮动</strong></div><div class="vc-metric"><span>数据日期</span><strong>2026-08-08</strong></div><div class="vc-metric"><span>执行日期</span><strong>2026-08-10</strong></div><div class="vc-metric"><span>版本</span><strong>7baadb85</strong></div></div><div class="vc-scope-row" style="border-top:0"><div><strong style="font-size:18px">计划待执行</strong><p>先资金调拨，再执行账户交易。</p></div><span class="tag blue">生成 08-09 00:33</span><button class="secondary">进入专注视图</button></div><section class="vc-sheet"><div class="vc-sheet-head"><h2>资金调拨</h2><p>2 笔</p></div><div class="vc-sheet-body"><table class="execution-table"><thead><tr><th>可用时点</th><th>从</th><th>到</th><th class="num">金额</th></tr></thead><tbody><tr><td data-label="可用时点">当日可用 · 08-10</td><td data-label="从">资金账户</td><td data-label="到">华泰账户</td><td data-label="金额" class="num">¥6,037.49</td></tr><tr><td data-label="可用时点">下一交易日 · 08-11</td><td data-label="从">广发账户</td><td data-label="到">资金账户</td><td data-label="金额" class="num">¥7,615.77</td></tr></tbody></table></div></section><section class="vc-sheet"><div class="vc-sheet-head"><h2>广发账户 · 资金已具备</h2><p>08-10 开盘执行</p></div><div class="vc-sheet-body"><table class="execution-table"><thead><tr><th>阶段</th><th>动作</th><th>代码</th><th>名称</th><th class="num">数量</th><th class="num">参考价</th><th class="num">金额</th></tr></thead><tbody><tr><td data-label="阶段">卖出</td><td data-label="动作" class="action-sell">减仓</td><td data-label="代码" class="data">600455</td><td data-label="名称">博通股份</td><td data-label="数量" class="num">200 股</td><td data-label="参考价" class="num">23.770</td><td data-label="金额" class="num">¥4,754</td></tr><tr><td data-label="阶段">买入</td><td data-label="动作" class="action-buy">新买入</td><td data-label="代码" class="data">603118</td><td data-label="名称">共进股份</td><td data-label="数量" class="num">300 股</td><td data-label="参考价" class="num">14.210</td><td data-label="金额" class="num">¥4,263</td></tr></tbody></table></div></section><section class="vc-sheet"><div class="vc-sheet-head"><h2>华泰账户 · 需要当日调入</h2><p>调拨完成后执行</p></div><div class="vc-sheet-body"><table class="execution-table"><thead><tr><th>阶段</th><th>动作</th><th>代码</th><th>名称</th><th class="num">数量</th><th class="num">价格约束</th><th class="num">金额</th></tr></thead><tbody><tr><td data-label="阶段">卖出</td><td data-label="动作" class="action-sell">清仓卖出</td><td data-label="代码" class="data">111014</td><td data-label="名称">李子转债</td><td data-label="数量" class="num">70 张</td><td data-label="价格约束" class="num">—</td><td data-label="金额" class="num">¥8,788</td></tr><tr><td data-label="阶段">买入</td><td data-label="动作" class="action-buy">新买入</td><td data-label="代码" class="data">113682</td><td data-label="名称">益丰转债</td><td data-label="数量" class="num">80 张</td><td data-label="价格约束" class="num">≤129.551</td><td data-label="金额" class="num">¥10,364</td></tr></tbody></table></div></section></div>
+        <div class="plan-state" data-plan-state="none"><div class="vc-scope-row"><div><strong style="font-size:18px">无需操作</strong><p>完整计算后没有达到执行条件的动作。</p></div><span class="tag green">执行日 08-10</span><span class="data">7baadb85</span></div></div>
+        <div class="plan-state" data-plan-state="stale"><div class="notice warn"><h3>输入已变化，原计划不可再执行</h3><p>旧版本已经移入历史，执行表默认不再显示。</p><button class="primary" style="margin-top:12px">重新生成</button></div></div>
+        <div class="plan-state" data-plan-state="failed"><div class="notice danger"><h3>计划生成失败，不可执行</h3><p>必要部分失败，局部结果未进入执行台账。</p><button class="danger" style="margin-top:12px">重试生成</button></div></div>
+      </section>
+
+      <section class="prototype-page" data-page="account"><header class="vc-head"><div><div class="eyebrow">Account ledger</div><h1>账户数据</h1><p>账户按当前金额倒序；当前账户数据直接可编辑。</p></div><span class="tag blue">广发账户</span></header><div class="vc-account-tabs"><button class="vc-account-tab active"><strong>广发账户 · ¥148,560</strong><span>08-08 22:58 · 当前数据可用</span></button><button class="vc-account-tab"><strong>华泰账户 · ¥117,332</strong><span>08-08 22:57 · 当前数据可用</span></button><button class="vc-account-tab"><strong>海外长钱 · ¥93,776</strong><span>08-07 21:10</span></button><button class="vc-account-tab"><strong>国内长钱 · ¥90,279</strong><span>08-07 21:08</span></button><button class="vc-account-tab"><strong>资金账户 · ¥60,761</strong><span>08-08 22:56</span></button></div><div class="vc-editor-grid"><div class="vc-editor-main"><div class="field-grid"><div class="field"><label>可用现金</label><input value="1081.23"></div><div class="field"><label>冻结现金</label><input value="0.00"></div></div><section class="vc-sheet" style="margin-top:14px"><div class="vc-sheet-head"><h2>当前持仓</h2><p>按持仓市值倒序</p></div><div class="vc-sheet-body"><table class="holding-table"><thead><tr><th>代码</th><th>名称</th><th>数量</th><th class="num">最新价</th><th class="num">持仓市值</th><th>操作</th></tr></thead><tbody><tr><td data-label="代码" class="data">000856</td><td data-label="名称">冀东装备</td><td data-label="数量"><input class="qty-input" value="1800"></td><td data-label="最新价" class="num">18.42</td><td data-label="持仓市值" class="num">¥33,156</td><td data-label="操作"><button class="link-button">移除</button></td></tr><tr><td data-label="代码" class="data">001336</td><td data-label="名称">楚环科技</td><td data-label="数量"><input class="qty-input" value="900"></td><td data-label="最新价" class="num">27.65</td><td data-label="持仓市值" class="num">¥24,885</td><td data-label="操作"><button class="link-button">移除</button></td></tr><tr><td data-label="代码" class="data">002144</td><td data-label="名称">宏达高科</td><td data-label="数量"><input class="qty-input" value="1300"></td><td data-label="最新价" class="num">14.91</td><td data-label="持仓市值" class="num">¥19,383</td><td data-label="操作"><button class="link-button">移除</button></td></tr></tbody></table></div></section></div><aside class="vc-editor-side"><h3>广发账户当前状态</h3><p>账户总额与价格为系统派生；保存只提交证券代码、数量和现金。</p><div class="readiness-line"><span>持仓市值</span><strong class="data">¥147,479.01</strong></div><div class="readiness-line"><span>账户总额</span><strong class="data">¥148,560.24</strong></div><button class="primary">确认数据仍准确</button></aside></div></section>
+      <section class="prototype-page" data-page="history"><header class="vc-head"><div><h1>历史计划</h1><p>只读追溯台账。</p></div><button class="secondary" data-page-link="plan">返回当前计划</button></header><section class="vc-sheet"><div class="vc-sheet-head"><h2>历史计划，仅供追溯</h2><p>按适用执行日倒序</p></div><div class="vc-sheet-body"><table class="matrix-table"><thead><tr><th>执行日</th><th>范围</th><th>最后生成</th><th>版本</th><th>版本数</th><th>状态</th></tr></thead><tbody><tr><td class="data">2026-08-08</td><td>仅组合内轮动</td><td class="data">08-07 22:14</td><td class="data">a03f12c8</td><td>2</td><td><span class="tag amber">窗口已过</span></td></tr><tr><td class="data">2026-08-01</td><td>含组合间再平衡</td><td class="data">07-31 21:48</td><td class="data">7c28ab45</td><td>1</td><td><span class="tag red">已失效</span></td></tr></tbody></table></div></section></section>
+      <section class="prototype-page" data-page="log"><header class="vc-head"><div><h1>更新日志</h1><p>系统信息 / 连续阅读。</p></div></header><section class="vc-sheet"><div class="vc-sheet-body"><table class="matrix-table"><tbody><tr><td class="data">2026-08-09 01:10</td><td><strong>全站信息架构重设计进入原型</strong></td><td>概览 / 计划 / 账户</td><td><span class="tag blue">设计</span></td></tr></tbody></table></div></section></section>
+    </main>
+  </div>
+
+  <dialog id="bStatusDialog"><div class="dialog-body"><div class="eyebrow">B portfolio capability</div><h2>维护 B 申购能力</h2><p class="muted">这项状态属于 B 组合，计划只读取，不要求每次重新填写。</p><div class="field-grid"><div class="field"><label>当前状态</label><select style="width:100%;min-height:42px;border:1px solid var(--line-strong);padding:0 10px"><option>可申购</option><option>不可申购</option></select></div><div class="field"><label>实际申购上限</label><input value="10000"></div><div class="field"><label>有效至（可选）</label><input value=""></div><div class="field"><label>核验来源</label><input value="既有投顾渠道"></div></div><p class="soft" style="margin:13px 0 0">保存时自动记录核验时间；没有明确有效期时保持当前状态，计划只提示其年龄。</p></div><div class="dialog-actions"><button class="secondary" data-close-b>取消</button><button class="primary" data-close-b>保存状态</button></div></dialog>
+
+  <div class="prototype-switcher" aria-label="原型切换器">
+    <button type="button" data-switch="-1" aria-label="上一个变体">←</button>
+    <strong id="variantLabel"></strong>
+    <select id="stateSelect" aria-label="计划状态">
+      <option value="ready">准备生成</option>
+      <option value="action">需要执行</option>
+      <option value="none">无需操作</option>
+      <option value="stale">计划失效</option>
+      <option value="failed">生成失败</option>
+    </select>
+    <button type="button" data-switch="1" aria-label="下一个变体">→</button>
+  </div>
+
+  <script>
+    const variants = [
+      { key: 'A', name: '组合账册' },
+      { key: 'B', name: '双栏工作台' },
+      { key: 'C', name: '矩阵台账' }
+    ];
+    const pages = ['overview', 'plan', 'account', 'history', 'log'];
+    const states = ['ready', 'action', 'none', 'stale', 'failed'];
+
+    function getVariant() {
+      const value = (new URLSearchParams(location.search).get('variant') || 'A').toUpperCase();
+      return variants.some(item => item.key === value) ? value : 'A';
+    }
+    function getState() {
+      const value = new URLSearchParams(location.search).get('state') || 'action';
+      return states.includes(value) ? value : 'action';
+    }
+    function getPage() {
+      const value = location.hash.replace('#', '');
+      return pages.includes(value) ? value : 'overview';
+    }
+    function replaceParams(next = {}) {
+      const params = new URLSearchParams(location.search);
+      Object.entries(next).forEach(([key, value]) => params.set(key, value));
+      history.replaceState(null, '', `${location.pathname}?${params.toString()}#${getPage()}`);
+      render();
+    }
+    function cycle(direction) {
+      const index = variants.findIndex(item => item.key === getVariant());
+      replaceParams({ variant: variants[(index + direction + variants.length) % variants.length].key });
+    }
+    function setPage(page) {
+      location.hash = page;
+      render();
+    }
+    function render() {
+      const variant = getVariant();
+      const page = getPage();
+      const state = getState();
+      document.querySelectorAll('[data-variant-root]').forEach(node => node.classList.toggle('is-current', node.dataset.variantRoot === variant));
+      document.querySelectorAll('[data-page]').forEach(node => node.classList.toggle('is-current', node.dataset.page === page));
+      document.querySelectorAll('[data-page-link]').forEach(node => node.classList.toggle('active', node.dataset.pageLink === page));
+      document.querySelectorAll('[data-plan-state]').forEach(node => node.classList.toggle('is-current', node.dataset.planState === state));
+      const meta = variants.find(item => item.key === variant);
+      document.getElementById('variantLabel').textContent = `${meta.key} — ${meta.name}`;
+      document.getElementById('stateSelect').value = state;
+    }
+
+    document.querySelectorAll('[data-page-link]').forEach(node => node.addEventListener('click', event => { event.preventDefault(); setPage(node.dataset.pageLink); }));
+    document.querySelectorAll('[data-switch]').forEach(node => node.addEventListener('click', () => cycle(Number(node.dataset.switch))));
+    document.getElementById('stateSelect').addEventListener('change', event => replaceParams({ state: event.target.value }));
+    window.addEventListener('hashchange', render);
+    window.addEventListener('keydown', event => {
+      const target = event.target;
+      if (target.matches('input, textarea, select, [contenteditable]')) return;
+      if (event.key === 'ArrowLeft') cycle(-1);
+      if (event.key === 'ArrowRight') cycle(1);
+    });
+
+    const bDialog = document.getElementById('bStatusDialog');
+    document.querySelectorAll('[data-open-b]').forEach(node => node.addEventListener('click', () => bDialog.showModal()));
+    document.querySelectorAll('[data-close-b]').forEach(node => node.addEventListener('click', () => bDialog.close()));
+    document.querySelectorAll('.account-list-item, .vc-account-tab').forEach(node => node.addEventListener('click', () => {
+      const group = node.closest('.va-account-list, .vb-account-list, .vc-account-tabs');
+      if (!group) return;
+      group.querySelectorAll('.account-list-item, .vc-account-tab').forEach(item => item.classList.remove('active'));
+      node.classList.add('active');
+    }));
+    render();
+  </script>
+</body>
+</html>

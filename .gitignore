@@ -14,7 +14,7 @@ logs/*.pid
 outputs/*.csv
 outputs/*.xlsx
 outputs/*.md
-outputs/ui-smoke/
+outputs/ui-smoke*/
 data/*.db
 data/*.lock
 data/cache/*

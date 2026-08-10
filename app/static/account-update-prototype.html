@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>方舟计划｜账户数据更新原型</title>
+  <!-- PROTOTYPE — Three single-account editing variants, switchable via ?variant=A|B|C. Run: cd app/static && python3 -m http.server 8010 -->
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #f3f7f6;
+      --paper: #ffffff;
+      --ink: #102128;
+      --muted: #617178;
+      --soft: #8a989d;
+      --line: #d7e1df;
+      --line-strong: #b9c9c6;
+      --teal: #0c6d68;
+      --teal-soft: #dceeea;
+      --green: #246c4a;
+      --green-soft: #e8f4ec;
+      --amber: #99610d;
+      --amber-soft: #fbf1de;
+      --red: #9e403d;
+      --red-soft: #f8e9e7;
+      --blue: #315d80;
+      --blue-soft: #e8f0f6;
+      --nav: 216px;
+      --content: 1200px;
+      --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --display: "Avenir Next", "SF Pro Display", "PingFang SC", sans-serif;
+      --data: "SFMono-Regular", "Roboto Mono", Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--canvas); }
+    body {
+      margin: 0;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 3px solid rgba(12, 109, 104, .26);
+      outline-offset: 2px;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    [hidden] { display: none !important; }
+
+    .prototype-flag {
+      position: fixed;
+      top: 10px;
+      right: 12px;
+      z-index: 60;
+      padding: 5px 9px;
+      border: 1px solid #425157;
+      background: rgba(16, 33, 40, .94);
+      color: white;
+      font-family: var(--data);
+      font-size: 10px;
+      letter-spacing: .12em;
+    }
+
+    .side-nav {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 20;
+      width: var(--nav);
+      padding: 32px 22px;
+      border-right: 1px solid var(--line);
+      background: rgba(255, 255, 255, .94);
+    }
+    .brand { padding: 0 4px 25px; border-bottom: 1px solid var(--line); }
+    .brand strong {
+      display: block;
+      font-family: var(--display);
+      font-size: 21px;
+      letter-spacing: .06em;
+    }
+    .brand span { color: var(--soft); font-size: 12px; }
+    .nav-items { display: grid; gap: 5px; margin-top: 25px; }
+    .nav-link {
+      display: flex;
+      align-items: center;
+      min-height: 42px;
+      padding: 0 12px;
+      border-radius: 7px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .nav-link.active { background: var(--teal-soft); color: var(--teal); }
+    .nav-foot {
+      position: absolute;
+      right: 22px;
+      bottom: 30px;
+      left: 22px;
+      padding-top: 13px;
+      border-top: 1px solid var(--line);
+      color: var(--soft);
+      font-size: 11px;
+    }
+
+    .main { min-height: 100vh; margin-left: var(--nav); }
+    .workbench {
+      width: min(var(--content), calc(100% - 64px));
+      margin: 0 auto;
+      padding: 34px 0 116px;
+    }
+    .crumb {
+      display: inline-flex;
+      align-items: center;
+      min-height: 40px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--teal);
+      font-weight: 700;
+    }
+    .page-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      align-items: end;
+      margin: 12px 0 20px;
+    }
+    .eyebrow {
+      margin-bottom: 6px;
+      color: var(--teal);
+      font-family: var(--data);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    .page-head h1 {
+      margin: 0 0 5px;
+      font-family: var(--display);
+      font-size: clamp(26px, 3vw, 34px);
+      line-height: 1.2;
+      letter-spacing: -.02em;
+    }
+    .page-head p { margin: 0; color: var(--muted); }
+    .account-total { text-align: right; }
+    .account-total .label { color: var(--soft); font-size: 11px; }
+    .account-total strong { display: block; font: 700 21px/1.3 var(--data); }
+
+    .evidence-rail {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr 1fr;
+      margin-bottom: 18px;
+      border: 1px solid var(--line-strong);
+      border-left: 5px solid var(--teal);
+      background: var(--paper);
+    }
+    .evidence-item { min-height: 68px; padding: 12px 15px; border-right: 1px solid var(--line); }
+    .evidence-item:last-child { border-right: 0; }
+    .evidence-item span { display: block; margin-bottom: 4px; color: var(--soft); font-size: 11px; }
+    .evidence-item strong { font-size: 13px; }
+    .evidence-item .data { font-family: var(--data); font-variant-numeric: tabular-nums; }
+    .tone-ready { color: var(--green); }
+    .tone-warn { color: var(--amber); }
+    .tone-danger { color: var(--red); }
+
+    .panel { border: 1px solid var(--line); background: var(--paper); }
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: start;
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .panel-head h2, .panel-head h3 { margin: 0 0 3px; font-size: 16px; }
+    .panel-head p { margin: 0; color: var(--muted); font-size: 12px; }
+    .panel-body { padding: 18px 20px; }
+    .section-label {
+      color: var(--soft);
+      font-family: var(--data);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    .data { font-family: var(--data); font-variant-numeric: tabular-nums; }
+    .muted { color: var(--muted); }
+    .soft { color: var(--soft); }
+
+    .cash-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .field label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; font-weight: 650; }
+    .money-input, .qty-input, .code-input {
+      width: 100%;
+      min-height: 44px;
+      border: 1px solid var(--line-strong);
+      border-radius: 5px;
+      background: #fbfdfc;
+      color: var(--ink);
+      font-family: var(--data);
+    }
+    .money-input, .code-input { padding: 0 11px; }
+    .qty-input { max-width: 104px; padding: 0 9px; text-align: right; }
+    .money-input[aria-invalid="true"], .qty-input[aria-invalid="true"] { border-color: var(--red); }
+
+    .holdings-table { width: 100%; border-collapse: collapse; }
+    .holdings-table th {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line-strong);
+      color: var(--soft);
+      font-size: 11px;
+      text-align: left;
+      font-weight: 650;
+    }
+    .holdings-table td { padding: 12px 10px; border-bottom: 1px solid #e9efed; vertical-align: middle; }
+    .holdings-table tbody tr:last-child td { border-bottom: 0; }
+    .holding-name { font-weight: 700; }
+    .holding-code { color: var(--soft); font: 11px var(--data); }
+    .quote { color: var(--muted); font: 12px var(--data); }
+    .quote.missing { color: var(--amber); font-family: var(--sans); }
+    .row-action, .secondary, .primary, .danger {
+      min-height: 44px;
+      border-radius: 5px;
+      font-weight: 700;
+    }
+    .row-action { min-width: 44px; border: 0; background: transparent; color: var(--red); }
+    .secondary { padding: 0 14px; border: 1px solid var(--line-strong); background: white; color: var(--ink); }
+    .primary { padding: 0 17px; border: 1px solid var(--ink); background: var(--ink); color: white; }
+    .primary:disabled { cursor: not-allowed; border-color: #aab5b8; background: #aab5b8; }
+    .danger { padding: 0 17px; border: 1px solid var(--red); background: var(--red); color: white; }
+    .add-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; margin-top: 14px; }
+
+    .action-zone { padding: 18px 20px; border-top: 1px solid var(--line); background: #fbfdfc; }
+    .action-zone h3 { margin: 0 0 7px; font-size: 14px; }
+    .diff-list { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 12px; }
+    .diff-list li { display: flex; justify-content: space-between; gap: 14px; }
+    .diff-list b { color: var(--ink); font-family: var(--data); }
+    .action-buttons { display: flex; gap: 9px; margin-top: 16px; }
+    .impact-note { margin: 12px 0 0; color: var(--amber); font-size: 11px; }
+    .save-note {
+      margin-bottom: 16px;
+      padding: 12px 14px;
+      border-left: 4px solid var(--green);
+      background: var(--green-soft);
+      color: var(--green);
+      font-weight: 650;
+    }
+    .system-note {
+      margin-bottom: 16px;
+      padding: 12px 14px;
+      border-left: 4px solid var(--amber);
+      background: var(--amber-soft);
+      color: #724806;
+    }
+    .system-note.danger-note { border-left-color: var(--red); background: var(--red-soft); color: var(--red); }
+
+    /* A — account workbench */
+    .variant-a .a-layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 16px; align-items: start; }
+    .variant-a .editor-stack { display: grid; gap: 16px; }
+    .variant-a .review-rail { position: sticky; top: 20px; }
+    .variant-a .review-rail .action-zone { border-top: 0; }
+
+    /* B — change-first */
+    .variant-b .change-banner {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 20px;
+      align-items: center;
+      margin-bottom: 16px;
+      padding: 19px 22px;
+      border: 1px solid var(--line-strong);
+      background: var(--ink);
+      color: white;
+    }
+    .variant-b .change-banner h2 { margin: 0 0 5px; font-size: 19px; }
+    .variant-b .change-banner p { margin: 0; color: #bdc9cc; font-size: 12px; }
+    .variant-b .change-count { font: 700 27px var(--data); }
+    .variant-b .b-body { display: grid; gap: 10px; }
+    .variant-b .edit-card { display: grid; grid-template-columns: 190px minmax(0, 1fr) auto; gap: 18px; align-items: center; padding: 16px 18px; border: 1px solid var(--line); background: white; }
+    .variant-b .edit-card .meta strong { display: block; }
+    .variant-b .edit-card .meta span { color: var(--soft); font: 11px var(--data); }
+    .variant-b .cash-card .fields-inline { display: grid; grid-template-columns: repeat(2, minmax(0, 190px)); gap: 10px; }
+    .variant-b .b-add { padding: 14px 18px; border: 1px dashed var(--line-strong); background: rgba(255,255,255,.55); }
+    .variant-b .b-add .add-row { max-width: 480px; margin-top: 0; }
+    .variant-b .b-save { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center; margin-top: 16px; padding: 16px 18px; border-top: 3px solid var(--teal); background: white; }
+    .variant-b .b-save .action-buttons { margin-top: 0; }
+
+    /* C — reconciliation sheet */
+    .variant-c .c-sheet { border: 1px solid var(--line-strong); background: white; }
+    .variant-c .sheet-row { display: grid; grid-template-columns: 72px minmax(0, 1fr); border-bottom: 1px solid var(--line); }
+    .variant-c .sheet-row:last-child { border-bottom: 0; }
+    .variant-c .sheet-index { padding: 21px 14px; border-right: 1px solid var(--line); color: var(--teal); font: 700 13px var(--data); }
+    .variant-c .sheet-content { padding: 20px 22px; }
+    .variant-c .sheet-title { display: flex; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+    .variant-c .sheet-title h2 { margin: 0; font-size: 16px; }
+    .variant-c .sheet-title p { margin: 0; color: var(--muted); font-size: 12px; }
+    .variant-c .reconcile { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 24px; }
+    .variant-c .reconcile .action-buttons { justify-content: flex-end; }
+
+    .empty-holdings { padding: 28px 18px; border: 1px dashed var(--line-strong); text-align: center; color: var(--muted); }
+    .empty-holdings strong { display: block; margin-bottom: 5px; color: var(--ink); }
+
+    .prototype-switcher {
+      position: fixed;
+      right: 50%;
+      bottom: 18px;
+      z-index: 80;
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      padding: 7px;
+      border: 1px solid #526268;
+      border-radius: 999px;
+      background: rgba(16, 33, 40, .96);
+      box-shadow: 0 12px 38px rgba(16, 33, 40, .28);
+      color: white;
+      transform: translateX(50%);
+    }
+    .prototype-switcher button {
+      width: 38px;
+      height: 38px;
+      border: 0;
+      border-radius: 50%;
+      background: #283a41;
+      color: white;
+      font-size: 17px;
+    }
+    .prototype-switcher strong { min-width: 150px; text-align: center; font-size: 12px; }
+    .prototype-switcher select {
+      min-height: 36px;
+      max-width: 148px;
+      border: 1px solid #53676d;
+      border-radius: 999px;
+      background: #1c3037;
+      color: white;
+      padding: 0 28px 0 11px;
+      font-size: 11px;
+    }
+
+    dialog { width: min(440px, calc(100% - 32px)); padding: 0; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink); }
+    dialog::backdrop { background: rgba(13, 27, 32, .45); }
+    .dialog-body { padding: 22px; }
+    .dialog-body h2 { margin-bottom: 8px; font-size: 20px; }
+    .dialog-body p { color: var(--muted); }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 14px 22px; border-top: 1px solid var(--line); background: var(--canvas); }
+
+    @media (max-width: 920px) {
+      .variant-a .a-layout, .variant-c .reconcile { grid-template-columns: 1fr; }
+      .variant-a .review-rail { position: static; }
+      .evidence-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .evidence-item:nth-child(2) { border-right: 0; }
+      .evidence-item:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .variant-b .edit-card { grid-template-columns: 150px minmax(0, 1fr) auto; }
+    }
+
+    @media (max-width: 640px) {
+      :root { --nav: 0px; }
+      .prototype-flag { top: 6px; right: 7px; font-size: 9px; }
+      .side-nav { position: static; width: auto; padding: 14px 16px 10px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .brand { padding: 0; border-bottom: 0; }
+      .brand strong { font-size: 17px; }
+      .brand span, .nav-foot { display: none; }
+      .nav-items { display: flex; gap: 4px; margin-top: 10px; overflow: auto; }
+      .nav-link { flex: 0 0 auto; min-height: 36px; padding: 0 10px; font-size: 12px; }
+      .main { margin-left: 0; }
+      .workbench { width: auto; padding: 16px 14px 128px; }
+      .crumb { min-height: 38px; }
+      .page-head { display: block; margin-top: 7px; }
+      .page-head h1 { font-size: 27px; }
+      .account-total { margin-top: 14px; text-align: left; }
+      .evidence-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .evidence-item { min-height: 64px; padding: 10px 12px; }
+      .evidence-item:nth-child(odd) { border-right: 1px solid var(--line); }
+      .evidence-item:nth-child(even) { border-right: 0; }
+      .evidence-item:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .evidence-item:nth-child(n+3) { border-bottom: 0; }
+      .cash-fields { grid-template-columns: 1fr; }
+      .panel-head, .panel-body, .action-zone { padding-right: 14px; padding-left: 14px; }
+      .holdings-table, .holdings-table tbody, .holdings-table tr, .holdings-table td { display: block; }
+      .holdings-table thead { display: none; }
+      .holdings-table tr { position: relative; padding: 12px 52px 12px 0; border-bottom: 1px solid var(--line); }
+      .holdings-table td { padding: 3px 0; border: 0; }
+      .holdings-table td:last-child { position: absolute; top: 10px; right: 0; }
+      .qty-input { max-width: 100%; text-align: left; }
+      .add-row { grid-template-columns: 1fr; }
+      .action-buttons { display: grid; grid-template-columns: 1fr; }
+      .action-buttons button { width: 100%; }
+      .variant-b .change-banner { grid-template-columns: 1fr; padding: 16px; }
+      .variant-b .edit-card { grid-template-columns: 1fr; gap: 10px; padding: 14px; }
+      .variant-b .cash-card .fields-inline { grid-template-columns: 1fr; }
+      .variant-b .b-save { grid-template-columns: 1fr; }
+      .variant-c .sheet-row { grid-template-columns: 44px minmax(0, 1fr); }
+      .variant-c .sheet-index { padding: 17px 9px; }
+      .variant-c .sheet-content { padding: 17px 13px; }
+      .variant-c .sheet-title { display: block; }
+      .prototype-switcher { right: 10px; bottom: 10px; left: 10px; justify-content: center; border-radius: 12px; transform: none; }
+      .prototype-switcher strong { min-width: 112px; }
+      .prototype-switcher select { min-width: 0; max-width: 112px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="prototype-flag">PROTOTYPE · MEMORY ONLY</div>
+  <aside class="side-nav" aria-label="主导航">
+    <div class="brand"><strong>方舟计划</strong><span>个人投资系统</span></div>
+    <nav class="nav-items">
+      <span class="nav-link">今日状态</span>
+      <span class="nav-link active">账户</span>
+      <span class="nav-link">更新日志</span>
+    </nav>
+    <div class="nav-foot">账户独立更新。<br>系统不代表已经下单或成交。</div>
+  </aside>
+
+  <main class="main"><div id="app" class="workbench"></div></main>
+
+  <div class="prototype-switcher" aria-label="原型版本与状态">
+    <button type="button" id="prevVariant" aria-label="上一个版本">←</button>
+    <strong id="variantLabel"></strong>
+    <button type="button" id="nextVariant" aria-label="下一个版本">→</button>
+    <select id="scenarioSelect" aria-label="选择原型状态">
+      <option value="unchanged">无修改</option>
+      <option value="changed">有修改</option>
+      <option value="saved">保存成功</option>
+      <option value="quote">行情缺失</option>
+      <option value="conflict">更新冲突</option>
+      <option value="clear">整账户清仓</option>
+      <option value="empty">真实空仓</option>
+    </select>
+  </div>
+
+  <dialog id="clearDialog" aria-labelledby="clearTitle">
+    <div class="dialog-body">
+      <div class="section-label">高风险操作</div>
+      <h2 id="clearTitle">确认清空全部持仓？</h2>
+      <p>保存后，广发证券账户将成为已确认空仓。这个动作不会被当成“尚未录入”。</p>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" class="secondary" id="cancelClear">返回核对</button>
+      <button type="button" class="danger" id="confirmClear">确认清仓并保存</button>
+    </div>
+  </dialog>
+
+  <script>
+    const variants = {
+      A: '账户工作台',
+      B: '变更优先',
+      C: '对账清单'
+    };
+
+    const seedPositions = [
+      { code: '113666', name: '爱玛转债', qty: 70, price: 126.172 },
+      { code: '111014', name: '李子转债', qty: 70, price: 126.467 },
+      { code: '110018', name: '华康转债', qty: 70, price: 128.926 },
+      { code: '113694', name: '清源转债', qty: 60, price: 129.792 }
+    ];
+
+    let model;
+    let baseline;
+    let notice = '';
+    let lastUpdated = '2026-08-06 21:42';
+    let planInvalidated = false;
+    let scenario = new URLSearchParams(location.search).get('scenario') || 'unchanged';
+
+    const clone = value => JSON.parse(JSON.stringify(value));
+    const money = value => `¥${Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const getVariant = () => {
+      const value = (new URLSearchParams(location.search).get('variant') || 'A').toUpperCase();
+      return variants[value] ? value : 'A';
+    };
+
+    function resetScenario(nextScenario) {
+      scenario = nextScenario;
+      notice = '';
+      lastUpdated = '2026-08-06 21:42';
+      planInvalidated = false;
+      baseline = { available: 12860.25, frozen: 0, positions: clone(seedPositions) };
+      model = clone(baseline);
+
+      if (scenario === 'changed' || scenario === 'conflict') {
+        model.available = 13860.25;
+        model.positions[0].qty = 60;
+      }
+      if (scenario === 'saved') {
+        model.available = 13860.25;
+        model.positions[0].qty = 60;
+        baseline = clone(model);
+        lastUpdated = '2026-08-08 09:26';
+        planInvalidated = true;
+        notice = '账户数据已保存。当前计划因输入发生变化而失效。';
+      }
+      if (scenario === 'clear') model.positions.forEach(item => { item.qty = 0; });
+      if (scenario === 'empty') {
+        baseline = { available: 24580, frozen: 0, positions: [] };
+        model = clone(baseline);
+        lastUpdated = '2026-08-08 08:51';
+      }
+      render();
+    }
+
+    function activePositions(source = model) { return source.positions.filter(item => Number(item.qty) > 0); }
+    function comparable(source) { return { available: Number(source.available), frozen: Number(source.frozen), positions: activePositions(source) }; }
+    function isDirty() { return JSON.stringify(comparable(model)) !== JSON.stringify(comparable(baseline)); }
+    function isClearAll() { return baseline.positions.some(item => Number(item.qty) > 0) && activePositions().length === 0; }
+    function quoteMissing() { return scenario === 'quote'; }
+    function marketValue(item) { return Number(item.qty) * Number(item.price || 0); }
+    function totalValue() {
+      if (quoteMissing()) return null;
+      return Number(model.available) + Number(model.frozen) + activePositions().reduce((sum, item) => sum + marketValue(item), 0);
+    }
+
+    function diffs() {
+      const rows = [];
+      if (Number(model.available) !== Number(baseline.available)) rows.push(['可用现金', `${money(baseline.available)} → ${money(model.available)}`]);
+      if (Number(model.frozen) !== Number(baseline.frozen)) rows.push(['冻结现金', `${money(baseline.frozen)} → ${money(model.frozen)}`]);
+      const oldMap = new Map(baseline.positions.map(item => [item.code, item]));
+      const newMap = new Map(model.positions.map(item => [item.code, item]));
+      new Set([...oldMap.keys(), ...newMap.keys()]).forEach(code => {
+        const oldItem = oldMap.get(code);
+        const newItem = newMap.get(code);
+        const oldQty = Number(oldItem?.qty || 0);
+        const newQty = Number(newItem?.qty || 0);
+        if (oldQty === newQty) return;
+        const name = newItem?.name || oldItem?.name || code;
+        rows.push([name, newQty === 0 ? `${oldQty} → 清仓` : `${oldQty} → ${newQty}`]);
+      });
+      return rows;
+    }
+
+    function statusText() {
+      if (scenario === 'conflict') return ['更新冲突', 'tone-danger'];
+      if (quoteMissing()) return ['原始数据可保存', 'tone-warn'];
+      if (isDirty()) return ['有未保存修改', 'tone-warn'];
+      if (scenario === 'empty') return ['已确认空仓', 'tone-ready'];
+      return ['当前数据可用', 'tone-ready'];
+    }
+
+    function shellStart(key) {
+      const [status, tone] = statusText();
+      const total = totalValue();
+      return `
+        <button type="button" class="crumb">← 返回账户总览</button>
+        <header class="page-head">
+          <div>
+            <div class="eyebrow">Account / 广发证券</div>
+            <h1>更新账户数据</h1>
+            <p>从当前数据开始，只修改这次发生变化的项目。</p>
+          </div>
+          <div class="account-total">
+            <span class="label">账户总资产${quoteMissing() ? ' · 行情待恢复' : ''}</span>
+            <strong>${total === null ? '暂不可计算' : money(total)}</strong>
+          </div>
+        </header>
+        <section class="evidence-rail" aria-label="账户证据轨">
+          <div class="evidence-item"><span>正在更新</span><strong>广发证券账户</strong></div>
+          <div class="evidence-item"><span>数据截至</span><strong class="data">${lastUpdated}</strong></div>
+          <div class="evidence-item"><span>当前状态</span><strong class="${tone}">${status}</strong></div>
+          <div class="evidence-item"><span>计划影响</span><strong>${planInvalidated ? '当前计划已失效' : isDirty() ? '保存后需重新生成' : '当前计划保持有效'}</strong></div>
+        </section>
+        ${notice ? `<div class="save-note" role="status">${notice}</div>` : ''}
+        ${quoteMissing() ? '<div class="system-note">行情暂不可用：证券代码、数量和现金仍可保存；价格、市值和账户总资产暂不可计算，计划生成需要等待行情恢复。</div>' : ''}
+        ${scenario === 'conflict' ? '<div class="system-note danger-note">账户数据已在其他位置更新。你的修改仍保留，请先加载最新数据并重新核对，当前页面不会覆盖新状态。</div>' : ''}
+      `;
+    }
+
+    function cashFields() {
+      return `<div class="cash-fields">
+        <div class="field"><label for="available">可用现金</label><input class="money-input" id="available" data-field="available" inputmode="decimal" value="${model.available}"></div>
+        <div class="field"><label for="frozen">冻结现金</label><input class="money-input" id="frozen" data-field="frozen" inputmode="decimal" value="${model.frozen}"></div>
+      </div>`;
+    }
+
+    function holdingRows() {
+      const rows = model.positions;
+      if (!rows.length) return '<div class="empty-holdings"><strong>当前为已确认空仓</strong>这不是数据缺失。你可以添加证券，或只更新现金。</div>';
+      return `<table class="holdings-table"><thead><tr><th>证券</th><th>数量</th><th>参考价</th><th>市值</th><th><span class="soft">操作</span></th></tr></thead><tbody>${rows.map((item, index) => `
+        <tr data-code="${item.code}">
+          <td><div class="holding-name">${item.name}</div><div class="holding-code">${item.code}</div></td>
+          <td><input class="qty-input" aria-label="${item.name}持仓数量" data-position="${index}" inputmode="numeric" value="${item.qty}"></td>
+          <td class="quote ${quoteMissing() ? 'missing' : ''}">${quoteMissing() ? '暂不可用' : item.price.toFixed(3)}</td>
+          <td class="data">${quoteMissing() ? '—' : money(marketValue(item))}</td>
+          <td><button type="button" class="row-action" data-remove="${index}" aria-label="清仓并移除${item.name}">移除</button></td>
+        </tr>`).join('')}</tbody></table>`;
+    }
+
+    function addHolding() {
+      return `<div class="add-row"><input id="newCode" class="code-input" inputmode="numeric" placeholder="输入证券代码，例如 113666" aria-label="新增证券代码"><button type="button" class="secondary" id="addSecurity">添加证券</button></div>`;
+    }
+
+    function changeSummary() {
+      const changes = diffs();
+      const body = changes.length
+        ? `<ul class="diff-list">${changes.map(([name, value]) => `<li><span>${name}</span><b>${value}</b></li>`).join('')}</ul>`
+        : '<p class="muted">账户数据没有变化。你可以确认数据仍准确，刷新该账户的数据时间。</p>';
+      return `<h3>${changes.length ? `本次变化 · ${changes.length} 项` : '本次没有变化'}</h3>${body}`;
+    }
+
+    function actionButtons() {
+      const label = isDirty() ? '保存账户数据' : '确认数据仍准确';
+      const disabled = scenario === 'conflict' ? 'disabled' : '';
+      return `<div class="action-buttons"><button type="button" class="secondary">取消</button><button type="button" class="primary" id="primaryAction" ${disabled}>${label}</button></div>
+        ${isDirty() ? '<p class="impact-note">保存实际变化后，当前计划将标记为失效并需要重新生成。</p>' : ''}`;
+    }
+
+    function renderA() {
+      return `${shellStart('A')}<div class="a-layout">
+        <div class="editor-stack">
+          <section class="panel"><div class="panel-head"><div><div class="section-label">Cash</div><h2>现金</h2><p>现金与全部持仓作为一次账户更新保存。</p></div></div><div class="panel-body">${cashFields()}</div></section>
+          <section class="panel"><div class="panel-head"><div><div class="section-label">Holdings</div><h2>当前持仓</h2><p>现有数据已预填；数量改为 0 即清仓并移除。</p></div><strong class="data">${activePositions().length} 只</strong></div><div class="panel-body">${holdingRows()}${addHolding()}</div></section>
+        </div>
+        <aside class="panel review-rail"><div class="panel-head"><div><div class="section-label">Review</div><h2>保存核对</h2></div></div><div class="action-zone">${changeSummary()}${actionButtons()}</div></aside>
+      </div>`;
+    }
+
+    function renderB() {
+      const changes = diffs();
+      const positionCards = model.positions.length ? model.positions.map((item, index) => `
+        <div class="edit-card">
+          <div class="meta"><strong>${item.name}</strong><span>${item.code}</span></div>
+          <div class="field"><label for="bqty${index}">当前数量</label><input id="bqty${index}" class="qty-input" data-position="${index}" inputmode="numeric" value="${item.qty}"></div>
+          <div><div class="quote ${quoteMissing() ? 'missing' : ''}">${quoteMissing() ? '行情暂不可用' : `参考 ${item.price.toFixed(3)}`}</div><button type="button" class="row-action" data-remove="${index}">移除</button></div>
+        </div>`).join('') : '<div class="empty-holdings"><strong>当前为已确认空仓</strong>账户数据有效，可以添加证券。</div>';
+      return `${shellStart('B')}
+        <section class="change-banner"><div><h2>${changes.length ? '只核对这次发生的变化' : '当前数据没有变化'}</h2><p>${changes.length ? '所有未修改持仓保持原值，保存时仍形成完整账户状态。' : '现有现金和持仓已全部带入，无需重复录入。'}</p></div><div class="change-count">${changes.length} 项</div></section>
+        <div class="b-body">
+          <section class="edit-card cash-card"><div class="meta"><strong>现金</strong><span>CASH</span></div><div class="fields-inline">${cashFields()}</div><div class="muted data">${money(Number(model.available) + Number(model.frozen))}</div></section>
+          ${positionCards}
+          <section class="b-add">${addHolding()}</section>
+        </div>
+        <section class="b-save"><div>${changeSummary()}</div><div>${actionButtons()}</div></section>`;
+    }
+
+    function renderC() {
+      return `${shellStart('C')}<section class="c-sheet">
+        <div class="sheet-row"><div class="sheet-index">01</div><div class="sheet-content"><div class="sheet-title"><div><h2>核对现金</h2><p>只在券商数据发生变化时修改。</p></div><span class="data soft">CASH</span></div>${cashFields()}</div></div>
+        <div class="sheet-row"><div class="sheet-index">02</div><div class="sheet-content"><div class="sheet-title"><div><h2>核对持仓</h2><p>当前持仓完整呈现，未变化项无需操作。</p></div><strong class="data">${activePositions().length} 只</strong></div>${holdingRows()}${addHolding()}</div></div>
+        <div class="sheet-row"><div class="sheet-index">03</div><div class="sheet-content"><div class="reconcile"><div>${changeSummary()}</div><div>${actionButtons()}</div></div></div></div>
+      </section>`;
+    }
+
+    function render() {
+      const key = getVariant();
+      const app = document.getElementById('app');
+      app.className = `workbench variant-${key.toLowerCase()}`;
+      app.innerHTML = key === 'A' ? renderA() : key === 'B' ? renderB() : renderC();
+      document.getElementById('variantLabel').textContent = `${key} — ${variants[key]}`;
+      document.getElementById('scenarioSelect').value = scenario;
+    }
+
+    function saveAccount(forceClear = false) {
+      if (scenario === 'conflict') return;
+      if (isClearAll() && !forceClear) {
+        document.getElementById('clearDialog').showModal();
+        return;
+      }
+      const hadChanges = isDirty();
+      model.positions = activePositions();
+      baseline = clone(model);
+      lastUpdated = '2026-08-08 09:26';
+      planInvalidated = hadChanges || forceClear;
+      notice = forceClear ? '账户已保存为确认空仓。' : (hadChanges ? '账户数据已保存。当前计划因输入发生变化而失效。' : '已确认账户数据仍准确；当前计划保持有效。');
+      scenario = forceClear ? 'empty' : 'saved';
+      render();
+    }
+
+    function cycleVariant(step) {
+      const keys = Object.keys(variants);
+      const index = keys.indexOf(getVariant());
+      const next = keys[(index + step + keys.length) % keys.length];
+      const params = new URLSearchParams(location.search);
+      params.set('variant', next);
+      params.set('scenario', scenario);
+      history.replaceState(null, '', `?${params.toString()}`);
+      render();
+    }
+
+    document.addEventListener('change', event => {
+      if (event.target.matches('[data-field]')) {
+        model[event.target.dataset.field] = Number(event.target.value || 0);
+        notice = '';
+        render();
+      }
+      if (event.target.matches('[data-position]')) {
+        model.positions[Number(event.target.dataset.position)].qty = Number(event.target.value || 0);
+        notice = '';
+        render();
+      }
+    });
+
+    document.addEventListener('click', event => {
+      const remove = event.target.closest('[data-remove]');
+      if (remove) {
+        model.positions[Number(remove.dataset.remove)].qty = 0;
+        notice = '';
+        render();
+        return;
+      }
+      if (event.target.id === 'addSecurity') {
+        const input = document.getElementById('newCode');
+        const code = input.value.trim();
+        if (!code) { input.focus(); return; }
+        const existing = model.positions.find(item => item.code === code);
+        if (existing) {
+          notice = `${code} 已在当前持仓中，请直接修改原持仓数量。`;
+        } else {
+          model.positions.push({ code, name: '待识别证券', qty: 0, price: 0 });
+          notice = '证券已加入。行情不影响代码与数量的保存。';
+        }
+        render();
+        return;
+      }
+      if (event.target.id === 'primaryAction') saveAccount();
+    });
+
+    document.getElementById('prevVariant').addEventListener('click', () => cycleVariant(-1));
+    document.getElementById('nextVariant').addEventListener('click', () => cycleVariant(1));
+    document.getElementById('scenarioSelect').addEventListener('change', event => {
+      const params = new URLSearchParams(location.search);
+      params.set('scenario', event.target.value);
+      history.replaceState(null, '', `?${params.toString()}`);
+      resetScenario(event.target.value);
+    });
+    document.getElementById('cancelClear').addEventListener('click', () => document.getElementById('clearDialog').close());
+    document.getElementById('confirmClear').addEventListener('click', () => {
+      document.getElementById('clearDialog').close();
+      saveAccount(true);
+    });
+    document.addEventListener('keydown', event => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return;
+      if (event.key === 'ArrowLeft') cycleVariant(-1);
+      if (event.key === 'ArrowRight') cycleVariant(1);
+    });
+
+    resetScenario(scenario);
+  </script>
+</body>
+</html>

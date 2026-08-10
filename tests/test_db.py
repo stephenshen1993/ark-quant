@@ -53,6 +53,48 @@ class TestDb(unittest.TestCase):
 
         self.assertEqual(result.stdout.strip(), str(database))
 
+    def test_legacy_account_totals_migrate_to_nullable_without_losing_rows(self):
+        db._TEST_CONN.close()
+        db._TEST_CONN = sqlite3.connect(":memory:")
+        db._TEST_CONN.row_factory = sqlite3.Row
+        db._TEST_CONN.execute(
+            """CREATE TABLE account_value_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id TEXT NOT NULL,
+                snapshot_date TEXT NOT NULL,
+                total REAL NOT NULL,
+                cash REAL,
+                frozen_cash REAL,
+                created_at TEXT NOT NULL
+            )"""
+        )
+        db._TEST_CONN.execute(
+            """INSERT INTO account_value_snapshots
+               (account_id, snapshot_date, total, cash, frozen_cash, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            ("stock", "2026-08-07", 123_456.78, 1_000, 50, "2026-08-07T15:30:00"),
+        )
+        db._TEST_CONN.commit()
+
+        db.init_db()
+
+        total_column = next(
+            row
+            for row in db._TEST_CONN.execute("PRAGMA table_info(account_value_snapshots)")
+            if row["name"] == "total"
+        )
+        self.assertEqual(total_column["notnull"], 0)
+        preserved = db._TEST_CONN.execute(
+            "SELECT * FROM account_value_snapshots WHERE account_id='stock'"
+        ).fetchone()
+        self.assertEqual(preserved["total"], 123_456.78)
+        db._TEST_CONN.execute(
+            """INSERT INTO account_value_snapshots
+               (account_id, snapshot_date, total, cash, frozen_cash, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            ("cb", "2026-08-08", None, 2_000, 0, "2026-08-08T15:30:00"),
+        )
+
     def test_account_context_preserves_b_purchase_status(self):
         db.insert_account_context(
             "2026-07-21", 50.0,

@@ -27,7 +27,7 @@ ACCOUNT_DEFINITIONS: Final[dict[str, dict]] = {
         "participates_in_domestic_rebalance": True,
     },
     "changqian": {
-        "label": "长钱投顾组合",
+        "label": "国内长钱",
         "sub": "雪球基金托管",
         "asset_classes": ("基金",),
         "country_exposure": "国内",
@@ -35,7 +35,7 @@ ACCOUNT_DEFINITIONS: Final[dict[str, dict]] = {
         "participates_in_domestic_rebalance": True,
     },
     "overseas": {
-        "label": "海外长钱投顾组合",
+        "label": "海外长钱",
         "sub": "雪球基金托管",
         "asset_classes": ("基金",),
         "country_exposure": "海外",
@@ -43,7 +43,7 @@ ACCOUNT_DEFINITIONS: Final[dict[str, dict]] = {
         "participates_in_domestic_rebalance": False,
     },
     "cash": {
-        "label": "浦发现金账户",
+        "label": "资金账户",
         "sub": "资金调拨与现金管理",
         "asset_classes": ("现金",),
         "country_exposure": "国内",
@@ -69,12 +69,12 @@ STRATEGY_DEFINITIONS: Final[dict[str, dict]] = {
         "description": "在华泰账户内选债、轮动和下单。",
     },
     "domestic_long_term_advisory": {
-        "name": "国内长钱投顾组合",
+        "name": "国内长钱",
         "scope": "托管组合",
         "description": "雪球基金托管下的国内基金长期配置。",
     },
     "overseas_long_term_advisory": {
-        "name": "海外长钱投顾组合",
+        "name": "海外长钱",
         "scope": "托管组合",
         "description": "雪球基金托管下的海外基金长期配置。",
     },
@@ -105,7 +105,7 @@ DOMESTIC_REBALANCE_TARGETS: Final[dict[str, dict]] = {
         "transfer_in_action": "银证转入",
     },
     "changqian": {
-        "label": "长钱投顾组合",
+        "label": "国内长钱",
         "strategy_id": "domestic_long_term_advisory",
         "account_ids": ("changqian",),
         "summary_total_fields": ("changqian_total",),
@@ -115,7 +115,7 @@ DOMESTIC_REBALANCE_TARGETS: Final[dict[str, dict]] = {
         "transfer_in_note": " (T+1/T+2 到账)",
     },
     "cash_pool": {
-        "label": "浦发现金账户",
+        "label": "资金账户",
         "strategy_id": "cash_management",
         "account_ids": ("cash",),
         "summary_total_fields": ("cash_pool",),

@@ -35,5 +35,5 @@ class TestInvestmentModel(unittest.TestCase):
             "cash_pool": 1000,
         })
         self.assertEqual(len(steps), 2)
-        self.assertIn("华泰多因子可转债 →[银证转出]→ 浦发现金账户", steps[0])
-        self.assertIn("浦发现金账户 →[银证转入]→ 广发小市值股票", steps[1])
+        self.assertIn("华泰多因子可转债 →[银证转出]→ 资金账户", steps[0])
+        self.assertIn("资金账户 →[银证转入]→ 广发小市值股票", steps[1])

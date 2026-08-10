@@ -1,0 +1,838 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>方舟计划｜全站信息流原型</title>
+  <!-- PROTOTYPE - Three full-site information-flow variants, switchable via ?variant=A|B|C. Run: cd app/static && python3 -m http.server 8010 -->
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3f5f6;
+      --paper: #ffffff;
+      --ink: #17212b;
+      --muted: #65717c;
+      --soft: #8e99a3;
+      --line: #d8dfe3;
+      --faint: #e7ecee;
+      --teal: #0d716f;
+      --teal-soft: #dcecea;
+      --green: #28724f;
+      --green-soft: #e5f2ea;
+      --amber: #9a6108;
+      --amber-soft: #f6ead6;
+      --blue: #315e86;
+      --blue-soft: #e5edf4;
+      --red: #a24343;
+      --red-soft: #f7e9e9;
+      --nav: 220px;
+      --content: 1180px;
+      --sans: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+      --display: "Avenir Next", "PingFang SC", sans-serif;
+      --data: "DIN Alternate", "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    button, select { font: inherit; }
+    button:focus-visible, a:focus-visible, select:focus-visible {
+      outline: 2px solid var(--teal);
+      outline-offset: 2px;
+    }
+    [hidden] { display: none !important; }
+
+    .prototype-note {
+      position: fixed;
+      top: 10px;
+      right: 12px;
+      z-index: 40;
+      padding: 5px 9px;
+      border: 1px solid #64707a;
+      background: rgba(23, 33, 43, .92);
+      color: #fff;
+      font-family: var(--data);
+      font-size: 10px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .shell { min-height: 100vh; }
+    .side-nav {
+      position: fixed;
+      inset: 0 auto 0 0;
+      width: var(--nav);
+      padding: 34px 22px 28px;
+      border-right: 1px solid var(--line);
+      background: var(--paper);
+    }
+    .brand {
+      padding: 0 4px 28px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 28px;
+    }
+    .brand-name {
+      font-family: var(--display);
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      line-height: 1.2;
+    }
+    .brand-sub { margin: 7px 0 0; color: var(--soft); font-size: 12px; }
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 42px;
+      margin-bottom: 6px;
+      padding: 0 12px;
+      border-radius: 6px;
+      color: var(--muted);
+      text-decoration: none;
+      font-weight: 560;
+    }
+    .nav-link[aria-current="page"] {
+      background: var(--teal-soft);
+      color: var(--teal);
+      font-weight: 700;
+    }
+    .nav-icon {
+      display: inline-grid;
+      width: 20px;
+      height: 20px;
+      place-items: center;
+      border: 1px solid currentColor;
+      border-radius: 5px;
+      font-family: var(--data);
+      font-size: 10px;
+    }
+    .nav-footer {
+      position: absolute;
+      right: 22px;
+      bottom: 26px;
+      left: 22px;
+      padding-top: 13px;
+      border-top: 1px solid var(--line);
+      color: var(--soft);
+      font-size: 11px;
+      line-height: 1.65;
+    }
+
+    .main { min-height: 100vh; margin-left: var(--nav); }
+    .workbench {
+      width: min(var(--content), calc(100% - 72px));
+      margin: 0 auto;
+      padding: 36px 0 116px;
+    }
+    .global-status {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto auto;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 34px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, .72);
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .global-status strong { color: var(--ink); font-weight: 700; }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 26px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .status-pill.ready { background: var(--green-soft); color: var(--green); }
+    .status-pill.warn { background: var(--amber-soft); color: var(--amber); }
+    .status-pill.info { background: var(--blue-soft); color: var(--blue); }
+    .status-pill.neutral { background: #eef1f3; color: var(--muted); }
+    .status-pill.danger { background: var(--red-soft); color: var(--red); }
+
+    .page-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 24px;
+      padding-bottom: 22px;
+      border-bottom: 1px solid var(--line);
+    }
+    .eyebrow {
+      color: var(--teal);
+      font-family: var(--data);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+    .page-title {
+      margin: 5px 0 5px;
+      font-family: var(--display);
+      font-size: 40px;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+    .page-copy { margin: 0; color: var(--muted); font-size: 14px; font-weight: 600; }
+    .panel {
+      border: 1px solid var(--faint);
+      border-radius: 6px;
+      background: var(--paper);
+    }
+    .panel + .panel, .band + .panel, .panel + .band { margin-top: 16px; }
+    .panel-pad { padding: 22px 24px; }
+    .label {
+      margin-bottom: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .tiny {
+      color: var(--soft);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+    .data { font-family: var(--data); font-variant-numeric: tabular-nums; }
+    .amount { font-family: var(--data); font-weight: 700; }
+    .muted { color: var(--muted); }
+    .soft { color: var(--soft); }
+
+    .decision {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: center;
+      border-left: 4px solid var(--amber);
+    }
+    .decision h2 {
+      margin: 0;
+      font-family: var(--display);
+      font-size: 30px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+    .decision p { margin: 8px 0 0; color: var(--muted); }
+    .primary-action {
+      border: 1px solid #111a24;
+      border-radius: 6px;
+      background: #111a24;
+      color: #fff;
+      min-height: 42px;
+      padding: 0 16px;
+      cursor: pointer;
+    }
+    .secondary-action {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+      color: var(--ink);
+      min-height: 38px;
+      padding: 0 13px;
+      cursor: pointer;
+    }
+    .chain {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .chain-step {
+      min-height: 74px;
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+    }
+    .chain-step.is-ready { border-color: #cce5d5; background: #f2faf5; }
+    .chain-step.is-warn { border-color: #ead5b2; background: #fff9ed; }
+    .chain-step h3 { margin: 0 0 4px; font-size: 14px; }
+    .chain-step p { margin: 0; color: var(--muted); font-size: 12px; }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: end;
+      margin-bottom: 12px;
+    }
+    .section-head h2 { margin: 0; font-size: 18px; }
+    .section-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .funding-list, .account-list { display: grid; gap: 10px; }
+    .row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: center;
+      padding: 15px 0;
+      border-top: 1px solid var(--faint);
+    }
+    .row:first-child { border-top: 0; padding-top: 0; }
+    .row-title { margin: 0; font-weight: 750; }
+    .row-copy { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .account-card {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) repeat(3, minmax(112px, .48fr)) auto;
+      gap: 16px;
+      align-items: center;
+      padding: 16px 0;
+      border-top: 1px solid var(--faint);
+    }
+    .account-card:first-child { border-top: 0; padding-top: 0; }
+    .account-name { margin: 0; font-size: 17px; font-weight: 780; }
+    .account-sub { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+    .metric-label { color: var(--soft); font-size: 11px; }
+    .metric-value { margin-top: 2px; font-family: var(--data); font-weight: 700; }
+    .metric-value.sell { color: var(--green); }
+    .metric-value.buy { color: var(--red); }
+    .details-btn {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+      min-height: 34px;
+      padding: 0 10px;
+      cursor: pointer;
+    }
+
+    .facts-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr);
+      gap: 16px;
+    }
+    .maintenance-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .maintenance-item {
+      padding: 13px;
+      border: 1px solid #ead5b2;
+      border-radius: 6px;
+      background: #fff9ed;
+    }
+    .portfolio-tree {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .portfolio-card {
+      min-height: 150px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+    }
+    .portfolio-card.active { border-color: #b8d9d5; background: #f7fbfa; }
+    .portfolio-title { margin: 0 0 10px; font-weight: 800; }
+    .account-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      border-top: 1px solid var(--faint);
+      font-size: 12px;
+    }
+
+    .log-stream { max-width: 900px; }
+    .log-entry {
+      display: grid;
+      grid-template-columns: 110px minmax(0, 1fr);
+      gap: 22px;
+      padding: 24px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .log-date { color: var(--soft); font-family: var(--data); font-size: 12px; }
+    .log-title { margin: 0 0 8px; font-size: 20px; }
+    .tag-row { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+
+    .timeline-layout {
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+      gap: 22px;
+    }
+    .rail {
+      position: sticky;
+      top: 18px;
+      align-self: start;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+    }
+    .rail-step {
+      position: relative;
+      padding: 0 0 18px 22px;
+      border-left: 1px solid var(--line);
+    }
+    .rail-step:last-child { border-left-color: transparent; padding-bottom: 0; }
+    .rail-step::before {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: -5px;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--teal);
+    }
+    .rail-step.wait::before { background: var(--amber); }
+    .rail-step h3 { margin: 0 0 3px; font-size: 13px; }
+    .rail-step p { margin: 0; color: var(--muted); font-size: 11px; }
+
+    .control-layout {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 18px;
+    }
+    .control-board {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+    .control-tile {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+    }
+    .control-tile h3 { margin: 0 0 4px; font-size: 15px; }
+    .control-tile strong { font-size: 24px; line-height: 1.25; }
+
+    .page { display: none; }
+    .page.is-current { display: block; }
+    .variant { display: none; }
+    .variant.is-current { display: block; }
+
+    .prototype-switcher {
+      position: fixed;
+      right: 50%;
+      bottom: 18px;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transform: translateX(50%);
+      padding: 8px;
+      border: 1px solid #0f1720;
+      border-radius: 999px;
+      background: rgba(23, 33, 43, .94);
+      color: #fff;
+      box-shadow: 0 8px 26px rgba(23, 33, 43, .18);
+    }
+    .switch-btn {
+      display: inline-grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 50%;
+      background: rgba(255,255,255,.08);
+      color: #fff;
+      cursor: pointer;
+    }
+    .switch-label {
+      min-width: 190px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+
+    @media (max-width: 820px) {
+      :root { --nav: 0px; }
+      .prototype-note { display: none; }
+      .side-nav {
+        position: sticky;
+        top: 0;
+        z-index: 25;
+        width: 100%;
+        height: auto;
+        padding: 12px 14px;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .brand {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: baseline;
+        margin: 0 0 10px;
+        padding: 0;
+        border: 0;
+      }
+      .brand-name { font-size: 18px; }
+      .brand-sub { margin: 0; font-size: 11px; }
+      .nav-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+      .nav-link {
+        justify-content: center;
+        min-height: 36px;
+        margin: 0;
+        padding: 0 7px;
+        font-size: 12px;
+      }
+      .nav-icon, .nav-footer { display: none; }
+      .main { margin-left: 0; }
+      .workbench {
+        width: min(100% - 28px, var(--content));
+        padding: 22px 0 100px;
+      }
+      .global-status {
+        grid-template-columns: 1fr;
+        gap: 8px;
+        margin-bottom: 24px;
+      }
+      .page-head { display: block; margin-bottom: 18px; padding-bottom: 18px; }
+      .page-title { font-size: 34px; }
+      .decision, .facts-grid, .timeline-layout, .control-layout {
+        grid-template-columns: 1fr;
+      }
+      .decision .primary-action, .decision .secondary-action { width: 100%; }
+      .chain { grid-template-columns: 1fr; }
+      .account-card {
+        grid-template-columns: 1fr 1fr;
+        gap: 10px 14px;
+      }
+      .account-card > :first-child { grid-column: 1 / -1; }
+      .account-card > :last-child { grid-column: 1 / -1; }
+      .details-btn { width: 100%; }
+      .maintenance-list, .portfolio-tree { grid-template-columns: 1fr; }
+      .log-entry { grid-template-columns: 1fr; gap: 8px; padding: 20px 0; }
+      .rail { position: static; }
+      .prototype-switcher { width: calc(100% - 24px); justify-content: space-between; }
+      .switch-label { min-width: 0; font-size: 11px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="prototype-note">Prototype</div>
+  <div class="shell">
+    <aside class="side-nav" aria-label="全站导航">
+      <div class="brand">
+        <div>
+          <div class="brand-name">方舟计划</div>
+          <p class="brand-sub">个人投资系统</p>
+        </div>
+      </div>
+      <nav class="nav-row">
+        <a class="nav-link" href="#today" data-page-link="today"><span class="nav-icon">01</span>今日状态</a>
+        <a class="nav-link" href="#facts" data-page-link="facts"><span class="nav-icon">02</span>账户事实</a>
+        <a class="nav-link" href="#logs" data-page-link="logs"><span class="nav-icon">03</span>更新日志</a>
+      </nav>
+      <p class="nav-footer">全站围绕当前投资工作状态组织。计划建议不代表已下单或成交。</p>
+    </aside>
+
+    <main class="main">
+      <div class="workbench">
+        <div class="global-status" aria-label="当前状态条">
+          <div><strong>当前状态</strong>：基于 2026-08-06 收盘数据，适用 2026-08-07 开盘执行</div>
+          <span class="status-pill ready">账户事实就绪</span>
+          <span class="status-pill warn">资金需调拨 3 笔</span>
+          <span class="status-pill neutral">计划已生成</span>
+        </div>
+
+        <section id="today" class="page" data-page="today">
+          <div class="page-head">
+            <div>
+              <div class="eyebrow">WORK STATE</div>
+              <h1 class="page-title">今日状态</h1>
+              <p class="page-copy">先确认系统状态，再审阅资金调拨计划和账户交易计划。</p>
+            </div>
+            <span class="status-pill ready">事实窗口 2026-08-06 至 2026-08-07</span>
+          </div>
+
+          <div class="variant" data-variant="A">
+            <section class="panel panel-pad decision">
+              <div>
+                <div class="label">系统判断</div>
+                <h2>今日需要操作</h2>
+                <p>先完成 3 笔资金调拨，再按账户审阅交易计划；证券交易明细只出现在所属账户计划内。</p>
+              </div>
+              <button class="secondary-action" type="button">重新生成计划</button>
+            </section>
+
+            <section class="panel panel-pad">
+              <div class="chain">
+                <article class="chain-step is-ready"><h3>账户事实</h3><p>5 项事实均在输入窗口内</p></article>
+                <article class="chain-step is-warn"><h3>资金调拨</h3><p>需调拨 3 笔，先确认资金可用时点</p></article>
+                <article class="chain-step is-ready"><h3>账户交易计划</h3><p>转债与股票计划已生成</p></article>
+                <article class="chain-step is-ready"><h3>执行窗口</h3><p>适用 2026-08-07 开盘执行</p></article>
+              </div>
+            </section>
+
+            <section class="panel panel-pad">
+              <div class="section-head">
+                <div><h2>资金调拨计划</h2><p>资金账户解耦现金流，余额内资金一视同仁。</p></div>
+                <span class="status-pill warn">先审阅</span>
+              </div>
+              <div class="funding-list">
+                <div class="row"><div><p class="row-title">主动组合 → 资金账户</p><p class="row-copy">转入后不追踪来源归属</p></div><div class="amount">¥32,000</div></div>
+                <div class="row"><div><p class="row-title">资金账户 → 华泰账户</p><p class="row-copy">当日可用于账户交易计划</p></div><div class="amount">¥18,000</div></div>
+                <div class="row"><div><p class="row-title">资金账户 → 广发账户</p><p class="row-copy">等待次交易日资金可用</p></div><div class="amount">¥14,000</div></div>
+              </div>
+            </section>
+
+            <section class="panel panel-pad">
+              <div class="section-head">
+                <div><h2>账户交易计划</h2><p>按资金已具备、需当日调入、等待未来可用排序。</p></div>
+                <span class="tiny">默认收起明细</span>
+              </div>
+              <div class="account-list">
+                <article class="account-card">
+                  <div><p class="account-name">华泰账户</p><p class="account-sub">主动组合 · 多因子可转债</p></div>
+                  <div><div class="metric-label">预计卖出</div><div class="metric-value sell">¥21,460</div></div>
+                  <div><div class="metric-label">预计买入</div><div class="metric-value buy">¥38,980</div></div>
+                  <span class="status-pill warn">需先调入资金</span>
+                  <button class="details-btn" type="button">展开明细</button>
+                </article>
+                <article class="account-card">
+                  <div><p class="account-name">广发账户</p><p class="account-sub">主动组合 · 小市值股票</p></div>
+                  <div><div class="metric-label">预计卖出</div><div class="metric-value sell">¥0</div></div>
+                  <div><div class="metric-label">预计买入</div><div class="metric-value buy">¥14,000</div></div>
+                  <span class="status-pill info">等待资金可用</span>
+                  <button class="details-btn" type="button">展开明细</button>
+                </article>
+              </div>
+            </section>
+          </div>
+
+          <div class="variant" data-variant="B">
+            <div class="timeline-layout">
+              <aside class="rail">
+                <div class="rail-step"><h3>确认事实</h3><p>事实窗口内可用</p></div>
+                <div class="rail-step wait"><h3>资金先行</h3><p>3 笔调拨待复核</p></div>
+                <div class="rail-step"><h3>账户交易</h3><p>按账户计划执行</p></div>
+                <div class="rail-step"><h3>人工完成</h3><p>外部券商执行</p></div>
+              </aside>
+              <div>
+                <section class="panel panel-pad decision">
+                  <div>
+                    <div class="label">系统判断</div>
+                    <h2>今日需要操作</h2>
+                    <p>这版把页面读法改成执行时间线，所有内容围绕先后依赖展开。</p>
+                  </div>
+                  <button class="secondary-action" type="button">重新计算</button>
+                </section>
+                <section class="panel panel-pad">
+                  <div class="section-head"><div><h2>1. 先处理资金</h2><p>只展示调拨计划，不混入证券买卖。</p></div></div>
+                  <div class="row"><div><p class="row-title">资金账户向华泰账户调入</p><p class="row-copy">当日可用，解除华泰账户交易计划资金前提。</p></div><div class="amount">¥18,000</div></div>
+                </section>
+                <section class="panel panel-pad">
+                  <div class="section-head"><div><h2>2. 再看账户计划</h2><p>每个账户计划是证券交易明细的唯一上下文。</p></div></div>
+                  <div class="account-card">
+                    <div><p class="account-name">华泰账户交易计划</p><p class="account-sub">先卖出释放资金，再买入</p></div>
+                    <div><div class="metric-label">卖出</div><div class="metric-value sell">4 笔</div></div>
+                    <div><div class="metric-label">买入</div><div class="metric-value buy">6 笔</div></div>
+                    <span class="status-pill warn">资金调入后执行</span>
+                    <button class="details-btn" type="button">检查订单</button>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+
+          <div class="variant" data-variant="C">
+            <div class="control-layout">
+              <aside class="control-board">
+                <article class="control-tile"><h3>系统判断</h3><strong>需要操作</strong><p class="muted">资金与账户交易计划均已生成。</p></article>
+                <article class="control-tile"><h3>阻塞</h3><strong>0</strong><p class="muted">没有事实缺失或生成失败。</p></article>
+                <article class="control-tile"><h3>下一步</h3><strong>调拨</strong><p class="muted">先审阅资金调拨计划。</p></article>
+              </aside>
+              <div>
+                <section class="panel panel-pad">
+                  <div class="section-head"><div><h2>执行对象</h2><p>控制台版把判断拆成左侧读数，右侧集中列计划对象。</p></div><button class="secondary-action" type="button">生成完整计划</button></div>
+                  <div class="chain">
+                    <article class="chain-step is-warn"><h3>资金调拨计划</h3><p>3 笔动作</p></article>
+                    <article class="chain-step is-ready"><h3>华泰账户交易计划</h3><p>需先调入资金</p></article>
+                    <article class="chain-step is-ready"><h3>广发账户交易计划</h3><p>等待资金可用</p></article>
+                    <article class="chain-step is-ready"><h3>执行窗口</h3><p>2026-08-07</p></article>
+                  </div>
+                </section>
+                <section class="panel panel-pad">
+                  <div class="section-head"><div><h2>计算依据</h2><p>控制台版更早暴露依据，适合高频核验，但可能稀释行动顺序。</p></div></div>
+                  <div class="row"><div><p class="row-title">市场温度 45°</p><p class="row-copy">正常；策略榜单已生成并在盘中保护。</p></div><span class="status-pill ready">判断</span></div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="facts" class="page" data-page="facts">
+          <div class="page-head">
+            <div>
+              <div class="eyebrow">ACCOUNT FACTS</div>
+              <h1 class="page-title">账户事实</h1>
+              <p class="page-copy">先看事实是否可信，再看账户层级与金额结构。</p>
+            </div>
+          </div>
+
+          <div class="variant" data-variant="A">
+            <section class="panel panel-pad decision" style="border-left-color: var(--green);">
+              <div><div class="label">事实就绪度</div><h2>账户事实可用于今日状态</h2><p>5 项事实均在输入窗口内；没有异常维护事项。</p></div>
+              <span class="status-pill ready">事实</span>
+            </section>
+            <section class="panel panel-pad">
+              <div class="section-head"><div><h2>资产结构</h2><p>A/B/C 组合层级承载金额内容，资金账户只表达资金余额。</p></div></div>
+              <div class="portfolio-tree">
+                <article class="portfolio-card active"><p class="portfolio-title">主动组合</p><div class="account-line"><span>华泰账户</span><strong class="data">¥428,300</strong></div><div class="account-line"><span>广发账户</span><strong class="data">¥312,900</strong></div><div class="account-line"><span>资金账户</span><strong class="data">¥86,200</strong></div></article>
+                <article class="portfolio-card"><p class="portfolio-title">B 组合</p><div class="account-line"><span>外部账本</span><strong class="data">只读参考</strong></div></article>
+                <article class="portfolio-card"><p class="portfolio-title">C 组合</p><div class="account-line"><span>外部账本</span><strong class="data">只读参考</strong></div></article>
+              </div>
+            </section>
+          </div>
+
+          <div class="variant" data-variant="B">
+            <div class="timeline-layout">
+              <aside class="rail"><div class="rail-step"><h3>事实状态</h3><p>先判断可用性</p></div><div class="rail-step"><h3>维护动作</h3><p>异常时插队</p></div><div class="rail-step"><h3>资产结构</h3><p>再看层级金额</p></div></aside>
+              <section class="panel panel-pad">
+                <div class="section-head"><div><h2>账户事实检查路径</h2><p>时间线版把账户页也读成流程。</p></div></div>
+                <div class="maintenance-list">
+                  <div class="maintenance-item"><strong>华泰账户</strong><p class="row-copy">持仓事实在窗口内，无需维护。</p></div>
+                  <div class="maintenance-item"><strong>广发账户</strong><p class="row-copy">现金与持仓在窗口内，无需维护。</p></div>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <div class="variant" data-variant="C">
+            <div class="control-layout">
+              <aside class="control-board"><article class="control-tile"><h3>事实就绪</h3><strong>5/5</strong><p class="muted">全部在输入窗口内。</p></article><article class="control-tile"><h3>待维护</h3><strong>0</strong><p class="muted">维护动作不突出。</p></article></aside>
+              <section class="panel panel-pad">
+                <div class="section-head"><div><h2>账户对象</h2><p>控制台版把账户作为可扫描对象列表。</p></div></div>
+                <div class="account-card"><div><p class="account-name">资金账户</p><p class="account-sub">主动组合现金流解耦账户</p></div><div><div class="metric-label">事实类型</div><div class="metric-value">资金余额</div></div><div><div class="metric-label">金额</div><div class="metric-value">¥86,200</div></div><span class="status-pill ready">事实</span><button class="details-btn" type="button">维护</button></div>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <section id="logs" class="page" data-page="logs">
+          <div class="page-head">
+            <div>
+              <div class="eyebrow">CHANGELOG</div>
+              <h1 class="page-title">更新日志</h1>
+              <p class="page-copy">连续阅读版本演进，用影响范围标签建立工作流方位感。</p>
+            </div>
+          </div>
+
+          <div class="variant" data-variant="A">
+            <section class="log-stream">
+              <article class="log-entry">
+                <div class="log-date">2026-08-06<br>15:00</div>
+                <div><h2 class="log-title">重排今日状态的信息流</h2><p class="muted">首屏改为单一总判断，资金调拨计划先于账户交易计划出现。</p><div class="tag-row"><span class="status-pill neutral">今日状态</span><span class="status-pill neutral">计划生成</span></div></div>
+              </article>
+              <article class="log-entry">
+                <div class="log-date">2026-08-06<br>11:30</div>
+                <div><h2 class="log-title">账户事实页强化就绪度</h2><p class="muted">维护动作只在异常时突出，资产结构继续承载账户层级。</p><div class="tag-row"><span class="status-pill neutral">账户事实</span></div></div>
+              </article>
+            </section>
+          </div>
+
+          <div class="variant" data-variant="B">
+            <div class="timeline-layout">
+              <aside class="rail"><div class="rail-step"><h3>今日状态</h3><p>版本影响主入口</p></div><div class="rail-step"><h3>账户事实</h3><p>影响维护入口</p></div></aside>
+              <section class="panel panel-pad"><div class="section-head"><div><h2>按工作流节点读更新</h2><p>时间线版让标签变成左侧导读。</p></div></div><article class="log-entry"><div class="log-date">15:00</div><div><h2 class="log-title">今日状态首屏重排</h2><p class="muted">读起来更像产品更新索引，但连续阅读感变弱。</p></div></article></section>
+            </div>
+          </div>
+
+          <div class="variant" data-variant="C">
+            <div class="control-layout">
+              <aside class="control-board"><article class="control-tile"><h3>影响范围</h3><strong>4</strong><p class="muted">今日状态、账户事实、计划生成、视觉系统。</p></article></aside>
+              <section class="panel panel-pad"><div class="section-head"><div><h2>更新索引</h2><p>控制台版更方便定位，但过于像功能矩阵。</p></div></div><div class="chain"><article class="chain-step"><h3>今日状态</h3><p>2 条更新</p></article><article class="chain-step"><h3>账户事实</h3><p>1 条更新</p></article><article class="chain-step"><h3>视觉系统</h3><p>1 条更新</p></article><article class="chain-step"><h3>计划生成</h3><p>1 条更新</p></article></div></section>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="prototype-switcher" aria-label="原型版本切换器">
+    <button class="switch-btn" type="button" data-switch="-1" aria-label="上一个方案">‹</button>
+    <div class="switch-label" id="variantLabel"></div>
+    <button class="switch-btn" type="button" data-switch="1" aria-label="下一个方案">›</button>
+  </div>
+
+  <script>
+    const variants = [
+      { key: "A", name: "状态主线" },
+      { key: "B", name: "执行时间线" },
+      { key: "C", name: "分栏控制台" }
+    ];
+    const pages = ["today", "facts", "logs"];
+
+    function currentVariant() {
+      const params = new URLSearchParams(window.location.search);
+      const value = (params.get("variant") || "A").toUpperCase();
+      return variants.some(item => item.key === value) ? value : "A";
+    }
+
+    function currentPage() {
+      const hash = window.location.hash.replace("#", "");
+      return pages.includes(hash) ? hash : "today";
+    }
+
+    function setVariant(next) {
+      const params = new URLSearchParams(window.location.search);
+      params.set("variant", next);
+      const url = `${window.location.pathname}?${params.toString()}#${currentPage()}`;
+      window.history.replaceState(null, "", url);
+      render();
+    }
+
+    function setPage(next) {
+      window.location.hash = next;
+      render();
+    }
+
+    function cycle(direction) {
+      const index = variants.findIndex(item => item.key === currentVariant());
+      const next = variants[(index + direction + variants.length) % variants.length].key;
+      setVariant(next);
+    }
+
+    function render() {
+      const variant = currentVariant();
+      const page = currentPage();
+      document.querySelectorAll("[data-variant]").forEach(node => {
+        node.classList.toggle("is-current", node.dataset.variant === variant);
+      });
+      document.querySelectorAll("[data-page]").forEach(node => {
+        node.classList.toggle("is-current", node.dataset.page === page);
+      });
+      document.querySelectorAll("[data-page-link]").forEach(node => {
+        if (node.dataset.pageLink === page) node.setAttribute("aria-current", "page");
+        else node.removeAttribute("aria-current");
+      });
+      const meta = variants.find(item => item.key === variant);
+      document.getElementById("variantLabel").textContent = `${meta.key} - ${meta.name}`;
+    }
+
+    document.querySelectorAll("[data-switch]").forEach(button => {
+      button.addEventListener("click", () => cycle(Number(button.dataset.switch)));
+    });
+    document.querySelectorAll("[data-page-link]").forEach(link => {
+      link.addEventListener("click", event => {
+        event.preventDefault();
+        setPage(link.dataset.pageLink);
+      });
+    });
+    window.addEventListener("hashchange", render);
+    window.addEventListener("keydown", event => {
+      const tag = event.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || event.target.isContentEditable) return;
+      if (event.key === "ArrowLeft") cycle(-1);
+      if (event.key === "ArrowRight") cycle(1);
+    });
+    render();
+  </script>
+</body>
+</html>

@@ -9,12 +9,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "ui_smoke.py"
+GATE_DOC = ROOT / "docs" / "工程" / "视觉回归闸门.md"
 
 
 class TestUiSmokeScript(unittest.TestCase):
     def test_script_exists_and_is_executable(self):
         self.assertTrue(SCRIPT.exists())
         self.assertTrue(os.access(SCRIPT, os.X_OK))
+
+    def test_isolated_server_uses_the_deterministic_quote_provider(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn('"scripts.ui_smoke_app:app"', source)
+        self.assertTrue((ROOT / "scripts" / "ui_smoke_app.py").exists())
+        self.assertTrue((ROOT / "scripts" / "ui_smoke_quotes.py").exists())
 
     def test_help_documents_the_single_browser_gate_entrypoint(self):
         result = subprocess.run(
@@ -27,8 +35,165 @@ class TestUiSmokeScript(unittest.TestCase):
         self.assertIn("--viewport", result.stdout)
         self.assertIn("--base-url", result.stdout)
         self.assertIn("--output-dir", result.stdout)
-        self.assertIn("AIHOT", result.stdout)
+        self.assertIn("方舟计划", result.stdout)
         self.assertIn("{all,wide,desktop,narrow}", result.stdout)
+
+    def test_gate_locks_the_selected_shell_geometry_and_three_pages(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        documentation = GATE_DOC.read_text(encoding="utf-8")
+
+        for literal in [
+            "DESKTOP_NAV_WIDTH = 220",
+            "WORKBENCH_WIDTH = 1140",
+            "READING_WIDTH = 880",
+            "NARROW_NAV_HEIGHT = 64",
+            "NARROW_GUTTER = 18",
+            '"wide": {"width": 1512, "height": 749}',
+            '"desktop": {"width": 1440, "height": 1000}',
+            '"narrow": {"width": 390, "height": 900}',
+            "概览",
+            "计划",
+            "榜单",
+            "策略榜单",
+            "rankingsMetrics",
+            "rankingsScreenshot",
+            ".plan-state-chain",
+            "账户数据工作台",
+            "更新日志内容",
+            "planScenarioChecks",
+            "待更新账户数据",
+            "正在生成完整计划",
+            "本次无需操作",
+            "今日需要操作",
+            "计划待执行",
+            "计划已失效",
+            "计划生成失败",
+            "scenario-no-action",
+            "scenario-future-funding",
+            "scenario-running",
+            "scenario-stale",
+            "scenario-failed",
+            "readiness-error",
+            "无法确认账户数据",
+            "generateDisabled",
+            "retryReadiness",
+            "readinessRetry",
+            "focusAccountId",
+            "accountFocus",
+            "stateChainVisible",
+            "orderEntryNarrowChecks",
+            "plan.orderEntries.narrow",
+            "noActionConclusion",
+            "完整计划已检查",
+            "decisionMarkIncludes: ['生成 ', '版本 ']",
+            "['证券代码', '证券名称', '仓位', '买卖', '交易数量', '参考价', '估算金额']",
+            "accountChecks",
+            "allAccountsPass",
+            "hasStickyFolio",
+            "folioIsMinimal",
+            "noScreenshotToggle",
+            "cashEquationDeferred",
+            "noActionGroupRows",
+            "tradeDirectionsOrdered",
+            "positionActionsOrdered",
+            "noRepeatedActionColumn",
+            "noExecutionStepColumn",
+            "rowSideVisible",
+            "rowPositionActionVisible",
+            "quantityFirst",
+            "compactTradeRows",
+            "compactTradeWidth",
+            "compactWhenOpen",
+            "hasGuardrails",
+            "noPhaseHeadings",
+            "tradeTableCount",
+            "urlKeepsAccount",
+            "exclusiveExpansion",
+            "noVisiblePositionRoutes",
+            "positionRouteInTitle",
+            "noRowPriceCap",
+            "codeNameSplit",
+            "planFocusChecks",
+            "accountDataScenarioChecks",
+            "accounts-http-error",
+            "account.readiness-error",
+            "failClosed",
+            "version-conflict",
+            "accountDataIdentityChecks",
+            "account-scoped-current-state",
+            "clearHoldingsPreservesCash",
+            "singleAccountSave",
+            "unsavedNavigationGuard",
+            "holdingsClearPayloads",
+            "account.holdingSortOrder",
+            "sortPositionsByMarketValue",
+            "account.mobileSelector",
+            "重新生成计划",
+        ]:
+            self.assertIn(literal, source)
+
+        for literal in ["220px", "1140px", "880px", "64px", "18px", "2px"]:
+            self.assertIn(literal, documentation)
+
+    def test_readiness_error_consumes_only_its_settled_expected_console_error(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        scenario_start = source.index("const planScenarioChecks")
+        retry = source.index("if (scenario.retryReadiness)", scenario_start)
+        consume = source.index("const controlledReadinessConsoleErrors", scenario_start)
+
+        self.assertLess(retry, consume)
+        self.assertIn("await page.waitForTimeout(100)", source[retry:consume])
+        self.assertIn("consoleErrors.splice(consoleErrorStart)", source[consume:consume + 700])
+        self.assertIn("expectedNetworkMessage", source[consume:consume + 700])
+
+    def test_gate_checks_the_execution_plan_hierarchy_and_expanded_trade_rows(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+
+        for literal in [
+            ".plan-execution-dossier",
+            ".plan-funding-plan",
+            ".plan-account-card",
+            ".plan-cash-equation",
+            ".plan-trade-row",
+            "fundingBeforeAccounts",
+            "accountsCollapsedByDefault",
+            "fundingTableMetrics",
+            "fundingTableCount",
+            "fundingRowHeights",
+            "fundingRouteToAmountGaps",
+            "expandedAccountPlanChecks",
+            "fundingDatesVisible",
+            "日期待确认",
+            "计划后预计资金余额",
+            "['证券代码', '证券名称', '仓位', '买卖', '交易数量', '参考价', '估算金额']",
+            "accountChecks",
+            "allAccountsPass",
+            "noHorizontalOverflow",
+            "hasStickyFolio",
+            "folioIsMinimal",
+            "noScreenshotToggle",
+            "cashEquationDeferred",
+            "noActionGroupRows",
+            "tradeDirectionsOrdered",
+            "positionActionsOrdered",
+            "noRepeatedActionColumn",
+            "noExecutionStepColumn",
+            "rowSideVisible",
+            "rowPositionActionVisible",
+            "quantityFirst",
+            "compactTradeRows",
+            "compactTradeWidth",
+            "compactWhenOpen",
+            "hasGuardrails",
+            "noVisiblePositionRoutes",
+            "positionRouteInTitle",
+            "noRowPriceCap",
+            "codeNameSplit",
+            "noPhaseHeadings",
+            "tradeTableCount",
+            "urlKeepsAccount",
+        ]:
+            self.assertIn(literal, source)
 
     def test_failed_browser_gate_writes_complete_diagnostic_report(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -125,6 +290,53 @@ class TestUiSmokeScript(unittest.TestCase):
             self.assertEqual(report["check"], "browser.cli")
             self.assertIn("browser command failed", report["error"])
             self.assertGreaterEqual(len(report["differences"]), 1)
+            self.assertEqual(report["differences"][0]["expected"], "exit code 0")
+            self.assertTrue((output_dir / "wide-failure.txt").exists())
+
+    def test_browser_cli_timeout_writes_structured_diagnostics(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            fake_cli = temp_path / "playwright-cli"
+            fake_cli.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/usr/bin/env python3
+                    import sys
+                    import time
+
+                    if "run-code" in sys.argv:
+                        time.sleep(2)
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake_cli.chmod(0o755)
+            output_dir = temp_path / "artifacts"
+            env = {
+                **os.environ,
+                "ARK_UI_SMOKE_CLI_TIMEOUT_SECONDS": "0.1",
+                "PATH": f"{temp_path}:{os.environ.get('PATH', '')}",
+            }
+
+            result = subprocess.run(
+                [
+                    str(SCRIPT),
+                    "--base-url",
+                    "http://browser-boundary.invalid",
+                    "--viewport",
+                    "wide",
+                    "--output-dir",
+                    str(output_dir),
+                ],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            report = json.loads((output_dir / "wide-failure.json").read_text(encoding="utf-8"))
+            self.assertEqual(report["check"], "browser.cli")
+            self.assertIn("playwright-cli timed out after 0.1s", report["error"])
             self.assertEqual(report["differences"][0]["expected"], "exit code 0")
             self.assertTrue((output_dir / "wide-failure.txt").exists())
 

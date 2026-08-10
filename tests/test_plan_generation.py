@@ -7,8 +7,7 @@ from unittest.mock import Mock, patch
 
 import pandas as pd
 
-from app import plan_lifecycle
-from app import plan_generation
+from app import account_current_state, plan_generation, plan_lifecycle
 from app.plan_service import PlanServiceError
 from datasource import db
 from datasource.youzhiyouxing import DATA_URL
@@ -16,6 +15,24 @@ from datasource.youzhiyouxing import DATA_URL
 
 class TestPlanGeneration(unittest.TestCase):
     def setUp(self):
+        self.stock_quotes = patch(
+            "datasource.market.fetch_tencent_snapshot",
+            return_value=pd.DataFrame([{
+                "stock_code": "600051",
+                "stock_name_q": "宁波联合",
+                "price": (209555 - 274) / 1800,
+            }]),
+        )
+        self.cb_quotes = patch(
+            "datasource.market.fetch_cb_quotes_tencent",
+            return_value={
+                "113062": {"name": "常银转债", "price": (227183 - 110) / 10},
+            },
+        )
+        self.stock_quotes_mock = self.stock_quotes.start()
+        self.cb_quotes.start()
+        self.addCleanup(self.stock_quotes.stop)
+        self.addCleanup(self.cb_quotes.stop)
         self.temperature_clock = patch(
             "datasource.youzhiyouxing._now_shanghai",
             return_value=datetime(2026, 6, 29, 16, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
@@ -38,6 +55,12 @@ class TestPlanGeneration(unittest.TestCase):
         db.insert_account_value_snapshot("changqian", "2026-06-29", 110606)
         db.insert_account_value_snapshot("cash", "2026-06-29", 59013)
         db.insert_account_value_snapshot("overseas", "2026-06-29", 93030)
+        db.insert_positions("cb", "2026-06-29", [{
+            "code": "113062", "name": "常银转债", "shares": 10,
+        }])
+        db.insert_positions("stock", "2026-06-29", [{
+            "code": "600051", "name": "宁波联合", "shares": 1800,
+        }])
         cb_run_id = db.create_complete_strategy_run(
             "cb",
             date(2026, 6, 29),
@@ -95,6 +118,19 @@ class TestPlanGeneration(unittest.TestCase):
         self.assertEqual(data["cb"]["data_date"], "2026-06-29")
         self.assertEqual(data["stock"]["data_date"], "2026-06-29")
 
+    def test_complete_plan_generation_uses_the_refreshed_current_valuation(self):
+        self.stock_quotes_mock.return_value = pd.DataFrame([{
+            "stock_code": "600051",
+            "stock_name_q": "宁波联合",
+            "price": 200.0,
+        }])
+
+        _, account, _, _ = plan_generation.prepare_complete_plan_generation()
+
+        self.assertEqual(account["stock_total"], 360274.0)
+        stock = {item["id"]: item for item in account["accounts"]}["stock"]
+        self.assertEqual(stock["total"], 360274.0)
+
     def test_reads_generated_plan_by_lifecycle_identity(self):
         plan_id = "plan-2026-06-29-deadbeef"
         plan = {
@@ -111,6 +147,53 @@ class TestPlanGeneration(unittest.TestCase):
 
         saved = plan_generation.get_generated_plan(plan_id)
         self.assertEqual(saved["plan"]["generation"]["plan_id"], plan_id)
+
+    def test_reads_legacy_generated_plan_with_current_execution_guardrails(self):
+        plan = {
+            "plan_date": "2026-06-29",
+            "account_read_model": {
+                "accounts": [{
+                    "id": "cb",
+                    "name": "华泰账户",
+                    "portfolio_id": "A",
+                    "strategy_names": ["多因子可转债策略"],
+                    "available_cash": 1000.0,
+                }],
+                "portfolios": [{"id": "A", "name": "主动组合", "account_ids": ["cb"]}],
+                "legacy_adapter": {"strategy_to_account_id": {"cb": "cb"}},
+            },
+            "fund_transfer": {
+                "top_level": {"executed_actions": [], "outflows": []},
+                "a_internal": {"actions": []},
+            },
+            "cb": {
+                "data_date": "2026-06-29",
+                "trade_date": "2026-06-30",
+                "summary": {"starting_cash": 1000.0},
+                "orders": [{
+                    "action": "BUY",
+                    "bond_code": "113062",
+                    "bond_name": "常银转债",
+                    "delta_shares": 10,
+                    "price": 126.8,
+                    "amount": 1268.0,
+                }],
+            },
+            "stock": {"data_date": "2026-06-29", "trade_date": "2026-06-30", "orders": []},
+            "execution_read_model": {"account_trading_plans": []},
+        }
+        with patch(
+            "app.plan_generation.plan_lifecycle.get_plan",
+            return_value={"plan": plan},
+        ):
+            saved = plan_generation.get_generated_plan("legacy-plan")
+
+        account_plan = saved["plan"]["execution_read_model"]["account_trading_plans"][0]
+        self.assertEqual(account_plan["execution_guardrails"]["price_basis_date"], "2026-06-29")
+        self.assertEqual(
+            account_plan["execution_guardrails"]["rules"][0]["kind"],
+            "buy_price_ceiling",
+        )
 
     def test_generate_complete_plan_prepares_missing_rankings_through_strategy_runner(self):
         self._clear_strategy_outputs()
@@ -166,6 +249,85 @@ class TestPlanGeneration(unittest.TestCase):
         self.assertEqual(plan["plan_date"], "2026-06-29")
         cb_size.assert_called_once()
         stock_size.assert_called_once()
+
+    def test_account_change_during_generation_returns_stale_instead_of_old_complete_plan(self):
+        def cb_size(*_args, **_kwargs):
+            plan_lifecycle.mark_stale()
+            return {
+                "orders": [],
+                "summary": {
+                    "starting_cash": 110,
+                    "transfer_delta": 0,
+                    "order_delta": 0,
+                    "cash_left": 110,
+                },
+            }
+
+        stock_size = Mock(return_value={
+            "orders": [],
+            "summary": {
+                "starting_cash": 274,
+                "transfer_delta": 0,
+                "order_delta": 0,
+                "cash_left": 274,
+            },
+        })
+
+        with self.assertRaises(PlanServiceError) as caught:
+            plan_generation.generate_complete_plan(
+                size_cb_orders=cb_size,
+                size_stock_orders=stock_size,
+            )
+
+        detail = caught.exception.detail
+        saved = plan_lifecycle.get_plan(detail["plan_id"])
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertEqual(detail["code"], "PLAN_INPUTS_CHANGED")
+        self.assertEqual(saved["status"], plan_lifecycle.STALE)
+        self.assertEqual(saved["error"]["code"], "PLAN_INPUTS_CHANGED")
+
+    def test_market_change_during_generation_stales_the_captured_plan(self):
+        def cb_size(*_args, **_kwargs):
+            running = plan_lifecycle.get_running_plan_status("2026-06-29")
+            captured = plan_lifecycle.get_plan(running["plan_id"])
+            self.assertIn("account", captured["plan"])
+            self.stock_quotes_mock.return_value = pd.DataFrame([{
+                "stock_code": "600051",
+                "stock_name_q": "宁波联合",
+                "price": 200.0,
+            }])
+            account_current_state.build_current_account_summary()
+            return {
+                "orders": [],
+                "summary": {
+                    "starting_cash": 110,
+                    "transfer_delta": 0,
+                    "order_delta": 0,
+                    "cash_left": 110,
+                },
+            }
+
+        stock_size = Mock(return_value={
+            "orders": [],
+            "summary": {
+                "starting_cash": 274,
+                "transfer_delta": 0,
+                "order_delta": 0,
+                "cash_left": 274,
+            },
+        })
+
+        with self.assertRaises(PlanServiceError) as caught:
+            plan_generation.generate_complete_plan(
+                size_cb_orders=cb_size,
+                size_stock_orders=stock_size,
+            )
+
+        detail = caught.exception.detail
+        saved = plan_lifecycle.get_plan(detail["plan_id"])
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertEqual(detail["code"], "PLAN_INPUTS_CHANGED")
+        self.assertEqual(saved["status"], plan_lifecycle.STALE)
 
     def test_strategy_ranking_date_mismatch_has_plan_generation_stage(self):
         self._clear_strategy_outputs()
