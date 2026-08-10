@@ -14,6 +14,8 @@ from datasource import db
 from datasource.youzhiyouxing import TemperatureFetchError, get_or_fetch_market_temperature
 from portfolio_rebalance import PlanValidationError, build_fund_transfer_plan
 
+RAW_DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
+
 
 class PlanServiceError(Exception):
     def __init__(self, status_code: int, detail):
@@ -513,25 +515,32 @@ def _raw_snapshot_prices(plan_date: str, strategy: str, codes: list[str]) -> dic
     """Fill non-candidate holdings only from the strategy's dated raw snapshot."""
     if not codes:
         return {}
-    root = Path(__file__).resolve().parents[1] / "data" / "raw" / plan_date.replace("-", "")
+    root = RAW_DATA_DIR / plan_date.replace("-", "")
     if strategy == "cb":
-        path, code_key, price_key = root / "enriched_universe.csv", "bond_code", "cb_price"
+        sources = (
+            (root / "enriched_universe.csv", "bond_code", "cb_price"),
+            (root / "cb_universe_raw.csv", "债券代码", "债现价"),
+        )
     else:
-        path, code_key, price_key = root / "stock_smallcap" / "merged.csv", "stock_code", "price"
-    if not path.exists():
-        return {}
-    try:
-        frame = pd.read_csv(path, dtype={code_key: str})
-    except (OSError, ValueError):
-        return {}
-    if code_key not in frame or price_key not in frame:
-        return {}
-    raw = {
-        str(row[code_key]).zfill(6): float(row[price_key])
-        for _, row in frame[[code_key, price_key]].dropna().iterrows()
-        if float(row[price_key]) > 0
-    }
-    return {code: raw[code] for code in codes if code in raw}
+        sources = ((root / "stock_smallcap" / "merged.csv", "stock_code", "price"),)
+    resolved = {}
+    for path, code_key, price_key in sources:
+        if not path.exists():
+            continue
+        try:
+            frame = pd.read_csv(path, dtype={code_key: str})
+        except (OSError, ValueError):
+            continue
+        if code_key not in frame or price_key not in frame:
+            continue
+        raw = {
+            str(row[code_key]).zfill(6): float(row[price_key])
+            for _, row in frame[[code_key, price_key]].dropna().iterrows()
+            if float(row[price_key]) > 0
+        }
+        for code in codes:
+            resolved.setdefault(code, raw.get(code))
+    return {code: price for code, price in resolved.items() if price is not None}
 
 
 def generation_error(stage: str, detail) -> dict:

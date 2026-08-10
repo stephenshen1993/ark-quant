@@ -1,6 +1,8 @@
 import sqlite3
 import unittest
 from datetime import date, datetime
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 from unittest.mock import Mock, patch
@@ -561,6 +563,21 @@ class TestPlanGeneration(unittest.TestCase):
         )
 
         self.assertEqual(error["missing"], {"stock": ["600051"]})
+
+    def test_cb_exit_price_can_fall_back_to_the_plan_date_raw_universe(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary) / "20260629"
+            root.mkdir()
+            (root / "cb_universe_raw.csv").write_text(
+                "债券代码,债券简称,债现价\n113682,益丰转债,130.113\n",
+                encoding="utf-8",
+            )
+            with patch("app.plan_service.RAW_DATA_DIR", Path(temporary)):
+                prices = plan_service._raw_snapshot_prices(
+                    "2026-06-29", "cb", ["113682"]
+                )
+
+        self.assertEqual(prices, {"113682": 130.113})
 
     def test_size_strategy_orders_uses_plan_generation_context(self):
         cb_size = Mock(return_value={"orders": [], "summary": {"cash_left": 0}})
