@@ -103,7 +103,11 @@ def size_stock_orders(
     prices: dict[str, float] | None = None,
 ) -> dict:
     from datasource.market import fetch_tencent_snapshot
-    from strategies.stock_smallcap.target_sizing import SizingError, size_target_state
+    from strategies.stock_smallcap.target_sizing import (
+        TARGET_COUNT,
+        SizingError,
+        size_target_state,
+    )
 
     plan_date = plan_date or plan_service.current_plan_date()
     rankings = db.get_rankings("stock", plan_date)
@@ -111,6 +115,17 @@ def size_stock_orders(
         raise PlanServiceError(
             400,
             {"code": "NO_RANKINGS", "message": f"没有 {plan_date} 的股票榜单，请先运行策略。"},
+        )
+    qualified_count = len({row["stock_code"] for row in rankings})
+    if qualified_count < TARGET_COUNT:
+        raise PlanServiceError(
+            409,
+            {
+                "code": "INSUFFICIENT_STOCK_CANDIDATES",
+                "message": "小市值合格候选不足 20 只，不能生成股票交易计划。",
+                "qualified_count": qualified_count,
+                "required_count": TARGET_COUNT,
+            },
         )
 
     input_end = plan_service.account_input_window_end(plan_date)

@@ -63,6 +63,32 @@ class TestOrderSizing(unittest.TestCase):
 
         self.assertGreater(len(result["orders"]), 0)
 
+    def test_stock_sizing_blocks_when_the_qualified_universe_has_fewer_than_twenty(self):
+        run_id = db.create_complete_strategy_run(
+            "stock",
+            date(2026, 6, 29),
+            date(2026, 6, 30),
+            pd.DataFrame([
+                {
+                    "rank": rank,
+                    "stock_code": f"600{rank:03d}",
+                    "stock_name": f"股票{rank}",
+                    "total_mv_yuan": 1_000_000_000,
+                    "pe_ttm": 10.0,
+                    "roe_pct": 12.0,
+                }
+                for rank in range(1, 20)
+            ]),
+        )
+        self.assertIsNotNone(run_id)
+
+        with self.assertRaises(PlanServiceError) as caught:
+            order_sizing.size_stock_orders(10000, plan_date="2026-06-29")
+
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertEqual(caught.exception.detail["code"], "INSUFFICIENT_STOCK_CANDIDATES")
+        self.assertEqual(caught.exception.detail["qualified_count"], 19)
+
     def test_invalid_strategy_uses_plan_service_error(self):
         with self.assertRaises(PlanServiceError) as caught:
             order_sizing.size_strategy_orders("unknown")
