@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Callable
 
 from app import plan_lifecycle
@@ -42,9 +43,16 @@ def generate_complete_plan(
         raise _generation_in_progress_error(plan_date, running_generation)
 
     plan_id = plan_lifecycle.new_plan_id(plan_date)
+    generated_at = datetime.now().isoformat()
     failed_stage = "cb_orders"
     plan = {
         "plan_date": plan_date,
+        "generated_at": generated_at,
+        "snapshot": plan_service.build_plan_snapshot(
+            plan_id=plan_id,
+            plan_date=plan_date,
+            generated_at=generated_at,
+        ),
         "generation": {
             "plan_id": plan_id,
             "plan_date": plan_date,
@@ -62,6 +70,7 @@ def generate_complete_plan(
             plan_id=plan_id,
             status=plan_lifecycle.RUNNING,
             plan_date=plan_date,
+            generated_at=generated_at,
             market_temperature=market_temperature,
             account=account,
             fund_transfer=fund_transfer,
@@ -87,6 +96,7 @@ def generate_complete_plan(
             plan_id=plan_id,
             status=plan_lifecycle.RUNNING,
             plan_date=plan_date,
+            generated_at=generated_at,
             market_temperature=market_temperature,
             account=account,
             fund_transfer=fund_transfer,
@@ -106,6 +116,7 @@ def generate_complete_plan(
             plan_id=plan_id,
             status=plan_lifecycle.COMPLETE,
             plan_date=plan_date,
+            generated_at=generated_at,
             market_temperature=market_temperature,
             account=account,
             fund_transfer=fund_transfer,

@@ -250,6 +250,60 @@ class TestPlanGeneration(unittest.TestCase):
         cb_size.assert_called_once()
         stock_size.assert_called_once()
 
+    def test_complete_plan_persists_a_frozen_versioned_snapshot(self):
+        cb_size = Mock(return_value={
+            "orders": [],
+            "summary": {
+                "starting_cash": 110.0,
+                "transfer_delta": 0.0,
+                "order_delta": 0.0,
+                "cash_left": 110.0,
+            },
+        })
+        stock_size = Mock(return_value={
+            "orders": [],
+            "summary": {
+                "starting_cash": 274.0,
+                "transfer_delta": 0.0,
+                "order_delta": 0.0,
+                "cash_left": 274.0,
+            },
+        })
+
+        plan = plan_generation.generate_complete_plan(
+            size_cb_orders=cb_size,
+            size_stock_orders=stock_size,
+        )
+
+        snapshot = plan["snapshot"]
+        plan_id = plan["generation"]["plan_id"]
+        self.assertEqual(snapshot["version"], 1)
+        self.assertEqual(snapshot["plan_id"], plan_id)
+        self.assertEqual(snapshot["data_date"], "2026-06-29")
+        self.assertEqual(snapshot["execution_date"], "2026-06-30")
+        self.assertEqual(snapshot["scope"], "complete_next_trading_day")
+        self.assertEqual(snapshot["generated_at"], plan["generated_at"])
+        self.assertEqual(
+            snapshot["input_provenance"]["strategies"]["stock"],
+            {"data_date": "2026-06-29", "trade_date": "2026-06-30"},
+        )
+
+        before_stale = plan_lifecycle.get_plan(plan_id)["plan"]
+        plan_lifecycle.mark_stale()
+        after_stale = plan_lifecycle.get_plan(plan_id)
+        self.assertEqual(after_stale["status"], plan_lifecycle.STALE)
+        self.assertEqual(after_stale["plan"], before_stale)
+
+        regenerated = plan_generation.generate_complete_plan(
+            size_cb_orders=cb_size,
+            size_stock_orders=stock_size,
+        )
+        self.assertNotEqual(regenerated["generation"]["plan_id"], plan_id)
+        self.assertEqual(
+            plan_lifecycle.get_plan(plan_id)["plan"],
+            before_stale,
+        )
+
     def test_account_change_during_generation_returns_stale_instead_of_old_complete_plan(self):
         def cb_size(*_args, **_kwargs):
             plan_lifecycle.mark_stale()

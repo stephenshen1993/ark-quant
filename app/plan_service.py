@@ -304,6 +304,7 @@ def build_generated_plan_response(
     plan_id: str,
     status: str,
     plan_date: str,
+    generated_at: str,
     market_temperature,
     account: dict,
     fund_transfer: dict,
@@ -328,9 +329,24 @@ def build_generated_plan_response(
         "rankings": [],
         "summary": (stock_result or {}).get("summary"),
     }
+    strategy_trade_dates = {
+        "cb": cb_section["trade_date"],
+        "stock": stock_section["trade_date"],
+    }
+    execution_dates = {value for value in strategy_trade_dates.values() if value}
+    execution_date = execution_dates.pop() if len(execution_dates) == 1 else None
     return {
-        "generated_at": datetime.now().isoformat(),
+        "generated_at": generated_at,
         "plan_date": plan_date,
+        "snapshot": build_plan_snapshot(
+            plan_id=plan_id,
+            plan_date=plan_date,
+            generated_at=generated_at,
+            execution_date=execution_date,
+            market_temperature=market_temperature,
+            account=account,
+            strategy_trade_dates=strategy_trade_dates,
+        ),
         "market_temperature": market_temperature.to_dict(),
         "account": account,
         "account_read_model": account_read_model,
@@ -356,6 +372,42 @@ def build_generated_plan_response(
         },
         "cb": cb_section,
         "stock": stock_section,
+    }
+
+
+def build_plan_snapshot(
+    *,
+    plan_id: str,
+    plan_date: str,
+    generated_at: str,
+    execution_date: str | None = None,
+    market_temperature=None,
+    account: dict | None = None,
+    strategy_trade_dates: dict[str, str | None] | None = None,
+) -> dict:
+    """Describe the immutable facts captured for one generated plan version."""
+    strategy_trade_dates = strategy_trade_dates or {}
+    return {
+        "version": 1,
+        "plan_id": plan_id,
+        "data_date": plan_date,
+        "execution_date": execution_date,
+        "generated_at": generated_at,
+        "scope": "complete_next_trading_day",
+        "input_provenance": {
+            "market_temperature": {
+                "data_date": plan_date,
+                "updated_at": getattr(market_temperature, "updated_at", None),
+            },
+            "account": {
+                "data_date": plan_date,
+                "snapshot_dates": (account or {}).get("account_snapshot_dates", {}),
+            },
+            "strategies": {
+                strategy: {"data_date": plan_date, "trade_date": trade_date}
+                for strategy, trade_date in strategy_trade_dates.items()
+            },
+        },
     }
 
 
