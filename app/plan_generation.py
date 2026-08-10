@@ -29,7 +29,26 @@ def get_generated_plan(plan_id: str) -> dict | None:
     plan = record.get("plan")
     if not isinstance(plan, dict):
         return record
-    return {**record, "plan": plan_service.hydrate_execution_read_model(plan)}
+    if record.get("status") not in {plan_lifecycle.COMPLETE, plan_lifecycle.STALE}:
+        return {
+            **record,
+            "plan": {
+                **plan,
+                "execution_status": "non_executable",
+                "execution_sequence": [],
+                "execution_read_model": None,
+            },
+        }
+    execution_status = (
+        "executable" if record.get("status") == plan_lifecycle.COMPLETE else "stale"
+    )
+    return {
+        **record,
+        "plan": {
+            **plan_service.hydrate_execution_read_model(plan),
+            "execution_status": execution_status,
+        },
+    }
 
 
 def generate_complete_plan(

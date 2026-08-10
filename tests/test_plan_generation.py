@@ -376,6 +376,29 @@ class TestPlanGeneration(unittest.TestCase):
         self.assertEqual(caught.exception.status_code, 409)
         self.assertEqual(caught.exception.detail["code"], "INSUFFICIENT_STOCK_CANDIDATES")
 
+    def test_failed_generation_never_exposes_a_partial_executable_plan(self):
+        cb_size = Mock(return_value={
+            "orders": [],
+            "summary": {"starting_cash": 110.0, "transfer_delta": 0.0,
+                        "order_delta": 0.0, "cash_left": 110.0},
+        })
+        stock_size = Mock(side_effect=PlanServiceError(
+            409,
+            {"code": "STOCK_SIZING_FAILED", "message": "stock sizing failed"},
+        ))
+
+        with self.assertRaises(PlanServiceError) as caught:
+            plan_generation.generate_complete_plan(
+                size_cb_orders=cb_size,
+                size_stock_orders=stock_size,
+            )
+
+        saved = plan_generation.get_generated_plan(caught.exception.detail["plan_id"])
+        self.assertEqual(saved["status"], plan_lifecycle.FAILED)
+        self.assertEqual(saved["plan"]["execution_status"], "non_executable")
+        self.assertEqual(saved["plan"]["execution_sequence"], [])
+        self.assertIsNone(saved["plan"]["execution_read_model"])
+
     def test_account_change_during_generation_returns_stale_instead_of_old_complete_plan(self):
         def cb_size(*_args, **_kwargs):
             plan_lifecycle.mark_stale()
