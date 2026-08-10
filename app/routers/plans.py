@@ -91,6 +91,17 @@ def get_generated_plan(plan_id: str):
     return plan
 
 
+@router.post("/generated/{plan_id}/execution-check")
+def check_generated_plan_execution(plan_id: str, realtime: dict):
+    try:
+        result = plan_generation.evaluate_generated_plan_execution(plan_id, realtime)
+    except PlanServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="计划不存在")
+    return result
+
+
 def _with_generation_summary(generation: dict | None) -> dict | None:
     if generation is None:
         return None

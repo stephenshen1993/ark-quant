@@ -6,6 +6,7 @@ from typing import Callable
 from app import plan_lifecycle
 from app import plan_service
 from app import strategy_runner
+from app.execution_guard import evaluate as evaluate_execution_guard
 from datasource import db
 from portfolio_rebalance import PlanValidationError
 
@@ -50,6 +51,19 @@ def get_generated_plan(plan_id: str) -> dict | None:
             "execution_status": execution_status,
         },
     }
+
+
+def evaluate_generated_plan_execution(plan_id: str, realtime: dict) -> dict | None:
+    record = plan_lifecycle.get_plan(plan_id)
+    if record is None:
+        return None
+    if record.get("status") != plan_lifecycle.COMPLETE:
+        raise plan_service.PlanServiceError(
+            409,
+            {"code": "PLAN_NOT_EXECUTABLE", "message": "只有完整冻结计划可进行执行守卫评估。"},
+        )
+    plan = record.get("plan") or {}
+    return {"plan_id": plan_id, **evaluate_execution_guard(plan, realtime)}
 
 
 def generate_complete_plan(
