@@ -4,6 +4,8 @@ from datetime import date, datetime
 from typing import Callable
 from zoneinfo import ZoneInfo
 
+import pandas as pd
+
 from app.account_read_model import build_account_read_model
 from app import account_current_state, plan_lifecycle
 from app.plan_execution_read_model import build_execution_read_model
@@ -308,6 +310,7 @@ def build_generated_plan_response(
     market_temperature,
     account: dict,
     fund_transfer: dict,
+    price_snapshot: dict,
     cb_result: dict | None,
     stock_result: dict | None,
 ) -> dict:
@@ -346,7 +349,9 @@ def build_generated_plan_response(
             market_temperature=market_temperature,
             account=account,
             strategy_trade_dates=strategy_trade_dates,
+            price_snapshot=price_snapshot,
         ),
+        "price_snapshot": price_snapshot,
         "market_temperature": market_temperature.to_dict(),
         "account": account,
         "account_read_model": account_read_model,
@@ -384,6 +389,7 @@ def build_plan_snapshot(
     market_temperature=None,
     account: dict | None = None,
     strategy_trade_dates: dict[str, str | None] | None = None,
+    price_snapshot: dict | None = None,
 ) -> dict:
     """Describe the immutable facts captured for one generated plan version."""
     strategy_trade_dates = strategy_trade_dates or {}
@@ -407,8 +413,59 @@ def build_plan_snapshot(
                 strategy: {"data_date": plan_date, "trade_date": trade_date}
                 for strategy, trade_date in strategy_trade_dates.items()
             },
+            "prices": {
+                "data_date": (price_snapshot or {}).get("data_date"),
+                "captured_at": (price_snapshot or {}).get("captured_at"),
+            },
         },
     }
+
+
+def capture_frozen_plan_prices(plan_date: str) -> dict:
+    """Capture every price needed by a complete plan exactly once before sizing."""
+    from datasource.market import fetch_cb_prices_tencent, fetch_tencent_snapshot
+
+    input_end = account_input_window_end(plan_date)
+    cb_positions = position_snapshot_for_plan("cb", plan_date, input_end) or {}
+    stock_positions = position_snapshot_for_plan("stock", plan_date, input_end) or {}
+    cb_codes = _plan_price_codes(
+        db.get_rankings("cb", plan_date), cb_positions.get("items", []), "bond_code"
+    )
+    stock_codes = _plan_price_codes(
+        db.get_rankings("stock", plan_date), stock_positions.get("items", []), "stock_code"
+    )
+
+    cb_prices = fetch_cb_prices_tencent(cb_codes) if cb_codes else {}
+    stock_snapshot = fetch_tencent_snapshot(stock_codes) if stock_codes else pd.DataFrame()
+    stock_prices = (
+        dict(zip(stock_snapshot["stock_code"], stock_snapshot["price"]))
+        if not stock_snapshot.empty
+        else {}
+    )
+    missing = {
+        "cb": [code for code in cb_codes if code not in cb_prices],
+        "stock": [code for code in stock_codes if code not in stock_prices],
+    }
+    if any(missing.values()):
+        raise PlanServiceError(
+            503,
+            {
+                "code": "PLAN_PRICE_SNAPSHOT_INCOMPLETE",
+                "message": "计划基准价不完整，无法生成冻结交易计划。",
+                "missing": missing,
+            },
+        )
+    return {
+        "data_date": plan_date,
+        "captured_at": datetime.now().isoformat(),
+        "cb": cb_prices,
+        "stock": stock_prices,
+    }
+
+
+def _plan_price_codes(rankings: list[dict], positions: list[dict], code_key: str) -> list[str]:
+    raw_codes = [row.get(code_key) for row in rankings] + [row.get("code") for row in positions]
+    return list(dict.fromkeys(str(code).zfill(6) for code in raw_codes if code is not None))
 
 
 def generation_error(stage: str, detail) -> dict:

@@ -66,6 +66,7 @@ def generate_complete_plan(
 
     try:
         plan_date, account, market_temperature, fund_transfer = prepare_complete_plan_generation(plan_date)
+        price_snapshot = plan_service.capture_frozen_plan_prices(plan_date)
         plan = plan_service.build_generated_plan_response(
             plan_id=plan_id,
             status=plan_lifecycle.RUNNING,
@@ -74,6 +75,7 @@ def generate_complete_plan(
             market_temperature=market_temperature,
             account=account,
             fund_transfer=fund_transfer,
+            price_snapshot=price_snapshot,
             cb_result=None,
             stock_result=None,
         )
@@ -88,6 +90,7 @@ def generate_complete_plan(
         cb_result = size_cb_orders(
             plan_service.strategy_cash_after_transfer("cb", account, deltas),
             plan_date=plan_date,
+            prices=price_snapshot["cb"],
         )
         plan_lifecycle.record_order_batch(
             plan_id, "cb", cb_result["orders"], cb_result["summary"]
@@ -100,6 +103,7 @@ def generate_complete_plan(
             market_temperature=market_temperature,
             account=account,
             fund_transfer=fund_transfer,
+            price_snapshot=price_snapshot,
             cb_result=cb_result,
             stock_result=None,
         )
@@ -108,6 +112,7 @@ def generate_complete_plan(
         stock_result = size_stock_orders(
             plan_service.strategy_cash_after_transfer("stock", account, deltas),
             plan_date=plan_date,
+            prices=price_snapshot["stock"],
         )
         plan_lifecycle.record_order_batch(
             plan_id, "stock", stock_result["orders"], stock_result["summary"]
@@ -120,6 +125,7 @@ def generate_complete_plan(
             market_temperature=market_temperature,
             account=account,
             fund_transfer=fund_transfer,
+            price_snapshot=price_snapshot,
             cb_result=cb_result,
             stock_result=stock_result,
         )

@@ -50,6 +50,19 @@ class TestOrderSizing(unittest.TestCase):
         persisted = db.get_orders("cb", "2026-06-29")
         self.assertGreater(len(persisted), 0)
 
+    def test_sizes_cb_orders_uses_the_supplied_frozen_prices(self):
+        with patch(
+            "datasource.market.fetch_cb_prices_tencent",
+            side_effect=AssertionError("complete plan must not refetch prices while sizing"),
+        ):
+            result = order_sizing.size_cb_orders(
+                10000,
+                plan_date="2026-06-29",
+                prices={"113062": 126.80},
+            )
+
+        self.assertGreater(len(result["orders"]), 0)
+
     def test_invalid_strategy_uses_plan_service_error(self):
         with self.assertRaises(PlanServiceError) as caught:
             order_sizing.size_strategy_orders("unknown")

@@ -17,7 +17,12 @@ def size_strategy_orders(strategy: str) -> dict:
     )
 
 
-def size_cb_orders(cash: float, *, plan_date: str | None = None) -> dict:
+def size_cb_orders(
+    cash: float,
+    *,
+    plan_date: str | None = None,
+    prices: dict[str, float] | None = None,
+) -> dict:
     from datasource.market import fetch_cb_prices_tencent
     from strategies.cb_rotation.size_orders import size_rebalance
 
@@ -53,7 +58,7 @@ def size_cb_orders(cash: float, *, plan_date: str | None = None) -> dict:
         positions = pd.DataFrame(columns=["bond_code", "bond_name", "shares"])
 
     codes = list(dict.fromkeys(list(target["bond_code"]) + list(positions["bond_code"])))
-    prices = fetch_cb_prices_tencent(codes)
+    prices = prices or fetch_cb_prices_tencent(codes)
     if not prices:
         raise PlanServiceError(
             500,
@@ -91,7 +96,12 @@ def size_cb_orders(cash: float, *, plan_date: str | None = None) -> dict:
     }
 
 
-def size_stock_orders(cash: float, *, plan_date: str | None = None) -> dict:
+def size_stock_orders(
+    cash: float,
+    *,
+    plan_date: str | None = None,
+    prices: dict[str, float] | None = None,
+) -> dict:
     from datasource.market import fetch_tencent_snapshot
     from strategies.stock_smallcap.target_sizing import SizingError, size_target_state
 
@@ -155,8 +165,9 @@ def size_stock_orders(cash: float, *, plan_date: str | None = None) -> dict:
     positions["stock_code"] = positions["stock_code"].astype(str).str.zfill(6)
 
     all_codes = list(dict.fromkeys(list(rebalance["stock_code"]) + list(positions["stock_code"])))
-    snapshot = fetch_tencent_snapshot(all_codes)
-    prices = dict(zip(snapshot["stock_code"], snapshot["price"]))
+    if prices is None:
+        snapshot = fetch_tencent_snapshot(all_codes)
+        prices = dict(zip(snapshot["stock_code"], snapshot["price"]))
     missing_prices = [code for code in all_codes if code not in prices]
     if missing_prices:
         raise PlanServiceError(

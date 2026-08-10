@@ -29,10 +29,16 @@ class TestPlanGeneration(unittest.TestCase):
                 "113062": {"name": "常银转债", "price": (227183 - 110) / 10},
             },
         )
+        self.cb_price_snapshot = patch(
+            "datasource.market.fetch_cb_prices_tencent",
+            return_value={"113062": 126.80},
+        )
         self.stock_quotes_mock = self.stock_quotes.start()
         self.cb_quotes.start()
+        self.cb_price_snapshot.start()
         self.addCleanup(self.stock_quotes.stop)
         self.addCleanup(self.cb_quotes.stop)
+        self.addCleanup(self.cb_price_snapshot.stop)
         self.temperature_clock = patch(
             "datasource.youzhiyouxing._now_shanghai",
             return_value=datetime(2026, 6, 29, 16, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
@@ -303,6 +309,52 @@ class TestPlanGeneration(unittest.TestCase):
             plan_lifecycle.get_plan(plan_id)["plan"],
             before_stale,
         )
+
+    def test_complete_plan_sizes_both_strategies_from_one_frozen_price_snapshot(self):
+        prices = {
+            "data_date": "2026-06-29",
+            "captured_at": "2026-06-30T08:00:00",
+            "cb": {"113062": 126.8},
+            "stock": {"600051": 5.68},
+        }
+        cb_size = Mock(return_value={
+            "orders": [],
+            "summary": {"starting_cash": 110.0, "transfer_delta": 0.0,
+                        "order_delta": 0.0, "cash_left": 110.0},
+        })
+        stock_size = Mock(return_value={
+            "orders": [],
+            "summary": {"starting_cash": 274.0, "transfer_delta": 0.0,
+                        "order_delta": 0.0, "cash_left": 274.0},
+        })
+
+        with patch(
+            "app.plan_generation.plan_service.capture_frozen_plan_prices",
+            return_value=prices,
+        ):
+            plan = plan_generation.generate_complete_plan(
+                size_cb_orders=cb_size,
+                size_stock_orders=stock_size,
+            )
+
+        self.assertEqual(plan["price_snapshot"], prices)
+        self.assertEqual(cb_size.call_args.kwargs["prices"], prices["cb"])
+        self.assertEqual(stock_size.call_args.kwargs["prices"], prices["stock"])
+
+    def test_frozen_price_capture_fails_closed_when_a_plan_code_has_no_price(self):
+        with patch(
+            "datasource.market.fetch_cb_prices_tencent",
+            return_value={},
+        ):
+            with self.assertRaises(PlanServiceError) as caught:
+                plan_generation.plan_service.capture_frozen_plan_prices("2026-06-29")
+
+        self.assertEqual(caught.exception.status_code, 503)
+        self.assertEqual(
+            caught.exception.detail["code"],
+            "PLAN_PRICE_SNAPSHOT_INCOMPLETE",
+        )
+        self.assertEqual(caught.exception.detail["missing"]["cb"], ["113062"])
 
     def test_account_change_during_generation_returns_stale_instead_of_old_complete_plan(self):
         def cb_size(*_args, **_kwargs):
