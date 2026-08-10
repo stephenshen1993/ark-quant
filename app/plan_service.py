@@ -536,11 +536,15 @@ def _raw_snapshot_prices(plan_date: str, strategy: str, codes: list[str]) -> dic
 
 def generation_error(stage: str, detail) -> dict:
     if isinstance(detail, dict):
-        return {
+        error = {
             "stage": stage,
             "code": detail.get("code", "PLAN_GENERATION_FAILED"),
             "message": detail.get("message", "完整计划生成失败"),
         }
+        for key in ("errors", "missing"):
+            if key in detail:
+                error[key] = detail[key]
+        return error
     return {
         "stage": stage,
         "code": "PLAN_GENERATION_FAILED",
@@ -672,7 +676,7 @@ def validate_strategy_inputs(plan_date: str) -> list[dict]:
     errors = []
     required_risk_fields = {
         "cb": ("cb_price", "premium_rate", "double_low", "score"),
-        "stock": ("market_cap", "pe_ttm", "roe_ex", "close_price"),
+        "stock": ("market_cap", "pe_ttm", "roe_ex"),
     }
     for strategy, label in (("cb", "转债榜单"), ("stock", "股票榜单")):
         dates = db.get_ranking_dates(strategy)

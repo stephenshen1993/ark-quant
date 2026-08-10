@@ -4922,7 +4922,10 @@
             const body = await response.json().catch(() => ({ detail: '完整计划生成失败' }))
             const detail = body.detail || {}
             const lines = (detail.errors || []).map(e => `${e.message}: 更新时间 ${e.date || '无'}，输入窗口 ${e.expected}`)
-            throw new Error([detail.message || String(detail || '完整计划生成失败'), ...lines].join('\n'))
+            const missing = Object.entries(detail.missing || {}).flatMap(([strategy, codes]) =>
+              codes.length ? [`${this.strategyLabel(strategy)}缺少计划日收盘价：${codes.join('、')}`] : []
+            )
+            throw new Error([detail.message || String(detail || '完整计划生成失败'), ...lines, ...missing].join('\n'))
           }
           this.plan = await response.json()
           this.accountReadModel = this.plan?.account_read_model || this.accountReadModel

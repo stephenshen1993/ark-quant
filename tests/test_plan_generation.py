@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 import pandas as pd
 
-from app import account_current_state, order_sizing, plan_generation, plan_lifecycle
+from app import account_current_state, order_sizing, plan_generation, plan_lifecycle, plan_service
 from app.plan_service import PlanServiceError
 from datasource import db
 from datasource.youzhiyouxing import DATA_URL
@@ -541,6 +541,26 @@ class TestPlanGeneration(unittest.TestCase):
 
         self.assertEqual(caught.exception.detail["stage"], "strategy_rankings")
         self.assertEqual(caught.exception.detail["errors"][0]["input"], "cb.risk_fields")
+
+    def test_stock_ranking_can_source_close_price_from_its_plan_date_raw_snapshot(self):
+        db._TEST_CONN.execute("UPDATE stock_rankings SET close_price=NULL")
+        db._TEST_CONN.commit()
+
+        errors = plan_service.validate_strategy_inputs("2026-06-29")
+
+        self.assertNotIn("stock.risk_fields", {error["input"] for error in errors})
+
+    def test_generation_error_preserves_missing_price_codes_for_the_ui(self):
+        error = plan_service.generation_error(
+            "cb_orders",
+            {
+                "code": "PLAN_PRICE_SNAPSHOT_INCOMPLETE",
+                "message": "计划基准价不完整，无法生成冻结交易计划。",
+                "missing": {"stock": ["600051"]},
+            },
+        )
+
+        self.assertEqual(error["missing"], {"stock": ["600051"]})
 
     def test_size_strategy_orders_uses_plan_generation_context(self):
         cb_size = Mock(return_value={"orders": [], "summary": {"cash_left": 0}})

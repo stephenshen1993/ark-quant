@@ -248,6 +248,10 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn("async generateCompletePlanLegacy()", self.html)
         self.assertIn("请通过“生成完整计划”一并冻结调拨、定价和订单。", self.html)
 
+    def test_complete_plan_error_lists_the_missing_plan_date_prices(self):
+        self.assertIn("Object.entries(detail.missing || {})", self.html)
+        self.assertIn("缺少计划日收盘价", self.html)
+
     def test_context_save_handles_legacy_backend_and_validation_details(self):
         self.assertIn("async postFundingContext(payload)", self.html)
         self.assertIn("delete legacyPayload.b_purchase_status", self.html)
