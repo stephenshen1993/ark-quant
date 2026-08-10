@@ -568,6 +568,10 @@ class TestPlanGeneration(unittest.TestCase):
         with TemporaryDirectory() as temporary:
             root = Path(temporary) / "20260629"
             root.mkdir()
+            (root / "enriched_universe.csv").write_text(
+                "bond_code,bond_name,cb_price\n113001,候选转债,120.0\n",
+                encoding="utf-8",
+            )
             (root / "cb_universe_raw.csv").write_text(
                 "债券代码,债券简称,债现价\n113682,益丰转债,130.113\n",
                 encoding="utf-8",

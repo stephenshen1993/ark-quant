@@ -539,7 +539,8 @@ def _raw_snapshot_prices(plan_date: str, strategy: str, codes: list[str]) -> dic
             if float(row[price_key]) > 0
         }
         for code in codes:
-            resolved.setdefault(code, raw.get(code))
+            if resolved.get(code) is None:
+                resolved[code] = raw.get(code)
     return {code: price for code, price in resolved.items() if price is not None}
 
 
