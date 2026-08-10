@@ -255,3 +255,36 @@ class TestTopLevelFundingTriggers(unittest.TestCase):
             result["cash"]["remaining"],
             2_000 - result["cash"]["immediate_outflow"],
         )
+
+    def test_quarterly_cross_account_outflows_scale_to_actual_funds_account_cash(self):
+        result = build_fund_transfer_plan(
+            {
+                "stock_total": 98_000,
+                "bond_total": 0,
+                "cash_pool": 2_000,
+                "changqian_total": 0,
+                "overseas_total": 0,
+            },
+            {
+                "temperature": 50,
+                "check_type": "quarterly",
+                "cash_available": 2_000,
+                "b_purchase_limit": 100_000,
+            },
+            qualified_cb_count=20,
+        )
+
+        top = result["top_level"]
+        spent = sum(action["amount"] for action in top["executed_actions"])
+        self.assertTrue(top["hard_rebalance_triggered"])
+        self.assertLessEqual(spent, 2_000)
+        self.assertEqual(top["execution_budget"], 2_000.0)
+        self.assertGreater(top["unfunded_ideal_inflow"], 0)
+        ideal = {action["target"]: action["amount"] for action in top["ideal_actions"]}
+        executable = {action["target"]: action["amount"] for action in top["executed_actions"]}
+        self.assertAlmostEqual(
+            executable["B"] / ideal["B"],
+            executable["C"] / ideal["C"],
+            places=5,
+        )
+        self.assertEqual(result["cash"]["remaining"], 2_000 - result["cash"]["planned_outflow"])

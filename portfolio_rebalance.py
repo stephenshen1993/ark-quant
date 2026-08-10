@@ -45,10 +45,19 @@ def build_fund_transfer_plan(
     weights = _top_level_weights(temperature)
     total_assets = sum(current[part] for part in ("A", "B", "C"))
     raw_targets = {part: total_assets * weight for part, weight in weights.items()}
-    top_level = _top_level_plan(current, weights, raw_targets, check_type, context)
     cash_available = _nonnegative(context.get("cash_available", account.get("cash_pool", 0)), "cash_available")
-    top_immediate_outflow = sum(
-        action["amount"] for action in top_level["executed_actions"] if action["immediate"]
+    top_level = _top_level_plan(
+        current,
+        weights,
+        raw_targets,
+        check_type,
+        context,
+        cash_available=cash_available,
+    )
+    top_planned_outflow = sum(
+        action["amount"]
+        for action in top_level["executed_actions"]
+        if action["source"] == "cash_pool"
     )
     a_internal = (
         _a_internal_plan(
@@ -58,7 +67,7 @@ def build_fund_transfer_plan(
             approved_a_delta=top_level["executed_deltas"]["A"],
             qualified_cb_count=qualified_cb_count,
             qualified_cb_lot_costs=qualified_cb_lot_costs,
-            cash_available=max(0.0, cash_available - top_immediate_outflow),
+            cash_available=max(0.0, cash_available - top_planned_outflow),
         )
         if include_a_internal
         else _a_internal_not_requested()
@@ -66,7 +75,12 @@ def build_fund_transfer_plan(
     internal_immediate_outflow = sum(
         action["amount"] for action in a_internal.get("actions", []) if action["immediate"]
     )
-    immediate_outflow = top_immediate_outflow + internal_immediate_outflow
+    immediate_outflow = sum(
+        action["amount"]
+        for action in top_level["executed_actions"]
+        if action["immediate"]
+    ) + internal_immediate_outflow
+    planned_outflow = top_planned_outflow + internal_immediate_outflow
     return {
         "temperature": temperature,
         "top_level": top_level,
@@ -74,7 +88,8 @@ def build_fund_transfer_plan(
         "cash": {
             "available": cash_available,
             "immediate_outflow": _money(immediate_outflow),
-            "remaining": _money(cash_available - immediate_outflow),
+            "planned_outflow": _money(planned_outflow),
+            "remaining": _money(cash_available - planned_outflow),
         },
     }
 
@@ -135,6 +150,8 @@ def _top_level_plan(
     targets: dict[str, float],
     check_type: str,
     context: dict,
+    *,
+    cash_available: float,
 ) -> dict:
     total_assets = sum(current[part] for part in ("A", "B", "C"))
     deltas = {part: targets[part] - current[part] for part in targets}
@@ -170,7 +187,11 @@ def _top_level_plan(
             for target, amount in ideal_deltas.items()
             if amount >= 1000
         ]
-        executable_inflows = _constrained_hard_inflows(ideal_deltas, b_limit)
+        executable_inflows = _constrained_hard_inflows(
+            ideal_deltas,
+            b_limit,
+            cash_available,
+        )
         for target, amount in executable_inflows.items():
             executed_actions.append(_inflow_action(target, amount, "half_band_repair", False))
             executed_deltas[target] += amount
@@ -184,6 +205,8 @@ def _top_level_plan(
     else:
         b_status = _b_purchase_status(max(deltas["B"], 0.0), b_limit)
 
+    ideal_inflow = sum(action["amount"] for action in ideal_actions)
+    executed_inflow = sum(action["amount"] for action in executed_actions)
     return {
         "status": "ready",
         "check_type": check_type,
@@ -198,6 +221,10 @@ def _top_level_plan(
         "b_purchase_status": b_status,
         "ideal_actions": ideal_actions,
         "executed_actions": executed_actions,
+        "execution_budget": _money(cash_available),
+        "ideal_inflow": _money(ideal_inflow),
+        "executable_inflow": _money(executed_inflow),
+        "unfunded_ideal_inflow": _money(max(0.0, ideal_inflow - executed_inflow)),
         "executed_deltas": _money_map(executed_deltas),
         "outflows": outflows,
         "inflows": executed_actions,
@@ -231,7 +258,11 @@ def _half_band_deltas(
     return {part: repaired_weights[part] * total_assets - current[part] for part in weights}
 
 
-def _constrained_hard_inflows(ideal_deltas: dict[str, float], b_limit: float) -> dict[str, float]:
+def _constrained_hard_inflows(
+    ideal_deltas: dict[str, float],
+    b_limit: float,
+    cash_available: float,
+) -> dict[str, float]:
     inflows: dict[str, float] = {}
     for target, amount in ideal_deltas.items():
         if amount < 1000:
@@ -240,7 +271,13 @@ def _constrained_hard_inflows(ideal_deltas: dict[str, float], b_limit: float) ->
             amount = min(amount, b_limit) if b_limit >= 1000 else 0.0
         if amount >= 1000:
             inflows[target] = amount
-    return inflows
+    total = sum(inflows.values())
+    if not total or cash_available <= 0:
+        return {}
+    if total <= cash_available:
+        return inflows
+    scale = cash_available / total
+    return {target: amount * scale for target, amount in inflows.items()}
 
 
 def _b_purchase_status(required_amount: float, limit: float) -> str:
