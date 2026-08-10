@@ -1010,6 +1010,56 @@
   }
   .plan-execution-guardrail strong { color: var(--ark-text); font-size: 12px; }
   .plan-trade-section { margin-top: 12px; }
+  .plan-trade-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    width: min(100%, 720px);
+    margin-bottom: 8px;
+  }
+  .plan-trade-summary-item {
+    --plan-trade-tone: var(--ark-muted);
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    min-height: 42px;
+    padding: 7px 9px 7px 11px;
+    border: 1px solid var(--ark-faint);
+    border-left: 3px solid var(--plan-trade-tone);
+    border-radius: 7px;
+    background: var(--ark-paper);
+  }
+  .plan-trade-summary-item.is-action-sell-all { --plan-trade-tone: var(--ark-problem); }
+  .plan-trade-summary-item.is-action-trim { --plan-trade-tone: var(--ark-warn); }
+  .plan-trade-summary-item.is-action-buy { --plan-trade-tone: var(--ark-accent); }
+  .plan-trade-summary-item.is-action-add { --plan-trade-tone: var(--ark-info); }
+  .plan-trade-summary-label {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px;
+    color: var(--plan-trade-tone);
+    font-size: 11px;
+    font-weight: 750;
+    line-height: 1.1;
+  }
+  .plan-trade-summary-count {
+    color: var(--ark-muted);
+    font-family: var(--ark-font-data);
+    font-size: 10px;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+  .plan-trade-summary-amount {
+    overflow: hidden;
+    color: var(--ark-text);
+    font-family: var(--ark-font-data);
+    font-size: 11px;
+    font-weight: 750;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .plan-trade-table-scroll {
     width: 100%;
     max-width: 100%;
@@ -1066,6 +1116,29 @@
     font-weight: 700;
     white-space: nowrap;
   }
+  .plan-trade-action-badge {
+    --plan-trade-tone: var(--ark-text);
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 2px 6px;
+    border: 1px solid color-mix(in srgb, var(--plan-trade-tone) 26%, white);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--plan-trade-tone) 9%, white);
+    color: var(--plan-trade-tone);
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .plan-trade-action-badge.is-action-sell-all { --plan-trade-tone: var(--ark-problem); }
+  .plan-trade-action-badge.is-action-trim { --plan-trade-tone: var(--ark-warn); }
+  .plan-trade-action-badge.is-action-buy { --plan-trade-tone: var(--ark-accent-deep); }
+  .plan-trade-action-badge.is-action-add { --plan-trade-tone: var(--ark-info); }
+  .plan-trade-row.is-action-group-start td { border-top: 2px solid var(--ark-line); }
+  .plan-trade-row.is-action-group-start.is-action-sell-all td { border-top-color: color-mix(in srgb, var(--ark-problem) 62%, white); }
+  .plan-trade-row.is-action-group-start.is-action-trim td { border-top-color: color-mix(in srgb, var(--ark-warn) 62%, white); }
+  .plan-trade-row.is-action-group-start.is-action-buy td { border-top-color: color-mix(in srgb, var(--ark-accent) 62%, white); }
+  .plan-trade-row.is-action-group-start.is-action-add td { border-top-color: color-mix(in srgb, var(--ark-info) 62%, white); }
   .plan-trade-side {
     color: var(--ark-text);
     font-weight: 800;
@@ -2056,6 +2129,8 @@
     .plan-account-folio-close { min-height: 40px; }
     .plan-execution-guardrails { padding: 11px 12px; }
     .plan-execution-guardrail { grid-template-columns: 1fr; gap: 2px; font-size: 13px; }
+    .plan-trade-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 10px; }
+    .plan-trade-summary-item { min-height: 40px; }
     .plan-trade-table-scroll { overflow: visible; }
     .plan-trade-table,
     .plan-trade-table tbody { display: block; width: 100%; }
@@ -2079,6 +2154,11 @@
       border-bottom: 1px solid var(--ark-line);
     }
     .plan-trade-row:last-child { border-bottom: 0; }
+    .plan-trade-row.is-action-group-start { border-top: 2px solid var(--ark-line); }
+    .plan-trade-row.is-action-group-start.is-action-sell-all { border-top-color: color-mix(in srgb, var(--ark-problem) 62%, white); }
+    .plan-trade-row.is-action-group-start.is-action-trim { border-top-color: color-mix(in srgb, var(--ark-warn) 62%, white); }
+    .plan-trade-row.is-action-group-start.is-action-buy { border-top-color: color-mix(in srgb, var(--ark-accent) 62%, white); }
+    .plan-trade-row.is-action-group-start.is-action-add { border-top-color: color-mix(in srgb, var(--ark-info) 62%, white); }
     .plan-trade-row td {
       display: block;
       min-width: 0;
@@ -2982,6 +3062,17 @@
                     </div>
                   </header>
 	                  <section class="plan-trade-section">
+	                    <div class="plan-trade-summary" aria-label="交易动作汇总">
+	                      <template x-for="summary in accountTradeActionOverview(plan)" :key="summary.action">
+	                        <div class="plan-trade-summary-item" :class="tradeActionToneClass(summary.action)">
+	                          <div class="plan-trade-summary-label">
+	                            <span x-text="summary.label"></span>
+	                            <span class="plan-trade-summary-count" x-text="summary.count + ' 笔'"></span>
+	                          </div>
+	                          <div class="plan-trade-summary-amount" x-text="summary.amount_label + ' ' + fmtMoney(summary.amount)"></div>
+	                        </div>
+	                      </template>
+	                    </div>
 	                    <div class="plan-trade-table-scroll">
 	                      <table class="plan-trade-table">
                         <colgroup>
@@ -3005,14 +3096,14 @@
                           </tr>
                         </thead>
                         <tbody>
-                          <template x-for="order in accountTradeOrders(plan)" :key="plan.account_id + '-' + order.action + '-' + order.code">
-                            <tr class="plan-trade-row">
+                          <template x-for="(order, orderIndex) in accountTradeOrders(plan)" :key="plan.account_id + '-' + order.action + '-' + order.code">
+	                            <tr class="plan-trade-row" :class="tradeActionGroupStartClass(accountTradeOrders(plan)[orderIndex - 1]?.action, order.action)">
                               <td class="plan-trade-code" data-label="证券代码" x-text="order.code"></td>
                               <td class="plan-trade-name" data-label="证券名称" x-text="order.name"></td>
                               <td
                                 class="plan-trade-action"
-                                data-label="仓位"
-                                x-text="positionActionText(order.action)">
+                                data-label="仓位">
+                                <span class="plan-trade-action-badge" :class="tradeActionToneClass(order.action)" x-text="positionActionText(order.action)"></span>
                               </td>
                               <td
                                 class="plan-trade-side"
@@ -5527,6 +5618,23 @@
           }))
           .filter(group => group.orders.length)
       },
+      accountTradeActionOverview(plan) {
+        const actions = [
+          { action: 'SELL', label: '清仓', amount_label: '预计回笼' },
+          { action: 'TRIM', label: '减仓', amount_label: '预计回笼' },
+          { action: 'BUY', label: '建仓', amount_label: '预计占用' },
+          { action: 'ADD', label: '加仓', amount_label: '预计占用' },
+        ]
+        const orders = this.accountTradeOrders(plan)
+        return actions.map(item => {
+          const matched = orders.filter(order => order?.action === item.action)
+          return {
+            ...item,
+            count: matched.length,
+            amount: matched.reduce((sum, order) => sum + Math.abs(Number(order?.estimated_amount || 0)), 0),
+          }
+        }).filter(item => item.count)
+      },
       positionRouteText(order) {
         const action = this.positionActionText(order?.action)
         const route = order?.current_quantity == null || order?.target_quantity == null
@@ -5543,6 +5651,18 @@
         if (['SELL', 'TRIM'].includes(action)) return 'is-sell'
         if (['BUY', 'ADD'].includes(action)) return 'is-buy'
         return ''
+      },
+      tradeActionToneClass(action) {
+        return {
+          SELL: 'is-action-sell-all',
+          TRIM: 'is-action-trim',
+          BUY: 'is-action-buy',
+          ADD: 'is-action-add',
+        }[action] || ''
+      },
+      tradeActionGroupStartClass(previousAction, action) {
+        if (!action || previousAction === action) return ''
+        return `is-action-group-start ${this.tradeActionToneClass(action)}`
       },
       showReadinessPanel() {
         return !['action', 'future-action', 'no-action', 'historical'].includes(this.planState())

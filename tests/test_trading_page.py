@@ -559,7 +559,7 @@ class TestTradingPageInteraction(unittest.TestCase):
 
     def test_account_plan_details_render_one_execution_table_with_row_trade_side(self):
         self.assertIn("accountTradeOrders(plan)", self.html)
-        self.assertIn('x-for="order in accountTradeOrders(plan)"', self.html)
+        self.assertIn('x-for="(order, orderIndex) in accountTradeOrders(plan)"', self.html)
         self.assertIn("actionRank = { SELL: 0, TRIM: 1, BUY: 2, ADD: 3 }", self.html)
         self.assertIn("left?.execution_priority", self.html)
         self.assertIn("right?.execution_priority", self.html)
@@ -595,6 +595,7 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn('data-label="买卖"', self.html)
         self.assertIn('data-label="交易数量"', self.html)
         self.assertIn('class="plan-trade-action"', self.html)
+        self.assertIn('class="plan-trade-action-badge"', self.html)
         self.assertIn('class="plan-trade-action-col"', self.html)
         self.assertIn('class="plan-trade-side"', self.html)
         self.assertIn('class="plan-trade-name-col"', self.html)
@@ -605,6 +606,8 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("width: min(100%, 720px);", self.html)
         self.assertIn(".plan-trade-name-col { width: 166px; }", self.html)
         self.assertIn('x-text="positionActionText(order.action)"', self.html)
+        self.assertIn('tradeActionToneClass(order.action)', self.html)
+        self.assertIn('tradeActionGroupStartClass(accountTradeOrders(plan)[orderIndex - 1]?.action, order.action)', self.html)
         self.assertIn('class="plan-trade-quantity"', self.html)
         self.assertIn(':title="positionRouteText(order)"', self.html)
         self.assertIn("positionRouteText(order)", self.html)
@@ -631,6 +634,21 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn("买入阶段", self.html)
         self.assertNotIn("executionStepLabel(", self.html)
         self.assertNotIn('colspan="6"', self.html)
+
+    def test_account_plan_trade_summary_uses_compact_four_action_overview(self):
+        self.assertIn('class="plan-trade-summary"', self.html)
+        self.assertIn('aria-label="交易动作汇总"', self.html)
+        self.assertIn('x-for="summary in accountTradeActionOverview(plan)"', self.html)
+        self.assertIn('class="plan-trade-summary-item"', self.html)
+        self.assertIn('class="plan-trade-summary-count"', self.html)
+        self.assertIn('class="plan-trade-summary-amount"', self.html)
+        self.assertIn("accountTradeActionOverview(plan)", self.html)
+        self.assertIn("amount_label: '预计回笼'", self.html)
+        self.assertIn("amount_label: '预计占用'", self.html)
+        self.assertIn("tradeActionGroupStartClass(previousAction, action)", self.html)
+        self.assertIn("is-action-group-start", self.html)
+        self.assertIn(".plan-trade-row.is-action-group-start td", self.html)
+        self.assertIn("grid-template-columns: repeat(4, minmax(0, 1fr));", self.html)
 
     def test_account_plan_summary_exposes_the_trade_detail_toggle(self):
         self.assertIn("plan.account_name + '交易计划'", self.html)
