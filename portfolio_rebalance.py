@@ -277,7 +277,22 @@ def _constrained_hard_inflows(
     if total <= cash_available:
         return inflows
     scale = cash_available / total
-    return {target: amount * scale for target, amount in inflows.items()}
+    scaled = {
+        target: amount * scale
+        for target, amount in inflows.items()
+        if amount * scale >= 1000
+    }
+    remaining = cash_available - sum(scaled.values())
+    for target, amount in sorted(inflows.items(), key=lambda item: (-item[1], item[0])):
+        if remaining <= 0:
+            break
+        current = scaled.get(target, 0.0)
+        room = amount - current
+        if room <= 0:
+            continue
+        scaled[target] = current + min(room, remaining)
+        remaining = cash_available - sum(scaled.values())
+    return _money_map(scaled)
 
 
 def _b_purchase_status(required_amount: float, limit: float) -> str:

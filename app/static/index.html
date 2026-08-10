@@ -3278,12 +3278,9 @@
           </tbody>
         </table>
       </div>
-      <!-- 生成订单（有排名但无订单时） -->
+      <!-- 排名本身不能触发单策略即时定单。 -->
       <div x-show="cbItems.length && !plan?.cb?.orders?.length" class="flex items-center gap-2 mb-3 text-sm p-3 bg-gray-50 rounded-lg">
-        <span class="text-gray-400 text-xs">可用现金（含调拨） <span class="text-gray-600 font-medium" x-text="fmtMoney(adjustedCash('cb'))"></span>（卖出回款自动计入）</span>
-        <button @click="sizeOrders('cb')" :disabled="sizingCb"
-          class="ml-auto px-3 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900"
-          x-text="sizingCb ? '计算中…' : '生成订单'"></button>
+        <span class="text-gray-500 text-xs">排名已就绪；请通过“生成完整计划”一并冻结调拨、定价和订单。</span>
       </div>
       <!-- 订单卡片（有订单时） -->
       <template x-if="plan?.cb?.orders?.length">
@@ -3367,12 +3364,9 @@
           </tbody>
         </table>
       </div>
-      <!-- 生成订单（有排名但无订单时） -->
+      <!-- 排名本身不能触发单策略即时定单。 -->
       <div x-show="stockItems.length && !plan?.stock?.orders?.length" class="flex items-center gap-2 mb-3 text-sm p-3 bg-gray-50 rounded-lg">
-        <span class="text-gray-400 text-xs">可用现金（含调拨） <span class="text-gray-600 font-medium" x-text="fmtMoney(adjustedCash('stock'))"></span>（卖出回款自动计入）</span>
-        <button @click="sizeOrders('stock')" :disabled="sizingStock"
-          class="ml-auto px-3 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900"
-          x-text="sizingStock ? '计算中…' : '生成订单'"></button>
+        <span class="text-gray-500 text-xs">排名已就绪；请通过“生成完整计划”一并冻结调拨、定价和订单。</span>
       </div>
       <!-- 订单卡片（有订单时） -->
       <template x-if="plan?.stock?.orders?.length">
@@ -4924,11 +4918,6 @@
           await this.saveFundingContext()
           this.generationStage = '生成完整计划'
           const response = await fetch('/api/plan/generate', { method: 'POST' })
-          if (response.status === 404) {
-            await this.generateCompletePlanLegacy()
-            await this.loadLatestGeneration()
-            return
-          }
           if (!response.ok) {
             const body = await response.json().catch(() => ({ detail: '完整计划生成失败' }))
             const detail = body.detail || {}
@@ -4955,23 +4944,6 @@
           this.generatingPlan = false
           this.loadingPlan = false
         }
-      },
-
-      async generateCompletePlanLegacy() {
-        this.generationStage = '检查计划'
-        await this.loadPlan(false)
-        if (!this.plan) throw new Error(this.planError || '完整计划生成失败')
-        for (const strategy of ['cb', 'stock']) {
-          this.generationStage = '准备' + this.strategyLabel(strategy) + '榜单'
-          await this.ensureRanking(strategy)
-        }
-        for (const strategy of ['cb', 'stock']) {
-          if (this.plan?.[strategy]?.orders?.length) continue
-          this.generationStage = '生成' + this.strategyLabel(strategy) + '订单'
-          await this.generateOrders(strategy)
-        }
-        this.transferPlan = this.plan
-        await this.refreshRankingState()
       },
 
       async loadPlan(refreshTemperature = false, suppressDateMismatch = false) {
@@ -5898,27 +5870,6 @@
           order_delta: Math.round(orderDelta * 100) / 100,
           cash_left: Math.round(cashLeft * 100) / 100,
         }
-      },
-      async generateOrders(strategy) {
-        if (!this.plan?.account) throw new Error('请先在账户页补齐账户数据')
-        const response = await fetch(`/api/plan/${strategy}/size-orders`, { method: 'POST' })
-        if (!response.ok) {
-          const body = await response.json().catch(() => ({ detail: '订单生成失败' }))
-          const detail = body.detail || {}
-          throw new Error(typeof detail === 'string' ? detail : detail.message || `${this.strategyLabel(strategy)}订单生成失败`)
-        }
-        await this.loadPlan(false)
-        if (!this.plan) throw new Error(this.planError || `${this.strategyLabel(strategy)}订单生成后计划不可用`)
-      },
-      async sizeOrders(strategy) {
-        const key = strategy === 'cb' ? 'sizingCb' : 'sizingStock'
-        this.componentErrors[strategy] = ''
-        this[key] = true
-        try {
-          await this.generateOrders(strategy)
-        } catch (error) {
-          this.componentErrors[strategy] = error.message || `${this.strategyLabel(strategy)}订单生成失败`
-        } finally { this[key] = false }
       },
       cbGroups() {
         const orders = this.plan?.cb?.orders || []

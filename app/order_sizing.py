@@ -22,12 +22,13 @@ def size_cb_orders(
     *,
     plan_date: str | None = None,
     prices: dict[str, float] | None = None,
+    rankings: list[dict] | None = None,
 ) -> dict:
     from datasource.market import fetch_cb_prices_tencent
     from strategies.cb_rotation.size_orders import size_rebalance
 
     plan_date = plan_date or plan_service.current_plan_date()
-    rankings = db.get_rankings("cb", plan_date)
+    rankings = rankings if rankings is not None else db.get_rankings("cb", plan_date)
     if not rankings:
         raise PlanServiceError(
             400,
@@ -101,6 +102,7 @@ def size_stock_orders(
     *,
     plan_date: str | None = None,
     prices: dict[str, float] | None = None,
+    rankings: list[dict] | None = None,
 ) -> dict:
     from datasource.market import fetch_tencent_snapshot
     from strategies.stock_smallcap.target_sizing import (
@@ -110,7 +112,7 @@ def size_stock_orders(
     )
 
     plan_date = plan_date or plan_service.current_plan_date()
-    rankings = db.get_rankings("stock", plan_date)
+    rankings = rankings if rankings is not None else db.get_rankings("stock", plan_date)
     if not rankings:
         raise PlanServiceError(
             400,

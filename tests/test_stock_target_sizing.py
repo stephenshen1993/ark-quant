@@ -48,6 +48,10 @@ class TargetStateSizingTests(unittest.TestCase):
         exit_row = sheet.loc[sheet["stock_code"] == "999999"].iloc[0]
         self.assertEqual(exit_row["action"], "SELL")
         self.assertEqual(exit_row["delta_shares"], -100)
+        self.assertEqual(exit_row["ideal_target_shares"], 0)
+        self.assertEqual(exit_row["executable_target_shares"], 0)
+        self.assertEqual(exit_row["residual_shares"], 0)
+        self.assertEqual(exit_row["execution_reason"], "mandatory_exit")
         self.assertEqual(summary["ordinary_order_threshold"], 1_000)
 
     def test_uses_dynamic_threshold_and_never_overspends_cash(self):

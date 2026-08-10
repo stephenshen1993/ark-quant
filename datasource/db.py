@@ -138,7 +138,8 @@ def init_db() -> None:
             stock_name TEXT,
             market_cap REAL,
             pe_ttm     REAL,
-            roe_ex     REAL
+            roe_ex     REAL,
+            close_price REAL
         );
 
         CREATE TABLE IF NOT EXISTS cb_orders (
@@ -345,6 +346,11 @@ def init_db() -> None:
         }
         if "error_json" not in generated_plan_columns:
             conn.execute("ALTER TABLE generated_plans ADD COLUMN error_json TEXT")
+        stock_ranking_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(stock_rankings)").fetchall()
+        }
+        if "close_price" not in stock_ranking_columns:
+            conn.execute("ALTER TABLE stock_rankings ADD COLUMN close_price REAL")
         _migrate_strategy_run_status(conn)
         _migrate_legacy_account_snapshots(conn)
         _migrate_legacy_positions(conn)

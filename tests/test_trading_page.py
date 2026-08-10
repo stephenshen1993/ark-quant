@@ -235,19 +235,18 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn("b_recovery", self.html[start:end])
         self.assertNotIn("ad_hoc", self.html[start:end])
 
-    def test_complete_plan_prefers_server_endpoint_and_falls_back_for_legacy_backend(self):
+    def test_complete_plan_uses_the_only_frozen_server_endpoint(self):
         self.assertIn("async generateCompletePlan()", self.html)
         start = self.html.index("async generateCompletePlan()")
         end = self.html.index("async loadPlan(", start)
         body = self.html[start:end]
         self.assertIn("await this.saveFundingContext()", body)
         self.assertIn("fetch('/api/plan/generate', { method: 'POST' })", body)
-        self.assertIn("response.status === 404", body)
-        self.assertIn("await this.generateCompletePlanLegacy()", body)
+        self.assertNotIn("response.status === 404", body)
+        self.assertNotIn("size-orders", self.html)
         self.assertIn("componentErrors: { cb: '', stock: '' }", self.html)
-        self.assertIn("async generateCompletePlanLegacy()", self.html)
-        self.assertIn("await this.ensureRanking(strategy)", self.html)
-        self.assertIn("await this.generateOrders(strategy)", self.html)
+        self.assertNotIn("async generateCompletePlanLegacy()", self.html)
+        self.assertIn("请通过“生成完整计划”一并冻结调拨、定价和订单。", self.html)
 
     def test_context_save_handles_legacy_backend_and_validation_details(self):
         self.assertIn("async postFundingContext(payload)", self.html)

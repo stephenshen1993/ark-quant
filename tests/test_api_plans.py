@@ -65,7 +65,7 @@ class TestPlansApi(unittest.TestCase):
         run_id2 = db.insert_strategy_run("stock", date(2026, 6, 29))
         db.insert_stock_rankings(run_id2, pd.DataFrame([{
             "rank": 1, "stock_code": "600051", "stock_name": "宁波联合",
-            "total_mv_yuan": 1000000000, "pe_ttm": 10.0, "roe_pct": 12.0,
+            "total_mv_yuan": 1000000000, "pe_ttm": 10.0, "roe_pct": 12.0, "price": 5.68,
         }]))
         db.insert_stock_orders(run_id2, pd.DataFrame([{
             "action": "SELL", "stock_code": "600051", "stock_name": "宁波联合",
@@ -402,7 +402,10 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(saved["status"], "failed")
         self.assertEqual(saved["error"]["stage"], "stock_orders")
         self.assertEqual(saved["error"]["code"], "STOCK_SIZING_FAILED")
-        self.assertEqual(saved["plan"]["cb"]["orders"], cb_orders)
+        self.assertEqual(
+            saved["plan"]["cb"]["orders"],
+            [{**cb_orders[0], "execution_reason": "frozen_target"}],
+        )
 
     def test_generate_plan_reports_stock_stage_after_empty_cb_order_batch(self):
         with patch(
@@ -665,7 +668,7 @@ class TestPlansApi(unittest.TestCase):
         r = self.client.post("/api/plan/cb/size-orders")
 
         self.assertEqual(r.status_code, 409)
-        self.assertIn("account.overseas", {e["input"] for e in r.json()["detail"]["errors"]})
+        self.assertEqual(r.json()["detail"]["code"], "FROZEN_COMPLETE_PLAN_REQUIRED")
 
     def test_get_plan_returns_transfer_with_trade_errors_when_rankings_missing(self):
         db._TEST_CONN.execute("DELETE FROM cb_rankings")
@@ -717,7 +720,7 @@ class TestPlansApi(unittest.TestCase):
         }])
         stock_run_id = db.create_complete_strategy_run("stock", date(2026, 6, 30), date(2026, 7, 1), pd.DataFrame([{
             "rank": 1, "stock_code": "600051", "stock_name": "宁波联合",
-            "total_mv_yuan": 1000000000, "pe_ttm": 10.0, "roe_pct": 12.0,
+            "total_mv_yuan": 1000000000, "pe_ttm": 10.0, "roe_pct": 12.0, "price": 5.68,
         }]))
         db.insert_stock_orders(stock_run_id, pd.DataFrame([{
             "action": "HOLD", "stock_code": "600051", "stock_name": "宁波联合",
@@ -768,13 +771,19 @@ class TestPlansApi(unittest.TestCase):
         r = self.client.post("/api/plan/unknown/size-orders", json={"cash": 10000})
         self.assertEqual(r.status_code, 400)
 
+    def test_legacy_single_strategy_sizing_requires_complete_frozen_plan(self):
+        r = self.client.post("/api/plan/cb/size-orders")
+
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.json()["detail"]["code"], "FROZEN_COMPLETE_PLAN_REQUIRED")
+
     def test_size_orders_no_rankings(self):
         """没有榜单时 size-orders 在输入一致性校验阶段拦截"""
         db._TEST_CONN.execute("DELETE FROM cb_rankings")
         db._TEST_CONN.commit()
         r = self.client.post("/api/plan/cb/size-orders")
         self.assertEqual(r.status_code, 409)
-        self.assertIn("PLAN_INPUT_DATE_MISMATCH", r.json()["detail"]["code"])
+        self.assertEqual(r.json()["detail"]["code"], "FROZEN_COMPLETE_PLAN_REQUIRED")
 
     def test_size_cb_orders_generates_and_persists_orders(self):
         db._TEST_CONN.execute("DELETE FROM cb_orders")
@@ -791,36 +800,21 @@ class TestPlansApi(unittest.TestCase):
             },
         ]))
 
-        with patch(
-            "app.plan_service.strategy_cash_after_transfer",
-            return_value=30000,
-        ), patch(
-            "datasource.market.fetch_cb_prices_tencent",
-            return_value={"113062": 126.80, "113052": 115.09},
-        ):
-            r = self.client.post("/api/plan/cb/size-orders")
+        r = self.client.post("/api/plan/cb/size-orders")
 
-        self.assertEqual(r.status_code, 200)
-        data = r.json()
-        self.assertGreater(len(data["orders"]), 0)
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.json()["detail"]["code"], "FROZEN_COMPLETE_PLAN_REQUIRED")
         persisted = db.get_orders("cb", "2026-06-29")
-        self.assertGreater(len(persisted), 0)
+        self.assertEqual(persisted, [])
 
     def test_size_orders_rejects_insufficient_releasable_cash_before_persisting(self):
         db._TEST_CONN.execute("DELETE FROM cb_orders")
         db._TEST_CONN.commit()
 
-        with patch(
-            "app.plan_service.strategy_cash_after_transfer",
-            return_value=-5000,
-        ), patch(
-            "datasource.market.fetch_cb_prices_tencent",
-            return_value={"113062": 126.80},
-        ):
-            r = self.client.post("/api/plan/cb/size-orders")
+        r = self.client.post("/api/plan/cb/size-orders")
 
         self.assertEqual(r.status_code, 409)
-        self.assertEqual(r.json()["detail"]["code"], "INSUFFICIENT_RELEASABLE_CASH")
+        self.assertEqual(r.json()["detail"]["code"], "FROZEN_COMPLETE_PLAN_REQUIRED")
         self.assertEqual(db.get_orders("cb", "2026-06-29"), [])
 
     def test_order_cash_uses_available_cash_not_cash_balance(self):
@@ -846,18 +840,10 @@ class TestPlansApi(unittest.TestCase):
             },
         ]))
 
-        with patch(
-            "app.plan_service.strategy_cash_after_transfer",
-            return_value=10000,
-        ), patch(
-            "datasource.market.fetch_cb_prices_tencent",
-            return_value={"113062": 126.80},
-        ):
-            r = self.client.post("/api/plan/cb/size-orders")
+        r = self.client.post("/api/plan/cb/size-orders")
 
-        self.assertEqual(r.status_code, 500)
-        self.assertEqual(r.json()["detail"]["code"], "DATA_SOURCE_UNAVAILABLE")
-        self.assertIn("113052", r.json()["detail"]["message"])
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.json()["detail"]["code"], "FROZEN_COMPLETE_PLAN_REQUIRED")
 
     def test_size_orders_accepts_confirmed_empty_position_snapshot(self):
         db._TEST_CONN.execute("DELETE FROM cb_orders")
@@ -865,17 +851,10 @@ class TestPlansApi(unittest.TestCase):
         db._TEST_CONN.commit()
         db.insert_positions("cb", "2026-06-29", [])
 
-        with patch(
-            "app.plan_service.strategy_cash_after_transfer",
-            return_value=10000,
-        ), patch(
-            "datasource.market.fetch_cb_prices_tencent",
-            return_value={"113062": 126.80},
-        ):
-            r = self.client.post("/api/plan/cb/size-orders")
+        r = self.client.post("/api/plan/cb/size-orders")
 
-        self.assertEqual(r.status_code, 200)
-        self.assertTrue(any(order["action"] == "BUY" for order in r.json()["orders"]))
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.json()["detail"]["code"], "FROZEN_COMPLETE_PLAN_REQUIRED")
 
     def test_order_summary_uses_explicit_internal_transfer_plan(self):
         r = self.client.get("/api/plan")

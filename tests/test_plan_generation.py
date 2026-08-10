@@ -99,6 +99,7 @@ class TestPlanGeneration(unittest.TestCase):
                 "total_mv_yuan": 1000000000,
                 "pe_ttm": 10.0,
                 "roe_pct": 12.0,
+                "price": 5.68,
             }]),
         )
         db.insert_stock_orders(stock_run_id, pd.DataFrame([{
@@ -231,6 +232,7 @@ class TestPlanGeneration(unittest.TestCase):
                         "total_mv_yuan": 1000000000,
                         "pe_ttm": 10.0,
                         "roe_pct": 12.0,
+                        "price": 5.68,
                     }]),
                 )
             return SimpleNamespace(run_id=run_id)
@@ -340,14 +342,27 @@ class TestPlanGeneration(unittest.TestCase):
         self.assertEqual(plan["price_snapshot"], prices)
         self.assertEqual(cb_size.call_args.kwargs["prices"], prices["cb"])
         self.assertEqual(stock_size.call_args.kwargs["prices"], prices["stock"])
+        self.assertEqual(cb_size.call_args.kwargs["rankings"][0]["bond_code"], "113062")
+        self.assertEqual(stock_size.call_args.kwargs["rankings"][0]["stock_code"], "600051")
+
+    def test_complete_plan_snapshot_preserves_rankings_and_risk_inputs(self):
+        cb_size = Mock(return_value={"orders": [], "summary": {}})
+        stock_size = Mock(return_value={"orders": [], "summary": {}})
+
+        plan = plan_generation.generate_complete_plan(
+            size_cb_orders=cb_size,
+            size_stock_orders=stock_size,
+        )
+
+        rankings = plan["snapshot"]["input_provenance"]["strategy_rankings"]
+        self.assertEqual(rankings["cb"]["items"][0]["score"], 0.9)
+        self.assertEqual(rankings["stock"]["items"][0]["pe_ttm"], 10.0)
 
     def test_frozen_price_capture_fails_closed_when_a_plan_code_has_no_price(self):
-        with patch(
-            "datasource.market.fetch_cb_prices_tencent",
-            return_value={},
-        ):
-            with self.assertRaises(PlanServiceError) as caught:
-                plan_generation.plan_service.capture_frozen_plan_prices("2026-06-29")
+        db._TEST_CONN.execute("UPDATE cb_rankings SET cb_price=NULL")
+        db._TEST_CONN.commit()
+        with self.assertRaises(PlanServiceError) as caught:
+            plan_generation.plan_service.capture_frozen_plan_prices("2026-06-29")
 
         self.assertEqual(caught.exception.status_code, 503)
         self.assertEqual(
@@ -355,6 +370,19 @@ class TestPlanGeneration(unittest.TestCase):
             "PLAN_PRICE_SNAPSHOT_INCOMPLETE",
         )
         self.assertEqual(caught.exception.detail["missing"]["cb"], ["113062"])
+
+    def test_frozen_price_capture_uses_plan_date_inputs_not_realtime_quotes(self):
+        with patch(
+            "datasource.market.fetch_cb_prices_tencent",
+            side_effect=AssertionError("realtime quotes must not be read"),
+        ), patch(
+            "datasource.market.fetch_tencent_snapshot",
+            side_effect=AssertionError("realtime quotes must not be read"),
+        ):
+            prices = plan_generation.plan_service.capture_frozen_plan_prices("2026-06-29")
+
+        self.assertEqual(prices["cb"], {"113062": 126.8})
+        self.assertEqual(prices["stock"], {"600051": 5.68})
 
     def test_complete_plan_blocks_stock_execution_when_fewer_than_twenty_candidates_qualify(self):
         cb_size = Mock(return_value={
@@ -503,8 +531,16 @@ class TestPlanGeneration(unittest.TestCase):
 
         self.assertEqual(caught.exception.status_code, 409)
         self.assertEqual(caught.exception.detail["stage"], "strategy_rankings")
-        self.assertEqual(caught.exception.detail["code"], "PLAN_INPUT_DATE_MISMATCH")
-        self.assertEqual(caught.exception.detail["errors"][0]["input"], "cb")
+
+    def test_plan_generation_rejects_rankings_with_missing_risk_inputs(self):
+        db._TEST_CONN.execute("UPDATE cb_rankings SET score=NULL")
+        db._TEST_CONN.commit()
+
+        with self.assertRaises(PlanServiceError) as caught:
+            plan_generation.prepare_complete_plan_generation()
+
+        self.assertEqual(caught.exception.detail["stage"], "strategy_rankings")
+        self.assertEqual(caught.exception.detail["errors"][0]["input"], "cb.risk_fields")
 
     def test_size_strategy_orders_uses_plan_generation_context(self):
         cb_size = Mock(return_value={"orders": [], "summary": {"cash_left": 0}})

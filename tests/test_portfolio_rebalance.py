@@ -1,6 +1,6 @@
 import unittest
 
-from portfolio_rebalance import build_fund_transfer_plan
+from portfolio_rebalance import _constrained_hard_inflows, build_fund_transfer_plan
 
 
 class TestFundTransferTargets(unittest.TestCase):
@@ -34,6 +34,15 @@ class TestFundTransferTargets(unittest.TestCase):
             "cash_pool": 10_000.0,
         })
         self.assertEqual(sum(result["a_internal"]["final_targets"].values()), 85_000.0)
+
+    def test_constrained_hard_inflows_do_not_emit_subminimum_fragments(self):
+        inflows = _constrained_hard_inflows(
+            {"B": 10_000, "C": 1_000},
+            b_limit=10_000,
+            cash_available=1_500,
+        )
+
+        self.assertEqual(inflows, {"B": 1_500.0})
 
     def test_convertible_bond_safety_valve_moves_uninvestable_amount_to_cash(self):
         result = build_fund_transfer_plan(self.account, self.context, qualified_cb_count=10)
@@ -282,9 +291,6 @@ class TestTopLevelFundingTriggers(unittest.TestCase):
         self.assertGreater(top["unfunded_ideal_inflow"], 0)
         ideal = {action["target"]: action["amount"] for action in top["ideal_actions"]}
         executable = {action["target"]: action["amount"] for action in top["executed_actions"]}
-        self.assertAlmostEqual(
-            executable["B"] / ideal["B"],
-            executable["C"] / ideal["C"],
-            places=5,
-        )
+        self.assertTrue(all(amount >= 1_000 for amount in executable.values()))
+        self.assertLessEqual(executable["B"], ideal["B"])
         self.assertEqual(result["cash"]["remaining"], 2_000 - result["cash"]["planned_outflow"])

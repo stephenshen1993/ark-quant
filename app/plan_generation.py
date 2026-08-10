@@ -44,10 +44,15 @@ def get_generated_plan(plan_id: str) -> dict | None:
     execution_status = (
         "executable" if record_status == plan_lifecycle.COMPLETE else "stale"
     )
+    hydrated_plan = (
+        plan
+        if plan.get("snapshot") and plan.get("execution_read_model") is not None
+        else plan_service.hydrate_execution_read_model(plan)
+    )
     return {
         **record,
         "plan": {
-            **plan_service.hydrate_execution_read_model(plan),
+            **hydrated_plan,
             "execution_status": execution_status,
         },
     }
@@ -100,7 +105,14 @@ def generate_complete_plan(
 
     try:
         plan_date, account, market_temperature, fund_transfer = prepare_complete_plan_generation(plan_date)
-        price_snapshot = plan_service.capture_frozen_plan_prices(plan_date)
+        strategy_rankings = {
+            strategy: {
+                "run": db.get_strategy_run_meta(strategy, plan_date),
+                "items": db.get_rankings(strategy, plan_date),
+            }
+            for strategy in ("cb", "stock")
+        }
+        price_snapshot = plan_service.capture_frozen_plan_prices(plan_date, strategy_rankings)
         plan = plan_service.build_generated_plan_response(
             plan_id=plan_id,
             status=plan_lifecycle.RUNNING,
@@ -110,6 +122,7 @@ def generate_complete_plan(
             account=account,
             fund_transfer=fund_transfer,
             price_snapshot=price_snapshot,
+            strategy_rankings=strategy_rankings,
             cb_result=None,
             stock_result=None,
         )
@@ -125,7 +138,12 @@ def generate_complete_plan(
             plan_service.strategy_cash_after_transfer("cb", account, deltas),
             plan_date=plan_date,
             prices=price_snapshot["cb"],
+            rankings=strategy_rankings["cb"]["items"],
         )
+        cb_result = {
+            **cb_result,
+            "orders": plan_service.explain_order_targets(cb_result.get("orders", [])),
+        }
         plan_lifecycle.record_order_batch(
             plan_id, "cb", cb_result["orders"], cb_result["summary"]
         )
@@ -138,6 +156,7 @@ def generate_complete_plan(
             account=account,
             fund_transfer=fund_transfer,
             price_snapshot=price_snapshot,
+            strategy_rankings=strategy_rankings,
             cb_result=cb_result,
             stock_result=None,
         )
@@ -147,7 +166,12 @@ def generate_complete_plan(
             plan_service.strategy_cash_after_transfer("stock", account, deltas),
             plan_date=plan_date,
             prices=price_snapshot["stock"],
+            rankings=strategy_rankings["stock"]["items"],
         )
+        stock_result = {
+            **stock_result,
+            "orders": plan_service.explain_order_targets(stock_result.get("orders", [])),
+        }
         plan_lifecycle.record_order_batch(
             plan_id, "stock", stock_result["orders"], stock_result["summary"]
         )
@@ -160,6 +184,7 @@ def generate_complete_plan(
             account=account,
             fund_transfer=fund_transfer,
             price_snapshot=price_snapshot,
+            strategy_rankings=strategy_rankings,
             cb_result=cb_result,
             stock_result=stock_result,
         )

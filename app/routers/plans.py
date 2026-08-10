@@ -134,12 +134,14 @@ def _service_response(builder, *args, **kwargs):
 
 @router.post("/{strategy}/size-orders")
 def size_orders(strategy: str):
-    """根据计划日期榜单 + 持仓 + 服务端账户事实，生成具体买卖张数/股数。"""
-    try:
-        return plan_generation.size_strategy_orders(
-            strategy,
-            size_cb_orders=order_sizing.size_cb_orders,
-            size_stock_orders=order_sizing.size_stock_orders,
-        )
-    except PlanServiceError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    """Retired: complete frozen generation is the only execution-plan entry point."""
+    if strategy not in {"cb", "stock"}:
+        raise HTTPException(status_code=400, detail={"code": "UNKNOWN_STRATEGY", "message": "未知策略。"})
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "code": "FROZEN_COMPLETE_PLAN_REQUIRED",
+            "message": "交易计划必须通过完整计划生成，不能单独按实时数据定单。",
+            "generate_endpoint": "/api/plan/generate",
+        },
+    )

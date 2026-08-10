@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from pathlib import Path
 from typing import Callable
 from zoneinfo import ZoneInfo
 
@@ -311,12 +312,13 @@ def build_generated_plan_response(
     account: dict,
     fund_transfer: dict,
     price_snapshot: dict,
+    strategy_rankings: dict,
     cb_result: dict | None,
     stock_result: dict | None,
 ) -> dict:
     targets, deltas, transfer_steps = fund_transfer_compatibility(fund_transfer)
-    cb_orders = (cb_result or {}).get("orders", [])
-    stock_orders = (stock_result or {}).get("orders", [])
+    cb_orders = explain_order_targets((cb_result or {}).get("orders", []))
+    stock_orders = explain_order_targets((stock_result or {}).get("orders", []))
     account_read_model = build_account_read_model(account)
     cb_section = {
         "data_date": plan_date,
@@ -350,6 +352,7 @@ def build_generated_plan_response(
             account=account,
             strategy_trade_dates=strategy_trade_dates,
             price_snapshot=price_snapshot,
+            strategy_rankings=strategy_rankings,
         ),
         "price_snapshot": price_snapshot,
         "market_temperature": market_temperature.to_dict(),
@@ -390,6 +393,7 @@ def build_plan_snapshot(
     account: dict | None = None,
     strategy_trade_dates: dict[str, str | None] | None = None,
     price_snapshot: dict | None = None,
+    strategy_rankings: dict | None = None,
 ) -> dict:
     """Describe the immutable facts captured for one generated plan version."""
     strategy_trade_dates = strategy_trade_dates or {}
@@ -413,6 +417,7 @@ def build_plan_snapshot(
                 strategy: {"data_date": plan_date, "trade_date": trade_date}
                 for strategy, trade_date in strategy_trade_dates.items()
             },
+            "strategy_rankings": strategy_rankings or {},
             "prices": {
                 "data_date": (price_snapshot or {}).get("data_date"),
                 "captured_at": (price_snapshot or {}).get("captured_at"),
@@ -421,27 +426,29 @@ def build_plan_snapshot(
     }
 
 
-def capture_frozen_plan_prices(plan_date: str) -> dict:
-    """Capture every price needed by a complete plan exactly once before sizing."""
-    from datasource.market import fetch_cb_prices_tencent, fetch_tencent_snapshot
+def capture_frozen_plan_prices(plan_date: str, strategy_rankings: dict[str, dict] | None = None) -> dict:
+    """Read the immutable plan-date close prices required by a complete plan."""
 
     input_end = account_input_window_end(plan_date)
     cb_positions = position_snapshot_for_plan("cb", plan_date, input_end) or {}
     stock_positions = position_snapshot_for_plan("stock", plan_date, input_end) or {}
-    cb_codes = _plan_price_codes(
-        db.get_rankings("cb", plan_date), cb_positions.get("items", []), "bond_code"
-    )
-    stock_codes = _plan_price_codes(
-        db.get_rankings("stock", plan_date), stock_positions.get("items", []), "stock_code"
-    )
+    strategy_rankings = strategy_rankings or {
+        strategy: {"items": db.get_rankings(strategy, plan_date)}
+        for strategy in ("cb", "stock")
+    }
+    cb_rankings = strategy_rankings["cb"].get("items", [])
+    stock_rankings = strategy_rankings["stock"].get("items", [])
+    cb_codes = _plan_price_codes(cb_rankings, cb_positions.get("items", []), "bond_code")
+    stock_codes = _plan_price_codes(stock_rankings, stock_positions.get("items", []), "stock_code")
 
-    cb_prices = fetch_cb_prices_tencent(cb_codes) if cb_codes else {}
-    stock_snapshot = fetch_tencent_snapshot(stock_codes) if stock_codes else pd.DataFrame()
-    stock_prices = (
-        dict(zip(stock_snapshot["stock_code"], stock_snapshot["price"]))
-        if not stock_snapshot.empty
-        else {}
-    )
+    cb_prices = _ranking_prices(cb_rankings, "bond_code", "cb_price")
+    stock_prices = _ranking_prices(stock_rankings, "stock_code", "close_price")
+    missing_cb = [code for code in cb_codes if code not in cb_prices]
+    missing_stock = [code for code in stock_codes if code not in stock_prices]
+    cb_raw_prices = _raw_snapshot_prices(plan_date, "cb", missing_cb)
+    stock_raw_prices = _raw_snapshot_prices(plan_date, "stock", missing_stock)
+    cb_prices.update(cb_raw_prices)
+    stock_prices.update(stock_raw_prices)
     missing = {
         "cb": [code for code in cb_codes if code not in cb_prices],
         "stock": [code for code in stock_codes if code not in stock_prices],
@@ -458,6 +465,11 @@ def capture_frozen_plan_prices(plan_date: str) -> dict:
     return {
         "data_date": plan_date,
         "captured_at": datetime.now().isoformat(),
+        "source": {
+            "type": "plan_date_close_snapshot",
+            "cb": {"ranking_count": len(cb_codes) - len(missing_cb), "raw_snapshot_count": len(cb_raw_prices)},
+            "stock": {"ranking_count": len(stock_codes) - len(missing_stock), "raw_snapshot_count": len(stock_raw_prices)},
+        },
         "cb": cb_prices,
         "stock": stock_prices,
     }
@@ -466,6 +478,60 @@ def capture_frozen_plan_prices(plan_date: str) -> dict:
 def _plan_price_codes(rankings: list[dict], positions: list[dict], code_key: str) -> list[str]:
     raw_codes = [row.get(code_key) for row in rankings] + [row.get("code") for row in positions]
     return list(dict.fromkeys(str(code).zfill(6) for code in raw_codes if code is not None))
+
+
+def explain_order_targets(orders: list[dict]) -> list[dict]:
+    """Expose target shortfalls without changing the frozen order itself."""
+    explained = []
+    for order in orders:
+        row = dict(order)
+        target = row.get("target_shares")
+        ideal = row.get("ideal_target_shares", target)
+        if target is not None and ideal is not None:
+            row.setdefault("ideal_target_shares", ideal)
+            row.setdefault("executable_target_shares", target)
+            row.setdefault("residual_shares", int(ideal) - int(target))
+        row.setdefault(
+            "execution_reason",
+            "mandatory_exit" if row.get("action") == "SELL" else "frozen_target",
+        )
+        explained.append(row)
+    return explained
+
+
+def _ranking_prices(rankings: list[dict], code_key: str, price_key: str) -> dict[str, float]:
+    prices = {}
+    for row in rankings:
+        price = row.get(price_key)
+        if price is None or pd.isna(price) or float(price) <= 0:
+            continue
+        prices[str(row[code_key]).zfill(6)] = float(price)
+    return prices
+
+
+def _raw_snapshot_prices(plan_date: str, strategy: str, codes: list[str]) -> dict[str, float]:
+    """Fill non-candidate holdings only from the strategy's dated raw snapshot."""
+    if not codes:
+        return {}
+    root = Path(__file__).resolve().parents[1] / "data" / "raw" / plan_date.replace("-", "")
+    if strategy == "cb":
+        path, code_key, price_key = root / "enriched_universe.csv", "bond_code", "cb_price"
+    else:
+        path, code_key, price_key = root / "stock_smallcap" / "merged.csv", "stock_code", "price"
+    if not path.exists():
+        return {}
+    try:
+        frame = pd.read_csv(path, dtype={code_key: str})
+    except (OSError, ValueError):
+        return {}
+    if code_key not in frame or price_key not in frame:
+        return {}
+    raw = {
+        str(row[code_key]).zfill(6): float(row[price_key])
+        for _, row in frame[[code_key, price_key]].dropna().iterrows()
+        if float(row[price_key]) > 0
+    }
+    return {code: raw[code] for code in codes if code in raw}
 
 
 def generation_error(stage: str, detail) -> dict:
@@ -604,6 +670,10 @@ def fund_transfer_compatibility(fund_transfer: dict) -> tuple[dict, dict, list[s
 
 def validate_strategy_inputs(plan_date: str) -> list[dict]:
     errors = []
+    required_risk_fields = {
+        "cb": ("cb_price", "premium_rate", "double_low", "score"),
+        "stock": ("market_cap", "pe_ttm", "roe_ex", "close_price"),
+    }
     for strategy, label in (("cb", "转债榜单"), ("stock", "股票榜单")):
         dates = db.get_ranking_dates(strategy)
         has_rankings = plan_date in dates
@@ -614,6 +684,24 @@ def validate_strategy_inputs(plan_date: str) -> list[dict]:
                 "date": dates[0] if dates else None,
                 "expected": plan_date,
                 "message": f"缺少 {plan_date} 的{label}",
+            })
+            continue
+        rankings = db.get_rankings(strategy, plan_date)
+        invalid = []
+        for row in rankings:
+            missing = [
+                field for field in required_risk_fields[strategy]
+                if row.get(field) is None or pd.isna(row.get(field))
+            ]
+            if missing:
+                invalid.append({"code": row.get("bond_code") or row.get("stock_code"), "fields": missing})
+        if invalid:
+            errors.append({
+                "input": f"{strategy}.risk_fields",
+                "date": plan_date,
+                "expected": "完整且有效的策略风险字段",
+                "message": f"{label}存在缺失的风险字段，无法生成冻结交易计划。",
+                "invalid": invalid[:20],
             })
     return errors
 

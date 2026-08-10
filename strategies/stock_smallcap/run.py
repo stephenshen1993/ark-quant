@@ -455,7 +455,7 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
     try:
         snapshot_raw_data(
             data_date,
-            {"universe_snapshot": merged, "filtered": filtered, "smallcap_pool": ranked, "rebalance_plan": rebalance},
+            {"universe_snapshot": merged, "merged": merged, "filtered": filtered, "smallcap_pool": ranked, "rebalance_plan": rebalance},
             config,
             subdir="stock_smallcap",
         )

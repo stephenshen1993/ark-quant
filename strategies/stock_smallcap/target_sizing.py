@@ -30,9 +30,20 @@ def _normalise(frame: pd.DataFrame, code_column: str) -> pd.DataFrame:
     return result
 
 
-def _order_row(action, code, names, prices, current, target):
+def _order_row(
+    action,
+    code,
+    names,
+    prices,
+    current,
+    target,
+    *,
+    ideal_target=None,
+    execution_reason="frozen_target",
+):
     delta = target - current
     amount = round(abs(delta) * prices[code], 2)
+    ideal_target = target if ideal_target is None else ideal_target
     return {
         "action": action,
         "stock_code": code,
@@ -40,6 +51,10 @@ def _order_row(action, code, names, prices, current, target):
         "price": round(prices[code], 3),
         "current_shares": int(current),
         "target_shares": int(target),
+        "ideal_target_shares": int(ideal_target),
+        "executable_target_shares": int(target),
+        "residual_shares": int(ideal_target - target),
+        "execution_reason": execution_reason,
         "delta_shares": int(delta),
         "amount": amount,
         "est_cost": 0.0,
@@ -147,7 +162,13 @@ def size_target_state(
     if not held_frame.empty:
         names.update(dict(zip(held_frame["stock_code"], held_frame.get("stock_name", pd.Series(dtype=str)))))
     for code in sorted(set(held) - set(target_codes)):
-        rows.append(_order_row("SELL", code, names, prices, int(held[code]), 0))
+        rows.append(
+            _order_row(
+                "SELL", code, names, prices, int(held[code]), 0,
+                ideal_target=0,
+                execution_reason="mandatory_exit",
+            )
+        )
     for code in target_codes:
         current, target_shares = int(held.get(code, 0)), int(active_targets[code])
         action = "HOLD"
@@ -155,7 +176,18 @@ def size_target_state(
             action = "BUY" if current == 0 else "ADD"
         elif target_shares < current:
             action = "TRIM"
-        rows.append(_order_row(action, code, names, prices, current, target_shares))
+        reason = "frozen_target"
+        if code in required_codes:
+            reason = "mandatory_risk_reduction"
+        elif target_shares != desired[code]:
+            reason = "ordinary_order_below_threshold"
+        rows.append(
+            _order_row(
+                action, code, names, prices, current, target_shares,
+                ideal_target=desired[code],
+                execution_reason=reason,
+            )
+        )
 
     sheet = pd.DataFrame(rows)
     summary = {

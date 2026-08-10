@@ -141,6 +141,10 @@ def _row(action, code, name_map, prices, cur, tgt):
         "price": round(prices[code], 3),
         "current_shares": int(cur),
         "target_shares": int(tgt),
+        "ideal_target_shares": int(tgt),
+        "executable_target_shares": int(tgt),
+        "residual_shares": 0,
+        "execution_reason": "mandatory_exit" if action == "SELL" else "frozen_target",
         "delta_shares": int(delta),
         "amount": round(abs(delta) * prices[code], 2),
     }

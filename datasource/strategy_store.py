@@ -67,6 +67,7 @@ def _stock_ranking_rows(run_id: int, df: pd.DataFrame) -> list[tuple]:
             ),
             getattr(r, "pe_ttm", None),
             getattr(r, "roe_pct", None),
+            getattr(r, "price", getattr(r, "close_price", None)),
         )
         for i, r in enumerate(df.itertuples(index=False), start=1)
     ]
@@ -96,8 +97,8 @@ def _insert_ranking_rows(
         rows = _stock_ranking_rows(run_id, df)
         conn.executemany(
             """INSERT INTO stock_rankings
-               (run_id,rank,stock_code,stock_name,market_cap,pe_ttm,roe_ex)
-               VALUES (?,?,?,?,?,?,?)""",
+               (run_id,rank,stock_code,stock_name,market_cap,pe_ttm,roe_ex,close_price)
+               VALUES (?,?,?,?,?,?,?,?)""",
             rows,
         )
     return len(rows)
