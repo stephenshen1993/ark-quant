@@ -12,6 +12,7 @@ def evaluate(plan: dict, realtime: dict) -> dict:
     quote_sets = realtime.get("quotes") or {}
     available_cash = dict(realtime.get("available_cash") or {})
     decisions = []
+    orders = []
     for strategy, section, code_key in (
         ("stock", plan.get("stock") or {}, "stock_code"),
         ("cb", plan.get("cb") or {}, "bond_code"),
@@ -21,13 +22,22 @@ def evaluate(plan: dict, realtime: dict) -> dict:
             if action not in {"BUY", "ADD", "SELL", "TRIM"}:
                 continue
             code = str(order.get(code_key) or "").zfill(6)
-            quote = (quote_sets.get(strategy) or {}).get(code)
-            decision = _decision(strategy, action, order, quote, available_cash)
-            if decision["decision"] == "execute" and action in BUY_ACTIONS:
-                available_cash[strategy] = round(
-                    float(available_cash.get(strategy, 0)) - decision["execution_amount"], 2
-                )
-            decisions.append({"strategy": strategy, "code": code, **decision})
+            orders.append((strategy, action, order, code))
+    for strategy, action, order, code in sorted(
+        orders,
+        key=lambda item: (item[0], 0 if item[1] in {"SELL", "TRIM"} else 1),
+    ):
+        quote = (quote_sets.get(strategy) or {}).get(code)
+        decision = _decision(strategy, action, order, quote, available_cash)
+        if decision["decision"] == "execute" and action in {"SELL", "TRIM"}:
+            available_cash[strategy] = round(
+                float(available_cash.get(strategy, 0)) + decision["execution_amount"], 2
+            )
+        if decision["decision"] == "execute" and action in BUY_ACTIONS:
+            available_cash[strategy] = round(
+                float(available_cash.get(strategy, 0)) - decision["execution_amount"], 2
+            )
+        decisions.append({"strategy": strategy, "code": code, **decision})
     return {
         "recalculated": False,
         "replacement_orders": [],
