@@ -70,28 +70,40 @@ class TargetStateSizingTests(unittest.TestCase):
         self.assertEqual(sheet["target_shares"].sum(), 2_100)
 
     def test_negative_budget_releases_cash_by_trimming_existing_positions(self):
-        target = rankings(3)
+        target = rankings()
         held = positions([
-            {"stock_code": "600000", "stock_name": "股票0", "shares": 1_000},
-            {"stock_code": "600001", "stock_name": "股票1", "shares": 1_000},
-            {"stock_code": "600002", "stock_name": "股票2", "shares": 1_000},
+            {"stock_code": row.stock_code, "stock_name": row.stock_name, "shares": 1_000}
+            for row in target.itertuples()
         ])
 
         sheet, summary = size_target_state(target, held, -9_000, prices(target))
 
         self.assertGreaterEqual(summary["cash_left"], 0)
-        self.assertLess(sheet["target_shares"].sum(), 3_000)
+        self.assertLess(sheet["target_shares"].sum(), 20_000)
         self.assertTrue((sheet["delta_shares"] < 0).any())
 
-    def test_sizes_the_strategy_target_set_without_forcing_twenty_names(self):
+    def test_ordinary_order_threshold_never_removes_required_cash_release(self):
+        target = rankings()
+        held = positions(
+            [{"stock_code": target.iloc[0]["stock_code"], "stock_name": "股票0", "shares": 2_100}]
+            + [
+                {"stock_code": row.stock_code, "stock_name": row.stock_name, "shares": 2_000}
+                for row in target.iloc[2:].itertuples()
+            ]
+        )
+
+        sheet, summary = size_target_state(target, held, 9_500, prices(target, price=5.0))
+
+        self.assertGreaterEqual(summary["cash_left"], 0)
+        required_trim = sheet.loc[sheet["stock_code"] == target.iloc[0]["stock_code"]].iloc[0]
+        self.assertEqual(required_trim["delta_shares"], -100)
+        self.assertEqual(required_trim["ideal_target_shares"], required_trim["executable_target_shares"])
+
+    def test_rejects_a_target_set_that_is_not_top_twenty(self):
         target = rankings(3)
 
-        sheet, summary = size_target_state(target, positions(), 30_000, prices(target))
-
-        self.assertEqual(summary["n_target"], 3)
-        self.assertEqual(set(sheet["stock_code"]), set(target["stock_code"]))
-        self.assertTrue((sheet["target_shares"] % 100 == 0).all())
-        self.assertGreaterEqual(summary["cash_left"], 0)
+        with self.assertRaisesRegex(SizingError, "CAPACITY_CONFLICT"):
+            size_target_state(target, positions(), 30_000, prices(target))
 
     def test_cli_adapter_uses_the_shared_target_state_result(self):
         target = rankings()

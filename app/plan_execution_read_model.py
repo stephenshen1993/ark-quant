@@ -245,6 +245,7 @@ def _account_trading_plans(
             if order["action"] in BUY_ACTIONS
         ))
         summary = section.get("summary") or {}
+        estimated_fees = _money(summary.get("estimated_fees"))
         starting_available = summary.get("starting_cash")
         if starting_available is None:
             starting_available = account.get("available_cash")
@@ -255,6 +256,7 @@ def _account_trading_plans(
             - transfer_out
             + expected_sell
             - expected_buy
+            - estimated_fees
         )
         state, available_on = _funding_state(
             incoming_availability,
@@ -317,6 +319,7 @@ def _account_trading_plans(
                     1 for order in orders if order["action"] in BUY_ACTIONS
                 ),
                 "buy_estimated_amount": expected_buy,
+                "estimated_fees": estimated_fees,
             },
             "cash": {
                 "starting_available": starting_available,
@@ -324,6 +327,7 @@ def _account_trading_plans(
                 "transfer_out": transfer_out,
                 "expected_sell": expected_sell,
                 "expected_buy": expected_buy,
+                "estimated_fees": estimated_fees,
                 "expected_ending": expected_ending,
             },
             "phases": phases,
@@ -444,8 +448,18 @@ def _normalize_order(
     }
 
 
-def _order_execution_key(order: dict) -> int:
-    return int(order.get("execution_priority", ACTION_EXECUTION_ORDER[order["action"]]))
+def _order_execution_key(order: dict) -> tuple[int, float, int, str]:
+    """Order the executable list by cash dependency, then market impact.
+
+    Sells must be visible before buys because their proceeds fund the latter.
+    Within either phase, execute the larger estimated amount first to reduce
+    the gap between the frozen close-based plan and the next open.
+    """
+    action = order["action"]
+    phase = 0 if action in SELL_ACTIONS else 1
+    amount = _money(order.get("estimated_amount"))
+    action_order = int(order.get("execution_priority", ACTION_EXECUTION_ORDER[action]))
+    return (phase, -amount, action_order, str(order.get("code") or ""))
 
 
 def _quantity_or_none(value: object) -> int | float | None:

@@ -1073,9 +1073,8 @@
     font-size: 13px;
   }
   .plan-trade-code-col { width: 82px; }
-  .plan-trade-name-col { width: 166px; }
-  .plan-trade-action-col { width: 56px; }
-  .plan-trade-side-col { width: 54px; }
+  .plan-trade-name-col { width: 184px; }
+  .plan-trade-action-col { width: 74px; }
   .plan-trade-quantity-col { width: 96px; }
   .plan-trade-price-col { width: 92px; }
   .plan-trade-amount-col { width: 136px; }
@@ -1089,11 +1088,9 @@
     white-space: nowrap;
   }
   .plan-trade-table th:nth-child(3),
-  .plan-trade-table td:nth-child(3),
-  .plan-trade-table th:nth-child(4),
-  .plan-trade-table td:nth-child(4) { text-align: center; }
-  .plan-trade-table th:nth-child(n + 5),
-  .plan-trade-table td:nth-child(n + 5) { text-align: right; }
+  .plan-trade-table td:nth-child(3) { text-align: center; }
+  .plan-trade-table th:nth-child(n + 4),
+  .plan-trade-table td:nth-child(n + 4) { text-align: right; }
   .plan-trade-row td {
     padding: 6px 10px;
     border-bottom: 1px solid var(--ark-faint);
@@ -1139,14 +1136,6 @@
   .plan-trade-row.is-action-group-start.is-action-trim td { border-top-color: color-mix(in srgb, var(--ark-warn) 62%, white); }
   .plan-trade-row.is-action-group-start.is-action-buy td { border-top-color: color-mix(in srgb, var(--ark-accent) 62%, white); }
   .plan-trade-row.is-action-group-start.is-action-add td { border-top-color: color-mix(in srgb, var(--ark-info) 62%, white); }
-  .plan-trade-side {
-    color: var(--ark-text);
-    font-weight: 800;
-    text-align: center;
-    white-space: nowrap;
-  }
-  .plan-trade-side.is-sell { color: #7d5a14; }
-  .plan-trade-side.is-buy { color: var(--ark-accent-deep); }
   .plan-trade-position,
   .plan-trade-price,
   .plan-trade-amount {
@@ -3079,7 +3068,6 @@
                           <col class="plan-trade-code-col">
                           <col class="plan-trade-name-col">
                           <col class="plan-trade-action-col">
-                          <col class="plan-trade-side-col">
                           <col class="plan-trade-quantity-col">
                           <col class="plan-trade-price-col">
                           <col class="plan-trade-amount-col">
@@ -3088,11 +3076,10 @@
                           <tr>
                             <th>证券代码</th>
                             <th>证券名称</th>
-                            <th>仓位</th>
-                            <th>买卖</th>
-                            <th>交易数量</th>
+                            <th>调仓动作</th>
+                            <th>委托数量</th>
                             <th>参考价</th>
-                            <th>估算金额</th>
+                            <th>预计金额</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -3102,18 +3089,12 @@
                               <td class="plan-trade-name" data-label="证券名称" x-text="order.name"></td>
                               <td
                                 class="plan-trade-action"
-                                data-label="仓位">
+                                data-label="调仓动作">
                                 <span class="plan-trade-action-badge" :class="tradeActionToneClass(order.action)" x-text="positionActionText(order.action)"></span>
                               </td>
                               <td
-                                class="plan-trade-side"
-                                :class="tradeSideClass(order.action)"
-                                data-label="买卖"
-                                x-text="tradeSideText(order.action)">
-                              </td>
-                              <td
                                 class="plan-trade-position"
-                                data-label="交易数量"
+                                data-label="委托数量"
                                 :title="positionRouteText(order)">
                                 <div
                                   class="plan-trade-quantity"
@@ -3123,7 +3104,7 @@
                               <td class="plan-trade-price" data-label="参考价">
                                 <span x-text="order.reference_price == null ? '-' : Number(order.reference_price).toFixed(3)"></span>
                               </td>
-                              <td class="plan-trade-amount" data-label="估算金额" x-text="fmtMoney(order.estimated_amount)"></td>
+                              <td class="plan-trade-amount" data-label="预计金额" x-text="fmtMoney(order.estimated_amount)"></td>
                             </tr>
                           </template>
                         </tbody>
@@ -5575,6 +5556,7 @@
       },
       accountTradeOrders(plan) {
         const actionRank = { SELL: 0, TRIM: 1, BUY: 2, ADD: 3 }
+        const sideRank = { SELL: 0, TRIM: 0, BUY: 1, ADD: 1 }
         const orders = []
         const phases = plan?.phases || []
         phases.forEach(phase => {
@@ -5585,13 +5567,19 @@
           })
         })
         return orders.sort((left, right) => {
+          const leftSide = sideRank[left?.action]
+          const rightSide = sideRank[right?.action]
+          if (leftSide !== rightSide) return leftSide - rightSide
+          const amountDelta = Math.abs(Number(right?.estimated_amount || 0)) - Math.abs(Number(left?.estimated_amount || 0))
+          if (amountDelta !== 0) return amountDelta
           const leftRank = Number.isFinite(Number(left?.execution_priority))
             ? Number(left.execution_priority)
             : actionRank[left?.action]
           const rightRank = Number.isFinite(Number(right?.execution_priority))
             ? Number(right.execution_priority)
             : actionRank[right?.action]
-          return leftRank - rightRank
+          if (leftRank !== rightRank) return leftRank - rightRank
+          return String(left?.code || '').localeCompare(String(right?.code || ''))
         })
       },
       accountTradeGroups(plan) {
@@ -5641,16 +5629,6 @@
           ? ''
           : `持仓变化：${this.formatQuantity(order.current_quantity)} → ${this.formatQuantity(order.target_quantity)}`
         return [action ? `仓位语义：${action}` : '', route].filter(Boolean).join('；')
-      },
-      tradeSideText(action) {
-        if (['SELL', 'TRIM'].includes(action)) return '卖出'
-        if (['BUY', 'ADD'].includes(action)) return '买入'
-        return action || ''
-      },
-      tradeSideClass(action) {
-        if (['SELL', 'TRIM'].includes(action)) return 'is-sell'
-        if (['BUY', 'ADD'].includes(action)) return 'is-buy'
-        return ''
       },
       tradeActionToneClass(action) {
         return {

@@ -26,6 +26,7 @@ def size_cb_orders(
 ) -> dict:
     from datasource.market import fetch_cb_prices_tencent
     from strategies.cb_rotation.size_orders import size_rebalance
+    from strategies.discrete_target_sizing import DiscreteSizingError, TARGET_COUNT
 
     plan_date = plan_date or plan_service.current_plan_date()
     rankings = rankings if rankings is not None else db.get_rankings("cb", plan_date)
@@ -34,6 +35,18 @@ def size_cb_orders(
             400,
             {"code": "NO_RANKINGS", "message": f"没有 {plan_date} 的转债榜单，请先运行策略。"},
         )
+    qualified_count = len({row["bond_code"] for row in rankings})
+    if qualified_count < TARGET_COUNT:
+        raise PlanServiceError(
+            409,
+            {
+                "code": "INSUFFICIENT_CB_CANDIDATES",
+                "message": "可转债合格候选不足 20 只，不能生成可转债交易计划。",
+                "qualified_count": qualified_count,
+                "required_count": TARGET_COUNT,
+            },
+        )
+    rankings = sorted(rankings, key=lambda row: (row.get("rank", 10**9), row["bond_code"]))[:TARGET_COUNT]
 
     input_end = plan_service.account_input_window_end(plan_date)
     position_snapshot = plan_service.position_snapshot_for_plan("cb", plan_date, input_end)
@@ -77,6 +90,11 @@ def size_cb_orders(
 
     try:
         sheet, summary = size_rebalance(target, positions, cash, prices)
+    except DiscreteSizingError as exc:
+        raise PlanServiceError(
+            409,
+            {"code": exc.code, "message": exc.message, **exc.details},
+        ) from exc
     except SystemExit as exc:
         raise PlanServiceError(
             400,
@@ -93,7 +111,10 @@ def size_cb_orders(
     orders = sheet.to_dict("records")
     return {
         "orders": orders,
-        "summary": plan_service.summarize_order_cash(account_cash, cash - account_cash, orders),
+        "summary": plan_service.summarize_order_cash(
+            account_cash, cash - account_cash, orders,
+            estimated_fees=summary.get("estimated_fees", 0.0),
+        ),
     }
 
 
@@ -129,6 +150,7 @@ def size_stock_orders(
                 "required_count": TARGET_COUNT,
             },
         )
+    rankings = sorted(rankings, key=lambda row: (row.get("rank", 10**9), row["stock_code"]))[:TARGET_COUNT]
 
     input_end = plan_service.account_input_window_end(plan_date)
     position_snapshot = plan_service.position_snapshot_for_plan("stock", plan_date, input_end)
@@ -222,7 +244,10 @@ def size_stock_orders(
     orders = sheet.to_dict("records")
     return {
         "orders": orders,
-        "summary": plan_service.summarize_order_cash(account_cash, cash - account_cash, orders),
+        "summary": plan_service.summarize_order_cash(
+            account_cash, cash - account_cash, orders,
+            estimated_fees=summary.get("estimated_fees", 0.0),
+        ),
     }
 
 

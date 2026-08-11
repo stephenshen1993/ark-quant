@@ -380,7 +380,7 @@ def _a_internal_plan(
     if qualified_cb_count is None:
         return {
             "status": "paused",
-            "pause_reason": "缺少同日完整的可转债榜单，不能确认可投资性安全阀。",
+            "pause_reason": "缺少同日完整的可转债榜单，不能确认账户内交易容量。",
             "a_current": _money(a_current),
             "a_exec": _money(a_exec),
             "q_out": _money(q_out),
@@ -389,26 +389,36 @@ def _a_internal_plan(
             "final_targets": {},
             "current": current,
             "deltas": {},
-            "safety_valve_cash": None,
+            "capacity_conflict": None,
             "immediate_actions": [],
         }
 
     if not isinstance(qualified_cb_count, int) or qualified_cb_count < 0:
         raise PlanValidationError("INVALID_CB_CANDIDATE_COUNT", "可转债合格候选数必须是非负整数")
-    slot_budget = base_targets["bond"] / 20.0
-    if qualified_cb_lot_costs is None:
-        executable_count = min(qualified_cb_count, 20)
-    else:
-        lot_costs = [_nonnegative(cost, "qualified_cb_lot_cost") for cost in qualified_cb_lot_costs]
-        affordable_count = sum(1 for cost in lot_costs if cost <= slot_budget + 0.01)
-        executable_count = min(qualified_cb_count, affordable_count, 20)
-    executable_bond_target = base_targets["bond"] * executable_count / 20.0
-    safety_valve_cash = base_targets["bond"] - executable_bond_target
-    final_targets = {
-        "stock": base_targets["stock"],
-        "bond": executable_bond_target,
-        "cash_pool": base_targets["cash_pool"] + safety_valve_cash,
-    }
+    if qualified_cb_count < 20:
+        return {
+            "status": "capacity_conflict",
+            "pause_reason": "可转债合格候选不足 20 只，暂停普通可转债交易计划；不得以安全阀重分配。",
+            "a_current": _money(a_current),
+            "a_exec": _money(a_exec),
+            "q_out": _money(q_out),
+            "weights": weights,
+            "base_targets": _money_map(base_targets),
+            "final_targets": _money_map(base_targets),
+            "current": current,
+            "deltas": _money_map({name: base_targets[name] - current[name] for name in base_targets}),
+            "planned_deltas": {"stock": 0.0, "bond": 0.0, "cash_pool": 0.0},
+            "deferred_gaps": _money_map({name: base_targets[name] - current[name] for name in base_targets}),
+            "qualified_cb_count": qualified_cb_count,
+            "capacity_conflict": "INSUFFICIENT_CB_CANDIDATES",
+            "immediate_actions": [],
+            "actions": [],
+        }
+
+    # Minimum-lot affordability is a property of the frozen account plan, not
+    # a reason for the transfer layer to turn a bond allocation into cash.
+    _ = qualified_cb_lot_costs
+    final_targets = base_targets.copy()
     deltas = {name: final_targets[name] - current[name] for name in final_targets}
     source_outflows = {
         name: -amount for name, amount in deltas.items()
@@ -455,9 +465,8 @@ def _a_internal_plan(
             name: deltas[name] - planned_deltas[name] for name in final_targets
         }),
         "qualified_cb_count": qualified_cb_count,
-        "executable_cb_count": executable_count,
-        "cb_slot_budget": _money(slot_budget),
-        "safety_valve_cash": _money(safety_valve_cash),
+        "executable_cb_count": qualified_cb_count,
+        "capacity_conflict": None,
         "actions": actions,
         "immediate_actions": [action for action in actions if action["immediate"]],
     }

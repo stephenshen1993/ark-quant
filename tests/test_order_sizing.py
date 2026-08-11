@@ -18,15 +18,18 @@ class TestOrderSizing(unittest.TestCase):
         db.insert_account_context("2026-06-29", 45.0)
         db.insert_account_value_snapshot("cb", "2026-06-29", 227183, 110)
         self.cb_run_id = db.insert_strategy_run("cb", date(2026, 6, 29))
+        self.cb_codes = ["113062", *[f"{113100 + index:06d}" for index in range(19)]]
+        self.cb_prices = {code: 126.80 for code in self.cb_codes}
         db.insert_cb_rankings(self.cb_run_id, pd.DataFrame([
             {
-                "bond_code": "113062",
-                "bond_name": "常银转债",
+                "bond_code": code,
+                "bond_name": f"转债{rank}",
                 "cb_price": 126.80,
                 "premium_rate": 10.0,
                 "double_low": 136.8,
-                "score": 0.9,
+                "score": 1 - rank / 100,
             }
+            for rank, code in enumerate(self.cb_codes, start=1)
         ]))
         db.insert_positions("cb", "2026-06-29", [{
             "code": "113062",
@@ -41,9 +44,9 @@ class TestOrderSizing(unittest.TestCase):
     def test_sizes_cb_orders_without_http_route(self):
         with patch(
             "datasource.market.fetch_cb_prices_tencent",
-            return_value={"113062": 126.80},
+            return_value=self.cb_prices,
         ):
-            result = order_sizing.size_cb_orders(10000, plan_date="2026-06-29")
+            result = order_sizing.size_cb_orders(30_000, plan_date="2026-06-29")
 
         self.assertGreater(len(result["orders"]), 0)
         self.assertEqual(result["summary"]["starting_cash"], 110)
@@ -56,9 +59,9 @@ class TestOrderSizing(unittest.TestCase):
             side_effect=AssertionError("complete plan must not refetch prices while sizing"),
         ):
             result = order_sizing.size_cb_orders(
-                10000,
+                30_000,
                 plan_date="2026-06-29",
-                prices={"113062": 126.80},
+                prices=self.cb_prices,
             )
 
         self.assertGreater(len(result["orders"]), 0)

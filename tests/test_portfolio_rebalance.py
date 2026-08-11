@@ -44,17 +44,15 @@ class TestFundTransferTargets(unittest.TestCase):
 
         self.assertEqual(inflows, {"B": 1_500.0})
 
-    def test_convertible_bond_safety_valve_moves_uninvestable_amount_to_cash(self):
+    def test_convertible_bond_candidate_shortage_is_a_capacity_conflict(self):
         result = build_fund_transfer_plan(self.account, self.context, qualified_cb_count=10)
 
-        self.assertEqual(result["a_internal"]["final_targets"], {
-            "stock": 45_000.0,
-            "bond": 15_000.0,
-            "cash_pool": 25_000.0,
-        })
-        self.assertEqual(result["a_internal"]["safety_valve_cash"], 15_000.0)
+        self.assertEqual(result["a_internal"]["status"], "capacity_conflict")
+        self.assertEqual(result["a_internal"]["capacity_conflict"], "INSUFFICIENT_CB_CANDIDATES")
+        self.assertEqual(result["a_internal"]["immediate_actions"], [])
+        self.assertEqual(result["a_internal"]["final_targets"]["cash_pool"], 10_000.0)
 
-    def test_convertible_bond_safety_valve_uses_lot_affordability_not_only_count(self):
+    def test_transfer_layer_does_not_treat_lot_costs_as_a_cash_safety_valve(self):
         result = build_fund_transfer_plan(
             self.account,
             self.context,
@@ -62,13 +60,12 @@ class TestFundTransferTargets(unittest.TestCase):
             qualified_cb_lot_costs=[1_200, 1_300, 1_400] + [9_000] * 17,
         )
 
-        self.assertEqual(result["a_internal"]["executable_cb_count"], 3)
+        self.assertEqual(result["a_internal"]["executable_cb_count"], 20)
         self.assertEqual(result["a_internal"]["final_targets"], {
             "stock": 45_000.0,
-            "bond": 4_500.0,
-            "cash_pool": 35_500.0,
+            "bond": 30_000.0,
+            "cash_pool": 10_000.0,
         })
-        self.assertEqual(result["a_internal"]["safety_valve_cash"], 25_500.0)
 
     def test_missing_same_day_convertible_bond_universe_pauses_a_internal_cash_outflows(self):
         result = build_fund_transfer_plan(self.account, self.context, qualified_cb_count=None)

@@ -184,7 +184,7 @@ class TestPlanExecutionReadModel(unittest.TestCase):
 
         self.assertIsNone(result["funding_plan"])
 
-    def test_account_orders_are_sorted_by_execution_priority(self):
+    def test_account_orders_are_sorted_by_phase_then_cash_impact(self):
         result = build_execution_read_model(
             plan_date="2026-08-05",
             account_read_model=self.account_read_model,
@@ -242,11 +242,11 @@ class TestPlanExecutionReadModel(unittest.TestCase):
         orders = [order for phase in plan["phases"] for order in phase["orders"]]
         self.assertEqual(
             [order["action"] for order in orders],
-            ["SELL", "TRIM", "BUY", "ADD"],
+            ["TRIM", "SELL", "ADD", "BUY"],
         )
         self.assertEqual(
             [order["execution_priority"] for order in orders],
-            [0, 1, 2, 3],
+            [1, 0, 3, 2],
         )
 
     def test_builds_account_plans_in_funding_prerequisite_order(self):
@@ -373,6 +373,7 @@ class TestPlanExecutionReadModel(unittest.TestCase):
                 "transfer_out": 200.0,
                 "expected_sell": 500.0,
                 "expected_buy": 100.0,
+                "estimated_fees": 0.0,
                 "expected_ending": 700.0,
             },
         )
@@ -384,6 +385,7 @@ class TestPlanExecutionReadModel(unittest.TestCase):
                 "transfer_out": 0.0,
                 "expected_sell": 500.0,
                 "expected_buy": 900.0,
+                "estimated_fees": 0.0,
                 "expected_ending": 1200.0,
             },
         )
@@ -394,6 +396,7 @@ class TestPlanExecutionReadModel(unittest.TestCase):
                 "sell_estimated_amount": 500.0,
                 "buy_count": 1,
                 "buy_estimated_amount": 900.0,
+                "estimated_fees": 0.0,
             },
         )
         self.assertEqual(

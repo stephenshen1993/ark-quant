@@ -790,17 +790,27 @@ def strategy_cash_after_transfer(strategy: str, account: dict, deltas: dict) -> 
     raise ValueError(f"Unknown strategy: {strategy}")
 
 
-def summarize_order_cash(base_cash: float, transfer_delta: float, orders: list[dict]) -> dict:
+def summarize_order_cash(
+    base_cash: float,
+    transfer_delta: float,
+    orders: list[dict],
+    *,
+    estimated_fees: float = 0.0,
+) -> dict:
     sells = sum(order.get("amount", 0) for order in orders if shares(order) < 0)
     buys = sum(order.get("amount", 0) for order in orders if shares(order) > 0)
     order_delta = round(sells - buys, 2)
     starting_cash = round(base_cash or 0, 2)
     transfer_delta = round(transfer_delta or 0, 2)
+    fees = round(max(0.0, estimated_fees or 0), 2)
+    cash_left_before_fees = round(starting_cash + transfer_delta + order_delta, 2)
     return {
         "starting_cash": starting_cash,
         "transfer_delta": transfer_delta,
         "order_delta": order_delta,
-        "cash_left": round(starting_cash + transfer_delta + order_delta, 2),
+        "estimated_fees": fees,
+        "cash_left_before_fees": cash_left_before_fees,
+        "cash_left": round(cash_left_before_fees - fees, 2),
     }
 
 

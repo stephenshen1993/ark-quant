@@ -357,31 +357,30 @@ class ConvertibleBondRotationTests(unittest.TestCase):
         from strategies.cb_rotation import size_orders
 
         target = pd.DataFrame(
-            [
-                {"bond_code": "100001", "bond_name": "甲转债"},
-                {"bond_code": "100002", "bond_name": "乙转债"},
-            ]
+            [{"bond_code": f"{100001 + index:06d}", "bond_name": f"转债{index}"} for index in range(20)]
         )
         positions = pd.DataFrame(
             [
                 {"bond_code": "100002", "bond_name": "乙转债", "shares": 50},
-                {"bond_code": "100003", "bond_name": "丙转债", "shares": 100},
+                {"bond_code": "199999", "bond_name": "丙转债", "shares": 100},
             ]
         )
-        prices = {"100001": 100.0, "100002": 200.0, "100003": 50.0}
+        prices = {code: 50.0 for code in target["bond_code"]}
+        prices.update({"100001": 100.0, "100002": 200.0, "199999": 50.0})
         sheet, summary = size_orders.size_rebalance(target, positions, cash=5000.0, prices=prices)
 
         actions = dict(zip(sheet["bond_code"], sheet["action"]))
         deltas = dict(zip(sheet["bond_code"], sheet["delta_shares"]))
-        self.assertEqual(actions["100003"], "SELL")
-        self.assertEqual(deltas["100003"], -100)  # 不在目标里，全清
+        self.assertEqual(actions["199999"], "SELL")
+        self.assertEqual(deltas["199999"], -100)  # 不在目标里，全清
         self.assertEqual(actions["100001"], "BUY")
         self.assertEqual(summary["total_value"], 20000.0)  # 持仓15000 + 现金5000
         self.assertGreaterEqual(summary["cash_left"], 0)  # 永不超支
         self.assertTrue((sheet["target_shares"] % size_orders.LOT == 0).all())  # 张数都是10的整数倍
 
-    def test_size_rebalance_keeps_missing_cb_slots_in_funds_account(self) -> None:
+    def test_size_rebalance_rejects_missing_cb_slots(self) -> None:
         from strategies.cb_rotation import size_orders
+        from strategies.discrete_target_sizing import DiscreteSizingError
 
         target = pd.DataFrame([
             {"bond_code": "100001", "bond_name": "甲转债"},
@@ -389,17 +388,13 @@ class ConvertibleBondRotationTests(unittest.TestCase):
         ])
         positions = pd.DataFrame(columns=["bond_code", "bond_name", "shares"])
 
-        sheet, summary = size_orders.size_rebalance(
-            target,
-            positions,
-            cash=20_000.0,
-            prices={"100001": 100.0, "100002": 100.0},
-        )
-
-        self.assertEqual(summary["target_slot_count"], 20)
-        self.assertEqual(summary["per_target"], 1_000.0)
-        self.assertEqual(summary["uninvestable_cash"], 18_000.0)
-        self.assertTrue((sheet["target_shares"] == 10).all())
+        with self.assertRaisesRegex(DiscreteSizingError, "CAPACITY_CONFLICT"):
+            size_orders.size_rebalance(
+                target,
+                positions,
+                cash=20_000.0,
+                prices={"100001": 100.0, "100002": 100.0},
+            )
 
     def test_snapshot_raw_data_writes_frames_and_manifest(self) -> None:
         import json

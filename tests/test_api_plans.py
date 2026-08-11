@@ -13,6 +13,7 @@ from datasource.youzhiyouxing import DATA_URL
 
 class TestPlansApi(unittest.TestCase):
     def setUp(self):
+        self.cb_codes = ["113062", *[f"{113100 + index:06d}" for index in range(19)]]
         self.stock_quotes = patch(
             "datasource.market.fetch_tencent_snapshot",
             return_value=pd.DataFrame([{
@@ -24,7 +25,8 @@ class TestPlansApi(unittest.TestCase):
         self.cb_quotes = patch(
             "datasource.market.fetch_cb_quotes_tencent",
             return_value={
-                "113062": {"name": "常银转债", "price": (227183 - 110) / 10},
+                code: {"name": f"转债{rank}", "price": (227183 - 110) / 10}
+                for rank, code in enumerate(self.cb_codes, start=1)
             },
         )
         self.stock_quotes_mock = self.stock_quotes.start()
@@ -55,9 +57,10 @@ class TestPlansApi(unittest.TestCase):
         db.insert_account_value_snapshot("overseas", "2026-06-29", 93030)
         self.cb_run_id = db.insert_strategy_run("cb", date(2026, 6, 29))
         db.insert_cb_rankings(self.cb_run_id, pd.DataFrame([{
-            "bond_code": "113062", "bond_name": "常银转债",
-            "cb_price": 126.80, "premium_rate": 10.0, "double_low": 136.8, "score": 0.9,
-        }]))
+            "bond_code": code, "bond_name": f"转债{rank}",
+            "cb_price": 126.80, "premium_rate": 10.0, "double_low": 136.8,
+            "score": 1 - rank / 100,
+        } for rank, code in enumerate(self.cb_codes, start=1)]))
         db.insert_cb_orders(self.cb_run_id, pd.DataFrame([{
             "action": "BUY", "bond_code": "123150", "bond_name": "九强转债",
             "price": 128.67, "delta_shares": 90, "amount": 11580.3,
@@ -97,11 +100,11 @@ class TestPlansApi(unittest.TestCase):
         self.assertGreater(len(data["stock"]["orders"]), 0)
         self.assertEqual(
             set(data["cb"]["summary"]),
-            {"starting_cash", "transfer_delta", "order_delta", "cash_left"},
+            {"starting_cash", "transfer_delta", "order_delta", "estimated_fees", "cash_left_before_fees", "cash_left"},
         )
         self.assertEqual(
             set(data["stock"]["summary"]),
-            {"starting_cash", "transfer_delta", "order_delta", "cash_left"},
+            {"starting_cash", "transfer_delta", "order_delta", "estimated_fees", "cash_left_before_fees", "cash_left"},
         )
         self.assertLess(data["cb"]["summary"]["cash_left"], 110)
         self.assertGreater(data["stock"]["summary"]["cash_left"], 274)
@@ -142,7 +145,7 @@ class TestPlansApi(unittest.TestCase):
         )
         self.assertEqual(
             account_plans[1]["cash"]["expected_ending"],
-            -230196.37,
+            -69514.72,
         )
 
     def test_plan_service_builds_current_plan_without_http_route(self):
@@ -868,7 +871,7 @@ class TestPlansApi(unittest.TestCase):
         cb_available = data["account"]["bond_available_cash"]
         self.assertEqual(
             cb_summary["cash_left"],
-            round(cb_available + cb_summary["transfer_delta"] + cb_summary["order_delta"], 2),
+            round(cb_available + cb_summary["transfer_delta"] + cb_summary["order_delta"] - cb_summary["estimated_fees"], 2),
         )
 
     def test_overseas_stale_blocks_complete_funding_plan(self):
