@@ -2747,7 +2747,7 @@
                         placeholder="6 位代码">
                       <span :class="securityStatusClass(row)" x-text="securityHelperText(row)"></span>
                     </div>
-                    <label><span>数量</span><input type="number" min="0" step="1" x-model="row.quantity" @input="markEdited()" aria-label="持仓数量"></label>
+                    <label><span>数量</span><input type="number" min="0" :step="holdingQuantityStep()" x-model="row.quantity" @input="markEdited()" aria-label="持仓数量"></label>
                     <span class="account-current-derived" x-text="fmtPrice(row.price)"></span>
                     <span class="account-current-derived" x-text="fmtMoney(rowMarketValue(row))"></span>
                     <button type="button" class="account-current-remove" @click="removePosition(row)" :aria-label="'移除 ' + (row.name || row.code || '证券')">移除</button>
@@ -4333,6 +4333,11 @@
           if (rightValue !== leftValue) return rightValue - leftValue
           return String(left.code || '').localeCompare(String(right.code || ''))
         })
+      },
+      holdingQuantityStep() {
+        if (this.selectedId === 'stock') return 100
+        if (this.selectedId === 'cb') return 10
+        return 1
       },
       markEdited() {
         this.saveError = ''

@@ -829,6 +829,48 @@ def browser_check_code(
                 'account.holdingSortOrder', expectedHoldingSortOrder, accountMetrics.holdingSortOrder,
               ));
             }}
+            const stockQuantityInput = accountPage.getByLabel('持仓数量').first();
+            const stockQuantityBefore = Number(await stockQuantityInput.inputValue());
+            accountMetrics.stockQuantityStep = await stockQuantityInput.getAttribute('step');
+            await stockQuantityInput.press('ArrowUp');
+            accountMetrics.stockQuantityAfterStepUp = Number(await stockQuantityInput.inputValue());
+            await stockQuantityInput.press('ArrowDown');
+            accountMetrics.stockQuantityRestored = Number(await stockQuantityInput.inputValue());
+            if (accountMetrics.stockQuantityStep !== '100'
+                || accountMetrics.stockQuantityAfterStepUp !== stockQuantityBefore + 100
+                || accountMetrics.stockQuantityRestored !== stockQuantityBefore) {{
+              accountDifferences.push(difference(
+                'account.stockQuantityStep',
+                {{ step: '100', afterStepUp: stockQuantityBefore + 100, restored: stockQuantityBefore }},
+                {{
+                  step: accountMetrics.stockQuantityStep,
+                  afterStepUp: accountMetrics.stockQuantityAfterStepUp,
+                  restored: accountMetrics.stockQuantityRestored,
+                }},
+              ));
+            }}
+            await chooseAccount('cb');
+            const cbQuantityInput = accountPage.getByLabel('持仓数量').first();
+            const cbQuantityBefore = Number(await cbQuantityInput.inputValue());
+            accountMetrics.cbQuantityStep = await cbQuantityInput.getAttribute('step');
+            await cbQuantityInput.press('ArrowUp');
+            accountMetrics.cbQuantityAfterStepUp = Number(await cbQuantityInput.inputValue());
+            await cbQuantityInput.press('ArrowDown');
+            accountMetrics.cbQuantityRestored = Number(await cbQuantityInput.inputValue());
+            if (accountMetrics.cbQuantityStep !== '10'
+                || accountMetrics.cbQuantityAfterStepUp !== cbQuantityBefore + 10
+                || accountMetrics.cbQuantityRestored !== cbQuantityBefore) {{
+              accountDifferences.push(difference(
+                'account.cbQuantityStep',
+                {{ step: '10', afterStepUp: cbQuantityBefore + 10, restored: cbQuantityBefore }},
+                {{
+                  step: accountMetrics.cbQuantityStep,
+                  afterStepUp: accountMetrics.cbQuantityAfterStepUp,
+                  restored: accountMetrics.cbQuantityRestored,
+                }},
+              ));
+            }}
+            await chooseAccount('stock');
             assertNoDifferences('account.behavior', '账户页没有按单账户当前数据组织', accountDifferences);
 
             const primaryAction = accountPage.locator('.account-current-primary');

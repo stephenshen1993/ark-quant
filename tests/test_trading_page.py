@@ -157,6 +157,12 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("if (rightValue === null) return -1", body)
         self.assertIn("localeCompare", body)
 
+    def test_account_holding_quantity_uses_the_security_trading_unit(self):
+        self.assertIn(':step="holdingQuantityStep()"', self.html)
+        self.assertIn("holdingQuantityStep()", self.html)
+        self.assertIn("if (this.selectedId === 'stock') return 100", self.html)
+        self.assertIn("if (this.selectedId === 'cb') return 10", self.html)
+
     def test_new_security_code_lookup_gives_inline_feedback(self):
         self.assertIn("@input=\"handleSecurityCodeInput(row)\"", self.html)
         self.assertIn("if (/^\\d{6}$/.test(code)) this.lookupSecurity(row)", self.html)
