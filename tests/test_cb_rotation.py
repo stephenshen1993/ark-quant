@@ -373,6 +373,9 @@ class ConvertibleBondRotationTests(unittest.TestCase):
         deltas = dict(zip(sheet["bond_code"], sheet["delta_shares"]))
         self.assertEqual(actions["199999"], "SELL")
         self.assertEqual(deltas["199999"], -100)  # 不在目标里，全清
+        exit_row = sheet.loc[sheet["bond_code"] == "199999"].iloc[0]
+        self.assertEqual(exit_row["target_shares"], 0)
+        self.assertEqual(exit_row["execution_reason"], "mandatory_exit")
         self.assertEqual(actions["100001"], "BUY")
         self.assertEqual(summary["total_value"], 20000.0)  # 持仓15000 + 现金5000
         self.assertGreaterEqual(summary["cash_left"], 0)  # 永不超支
@@ -381,6 +384,60 @@ class ConvertibleBondRotationTests(unittest.TestCase):
         self.assertEqual(summary["fee_schedule"], "convertible_bond")
         self.assertTrue(summary["allow_target_sells"])
         self.assertEqual(summary["solver_status"], "OPTIMAL")
+
+    def test_cb_top_twenty_holding_can_trim_but_not_clear(self) -> None:
+        from strategies.cb_rotation import size_orders
+
+        target = pd.DataFrame(
+            [{"bond_code": f"{110000 + index:06d}", "bond_name": f"转债{index}"} for index in range(20)]
+        )
+        positions = pd.DataFrame(
+            [
+                {"bond_code": "110000", "bond_name": "转债0", "shares": 200},
+                {"bond_code": "110001", "bond_name": "转债1", "shares": 100},
+                {"bond_code": "119999", "bond_name": "退出债", "shares": 100},
+            ]
+        )
+        prices = {code: 100.0 for code in target["bond_code"]}
+        prices["119999"] = 100.0
+
+        sheet, summary = size_orders.size_rebalance(target, positions, cash=-1_500.0, prices=prices)
+
+        exit_row = sheet.loc[sheet["bond_code"] == "119999"].iloc[0]
+        self.assertEqual(exit_row["action"], "SELL")
+        self.assertEqual(exit_row["target_shares"], 0)
+        self.assertEqual(exit_row["execution_reason"], "mandatory_exit")
+
+        target_trimmed = sheet[(sheet["bond_code"].isin(["110000", "110001"])) & (sheet["delta_shares"] < 0)]
+        self.assertEqual(len(target_trimmed), 2)
+        self.assertTrue((target_trimmed["target_shares"] > 0).all())
+        self.assertTrue((target_trimmed["execution_reason"] == "target_rebalance").all())
+        self.assertGreaterEqual(summary["cash_left"], 0)
+
+    def test_cb_negative_budget_marks_target_trims_as_budget_reduction(self) -> None:
+        from strategies.cb_rotation import size_orders
+
+        target = pd.DataFrame(
+            [{"bond_code": f"{110000 + index:06d}", "bond_name": f"转债{index}"} for index in range(20)]
+        )
+        positions = pd.DataFrame(
+            [{"bond_code": row.bond_code, "bond_name": row.bond_name, "shares": 30} for row in target.itertuples()]
+        )
+        prices = {code: 100.0 for code in target["bond_code"]}
+
+        sheet, summary = size_orders.size_rebalance(
+            target,
+            positions,
+            cash=-1_500.0,
+            prices=prices,
+            budget_reduction_context=True,
+        )
+
+        trimmed = sheet[sheet["delta_shares"] < 0]
+        self.assertGreater(len(trimmed), 0)
+        self.assertTrue((trimmed["target_shares"] > 0).all())
+        self.assertTrue((trimmed["execution_reason"] == "budget_reduction").all())
+        self.assertGreaterEqual(summary["cash_left"], 0)
 
     def test_size_rebalance_rejects_missing_cb_slots(self) -> None:
         from strategies.cb_rotation import size_orders

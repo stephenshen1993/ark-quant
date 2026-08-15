@@ -288,11 +288,14 @@ class TargetStateSizingTests(unittest.TestCase):
         self.assertEqual(actual.targets[existing_position], 800)
         self.assertEqual(actual.targets[target_codes[14]], 800)
         self.assertEqual(actual.targets[target_codes[8]], 3_100)
-        self.assertEqual(actual.summary["cash_left"], 132.37)
-        self.assertEqual(actual.summary["estimated_fees"], 33.47)
+        self.assertLess(actual.targets[target_codes[4]], held[target_codes[4]])
+        self.assertGreater(actual.targets[target_codes[4]], 0)
+        self.assertEqual(actual.summary["cash_left"], 3569.26)
+        self.assertEqual(actual.summary["estimated_fees"], 46.58)
+        self.assertEqual(actual.summary["cash_residual_reason"], "equal_weight_priority")
         self.assertIn("target_tracking_error", actual.summary["solver_objectives"])
 
-    def test_never_sells_an_ordinary_holding_to_improve_allocation(self):
+    def test_top_twenty_holding_can_trim_without_liquidating(self):
         target_codes = ["600001", "600002"]
         price_map = {"600001": 16.241, "600002": 39.324}
         held = {"600001": 900, "600002": 0}
@@ -307,9 +310,11 @@ class TargetStateSizingTests(unittest.TestCase):
             ordinary_order_threshold=1_000.0,
         )
 
-        self.assertGreaterEqual(actual.targets["600001"], held["600001"])
-        self.assertEqual(actual.targets["600002"], 100)
-        self.assertLess(actual.summary["cash_left"], price_map["600001"] * 100 + 5)
+        self.assertLess(actual.targets["600001"], held["600001"])
+        self.assertGreater(actual.targets["600001"], 0)
+        self.assertGreater(actual.targets["600002"], 0)
+        self.assertEqual(actual.summary["cash_residual_reason"], "equal_weight_priority")
+        self.assertGreaterEqual(actual.summary["cash_left"], 0)
 
     def test_uses_an_affordable_lot_when_it_improves_equal_weight(self):
         target_codes = ["600001", "600002", "600003"]
@@ -326,13 +331,15 @@ class TargetStateSizingTests(unittest.TestCase):
             ordinary_order_threshold=1_000.0,
         )
 
-        self.assertEqual(actual.targets["600002"], 400)
-        self.assertEqual(actual.targets["600003"], 400)
+        self.assertEqual(actual.targets["600001"], 400)
+        self.assertEqual(actual.targets["600002"], 900)
+        self.assertEqual(actual.targets["600003"], 900)
+        self.assertGreater(actual.targets["600001"], 0)
         self.assertEqual(
             actual.summary["cash_residual_reason"],
-            "insufficient_for_next_feasible_state",
+            "equal_weight_priority",
         )
-        self.assertLess(actual.summary["cash_left"], price_map["600003"] * 100)
+        self.assertGreaterEqual(actual.summary["cash_left"], 0)
 
     def test_presolve_result_is_rechecked_against_exact_cash_constraints(self):
         actual = solve_stock_targets(
@@ -345,8 +352,10 @@ class TargetStateSizingTests(unittest.TestCase):
             ordinary_order_threshold=1_000.0,
         )
 
-        self.assertEqual(actual.targets["600003"], 300)
-        self.assertEqual(actual.summary["cash_left"], 720.58)
+        self.assertEqual(actual.targets["600001"], 200)
+        self.assertEqual(actual.targets["600002"], 200)
+        self.assertEqual(actual.targets["600003"], 400)
+        self.assertEqual(actual.summary["cash_left"], 2052.19)
         self.assertEqual(actual.summary["solver_status"], "OPTIMAL")
 
     def test_official_rounded_fee_never_leaves_negative_cash(self):
@@ -488,7 +497,7 @@ class TargetStateSizingTests(unittest.TestCase):
         self.assertEqual(summary["solver_status"], "OPTIMAL")
         self.assertLessEqual(summary["solver_mip_gap"], 1e-8)
         self.assertEqual(summary["fee_schedule"], "stock_a_share")
-        self.assertFalse(summary["allow_target_sells"])
+        self.assertTrue(summary["allow_target_sells"])
         self.assertIn(
             summary["cash_residual_reason"],
             {
@@ -499,17 +508,22 @@ class TargetStateSizingTests(unittest.TestCase):
             },
         )
 
-    def test_negative_cash_without_a_required_sale_is_a_capacity_conflict(self):
+    def test_negative_cash_can_be_released_by_top_twenty_trims(self):
         target = rankings()
         held = positions([
             {"stock_code": row.stock_code, "stock_name": row.stock_name, "shares": 1_000}
             for row in target.itertuples()
         ])
 
-        with self.assertRaisesRegex(SizingError, "CAPACITY_CONFLICT"):
-            size_target_state(target, held, -9_000, prices(target))
+        sheet, summary = size_target_state(target, held, -9_000, prices(target))
 
-    def test_cash_shortage_never_authorizes_an_ordinary_sale(self):
+        trimmed = sheet[sheet["delta_shares"] < 0]
+        self.assertGreater(len(trimmed), 0)
+        self.assertTrue((trimmed["execution_reason"] == "target_rebalance").all())
+        self.assertTrue((trimmed["target_shares"] > 0).all())
+        self.assertGreaterEqual(summary["cash_left"], 0)
+
+    def test_top_twenty_target_rebalance_can_trim_but_not_clear(self):
         target = rankings()
         held = positions(
             [{"stock_code": target.iloc[0]["stock_code"], "stock_name": "股票0", "shares": 2_100}]
@@ -525,7 +539,30 @@ class TargetStateSizingTests(unittest.TestCase):
         ordinary_holding = sheet.loc[
             sheet["stock_code"] == target.iloc[0]["stock_code"]
         ].iloc[0]
-        self.assertGreaterEqual(ordinary_holding["delta_shares"], 0)
+        self.assertLess(ordinary_holding["delta_shares"], 0)
+        self.assertGreater(ordinary_holding["target_shares"], 0)
+        self.assertEqual(ordinary_holding["execution_reason"], "target_rebalance")
+
+    def test_negative_budget_authorizes_target_trims_to_release_transfer_cash(self):
+        target = rankings()
+        held = positions([
+            {"stock_code": row.stock_code, "stock_name": row.stock_name, "shares": 200}
+            for row in target.itertuples()
+        ])
+
+        sheet, summary = size_target_state(
+            target,
+            held,
+            -1_500.0,
+            prices(target, price=10.0),
+            budget_reduction_context=True,
+        )
+
+        trimmed = sheet[sheet["delta_shares"] < 0]
+        self.assertGreater(len(trimmed), 0)
+        self.assertTrue((trimmed["execution_reason"] == "budget_reduction").all())
+        self.assertTrue((trimmed["target_shares"] > 0).all())
+        self.assertGreaterEqual(summary["cash_left"], 0)
 
     def test_risk_reduction_returns_to_equal_weight_in_round_lots(self):
         target = rankings()

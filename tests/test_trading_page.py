@@ -732,6 +732,13 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("if (!this.isReadablePlanSnapshot()) return null", self.html)
         self.assertIn("planTimelineText()", self.html)
         self.assertIn("planRevisionText()", self.html)
+        self.assertIn("failureStageStrategy(stage)", self.html)
+        self.assertIn("if (stage === 'stock_orders') return 'stock'", self.html)
+        self.assertIn("const failedStrategy = this.latestGeneration?.status === 'failed'", self.html)
+        self.assertLess(
+            self.html.index("if (failedStrategy === strategy) return { state: 'failed', text: '生成失败' }"),
+            self.html.index("if (section?.orders?.length) return { state: 'ready', text: '订单已生成' }"),
+        )
         status = self.html.index('class="plan-masthead-state"')
         decision = self.html.index('class="plan-decision-hero')
         actions = self.html.index('class="plan-execution-dossier')

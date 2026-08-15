@@ -155,7 +155,7 @@ class TestTopLevelFundingTriggers(unittest.TestCase):
         self.assertTrue(all(action["amount"] > 0 for action in actions))
         self.assertFalse(result["top_level"]["old_holding_sales_allowed"])
 
-    def test_quarterly_b_unavailable_removes_b_inflow_but_keeps_other_outflows(self):
+    def test_quarterly_b_unavailable_cancels_unfunded_outflows(self):
         result = build_fund_transfer_plan(
             {
                 "stock_total": 85_000,
@@ -177,25 +177,49 @@ class TestTopLevelFundingTriggers(unittest.TestCase):
         self.assertTrue(top["hard_rebalance_triggered"])
         self.assertEqual(top["b_purchase_status"], "unavailable")
         self.assertFalse(any(action["target"] == "B" for action in top["executed_actions"]))
-        self.assertGreater(sum(action["amount"] for action in top["outflows"]), 0)
-        self.assertGreater(
-            sum(action["amount"] for action in top["outflows"]),
-            sum(action["amount"] for action in top["executed_actions"]),
-        )
+        self.assertEqual(top["executed_actions"], [])
+        self.assertEqual(top["outflows"], [])
+        self.assertEqual(top["executed_deltas"], {"A": 0.0, "B": 0.0, "C": 0.0})
 
-    def test_quarterly_b_unavailable_still_allows_other_overweight_buckets_to_return_cash(self):
+    def test_real_quarterly_b_unavailable_does_not_liquidate_a_or_c_into_cash(self):
         result = build_fund_transfer_plan(
             {
-                "stock_total": 278_508.23,
-                "bond_total": 160_274.74,
-                "cash_pool": 51_702.44,
-                "changqian_total": 114_726.87,
-                "overseas_total": 92_076.14,
+                "stock_total": 274_650.00,
+                "bond_total": 188_529.11,
+                "cash_pool": 65_271.26,
+                "changqian_total": 117_157.34,
+                "overseas_total": 95_450.33,
             },
             {
-                "temperature": 38,
+                "temperature": 50,
                 "check_type": "quarterly",
-                "cash_available": 51_702.44,
+                "cash_available": 65_271.26,
+                "b_purchase_limit": 0,
+            },
+            qualified_cb_count=20,
+        )
+
+        top = result["top_level"]
+        self.assertTrue(top["hard_rebalance_triggered"])
+        self.assertEqual(top["b_purchase_status"], "unavailable")
+        self.assertEqual(top["executable_inflow"], 0.0)
+        self.assertEqual(top["executed_actions"], [])
+        self.assertEqual(top["outflows"], [])
+        self.assertEqual(top["executed_deltas"], {"A": 0.0, "B": 0.0, "C": 0.0})
+
+    def test_quarterly_b_unavailable_scales_outflows_to_other_executable_inflows(self):
+        result = build_fund_transfer_plan(
+            {
+                "stock_total": 90_000,
+                "bond_total": 10_000,
+                "cash_pool": 10_000,
+                "changqian_total": 5_000,
+                "overseas_total": 5_000,
+            },
+            {
+                "temperature": 50,
+                "check_type": "quarterly",
+                "cash_available": 10_000,
                 "b_purchase_limit": 0,
             },
             qualified_cb_count=20,
@@ -205,10 +229,15 @@ class TestTopLevelFundingTriggers(unittest.TestCase):
         self.assertTrue(top["hard_rebalance_triggered"])
         self.assertEqual(top["b_purchase_status"], "unavailable")
         self.assertFalse(any(action["target"] == "B" for action in top["executed_actions"]))
-        self.assertTrue(any(action["source"] == "A" for action in top["outflows"]))
-        self.assertTrue(any(action["source"] == "C" for action in top["outflows"]))
-        self.assertLess(top["executed_deltas"]["A"], 0)
-        self.assertLess(top["executed_deltas"]["C"], 0)
+        self.assertEqual(
+            [(action["source"], action["target"], action["amount"]) for action in top["executed_actions"]],
+            [("cash_pool", "C", 10_000.0)],
+        )
+        self.assertEqual(
+            [(action["source"], action["target"], action["amount"]) for action in top["outflows"]],
+            [("A", "cash_pool", 10_000.0)],
+        )
+        self.assertEqual(top["executed_deltas"], {"A": -10_000.0, "B": 0.0, "C": 10_000.0})
 
     def test_a_internal_execution_budget_only_deducts_approved_a_outflow(self):
         result = build_fund_transfer_plan(

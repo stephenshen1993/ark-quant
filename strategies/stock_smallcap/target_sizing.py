@@ -73,6 +73,8 @@ def size_target_state(
     positions: pd.DataFrame,
     budget: float,
     prices: dict[str, float],
+    *,
+    budget_reduction_context: bool = False,
 ) -> tuple[pd.DataFrame, dict]:
     """Generate one net order per code from the formal Top-20 target-state rules."""
     target = _normalise(rankings, "stock_code").sort_values(["rank", "stock_code"])
@@ -108,6 +110,7 @@ def size_target_state(
             lot=LOT,
             max_single_weight=MAX_SINGLE_WEIGHT,
             ordinary_order_threshold=ordinary_threshold,
+            allow_target_sells=True,
         )
     except DiscreteSizingError as exc:
         raise SizingError(exc.code, exc.message, **exc.details) from exc
@@ -145,14 +148,10 @@ def size_target_state(
         reason = "frozen_target"
         if code in required_codes:
             reason = "mandatory_risk_reduction"
+        elif target_shares < current and budget_reduction_context:
+            reason = "budget_reduction"
         elif target_shares < current:
-            raise SizingError(
-                "SOLVER_NOT_OPTIMAL",
-                "股票定额器生成了未经策略授权的普通卖出",
-                code=code,
-                current_shares=current,
-                target_shares=target_shares,
-            )
+            reason = "target_rebalance"
         rows.append(
             _order_row(
                 action, code, names, prices, current, target_shares,

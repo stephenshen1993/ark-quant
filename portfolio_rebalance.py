@@ -196,10 +196,22 @@ def _top_level_plan(
         for target, amount in executable_inflows.items():
             executed_actions.append(_inflow_action(target, amount, "half_band_repair", False))
             executed_deltas[target] += amount
-        for source, amount in ideal_deltas.items():
-            if amount >= -1000:
+        executable_inflow_total = sum(executable_inflows.values())
+        ideal_outflows = {
+            source: -amount
+            for source, amount in ideal_deltas.items()
+            if amount <= -1000
+        }
+        ideal_outflow_total = sum(ideal_outflows.values())
+        outflow_scale = (
+            min(1.0, executable_inflow_total / ideal_outflow_total)
+            if executable_inflow_total > 0 and ideal_outflow_total > 0
+            else 0.0
+        )
+        for source, ideal_outflow in ideal_outflows.items():
+            outflow_amount = ideal_outflow * outflow_scale
+            if outflow_amount < 1000:
                 continue
-            outflow_amount = -amount
             outflows.append(_transfer_action(source, "cash_pool", outflow_amount, "half_band_repair", False))
             executed_deltas[source] -= outflow_amount
         b_status = _b_purchase_status(max(ideal_deltas.get("B", 0.0), 0.0), b_limit)
@@ -218,7 +230,7 @@ def _top_level_plan(
         "deviations": deviations,
         "bandwidths": bandwidths,
         "hard_rebalance_triggered": triggered if check_type in {"quarterly", "ad_hoc"} else False,
-        "old_holding_sales_allowed": check_type in {"quarterly", "ad_hoc"} and triggered,
+        "old_holding_sales_allowed": bool(outflows),
         "b_purchase_status": b_status,
         "ideal_actions": ideal_actions,
         "executed_actions": executed_actions,

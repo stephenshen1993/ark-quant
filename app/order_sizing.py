@@ -89,7 +89,13 @@ def size_cb_orders(
         )
 
     try:
-        sheet, summary = size_rebalance(target, positions, cash, prices)
+        sheet, summary = size_rebalance(
+            target,
+            positions,
+            cash,
+            prices,
+            budget_reduction_context=cash < 0,
+        )
     except DiscreteSizingError as exc:
         raise PlanServiceError(
             409,
@@ -218,7 +224,13 @@ def size_stock_orders(
         )
 
     try:
-        sheet, summary = size_target_state(pd.DataFrame(rankings), positions, cash, prices)
+        sheet, summary = size_target_state(
+            pd.DataFrame(rankings),
+            positions,
+            cash,
+            prices,
+            budget_reduction_context=cash < 0,
+        )
     except SizingError as exc:
         raise PlanServiceError(
             409,

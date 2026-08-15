@@ -4979,6 +4979,11 @@
         }
         return body.detail?.message || fallback
       },
+      failureStageStrategy(stage) {
+        if (stage === 'cb_orders') return 'cb'
+        if (stage === 'stock_orders') return 'stock'
+        return ''
+      },
 
       async generateCompletePlan() {
         if (!this.canGenerateCompletePlan()) return
@@ -5002,6 +5007,10 @@
             const missing = Object.entries(detail.missing || {}).flatMap(([strategy, codes]) =>
               codes.length ? [`${this.strategyLabel(strategy)}缺少计划日收盘价：${codes.join('、')}`] : []
             )
+            const failedStrategy = this.failureStageStrategy(detail.stage)
+            if (failedStrategy) {
+              this.componentErrors[failedStrategy] = detail.message || '完整计划生成失败'
+            }
             throw new Error([detail.message || String(detail || '完整计划生成失败'), ...lines, ...missing].join('\n'))
           }
           this.plan = await response.json()
@@ -5684,6 +5693,10 @@
       },
       strategyStatus(strategy) {
         if (this.componentErrors[strategy]) return { state: 'failed', text: '生成失败' }
+        const failedStrategy = this.latestGeneration?.status === 'failed'
+          ? this.failureStageStrategy(this.latestGeneration?.error?.stage)
+          : ''
+        if (failedStrategy === strategy) return { state: 'failed', text: '生成失败' }
         const section = this.plan?.[strategy]
         if (section?.orders?.length) return { state: 'ready', text: '订单已生成' }
         const items = strategy === 'cb' ? this.cbItems : this.stockItems

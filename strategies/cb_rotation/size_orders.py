@@ -66,6 +66,8 @@ def size_rebalance(
     prices: dict[str, float],
     lot: int = LOT,
     max_single_weight: float = MAX_SINGLE_WEIGHT,
+    *,
+    budget_reduction_context: bool = False,
 ) -> tuple[pd.DataFrame, dict]:
     """Return frozen net orders under the shared Top-20 sizing policy."""
     target = target.copy()
@@ -88,7 +90,7 @@ def size_rebalance(
     )
     rows = []
     for c in sorted(set(held) - set(target_codes)):
-        rows.append(_row("SELL", c, name_map, prices, held[c], 0))
+        rows.append(_row("SELL", c, name_map, prices, held[c], 0, execution_reason="mandatory_exit"))
     for c in target_codes:
         cur, tgt = held.get(c, 0), desired[c]
         if cur == 0:
@@ -96,7 +98,8 @@ def size_rebalance(
         elif tgt > cur:
             rows.append(_row("ADD", c, name_map, prices, cur, tgt))
         elif tgt < cur:
-            rows.append(_row("TRIM", c, name_map, prices, cur, tgt))
+            reason = "budget_reduction" if budget_reduction_context else "target_rebalance"
+            rows.append(_row("TRIM", c, name_map, prices, cur, tgt, execution_reason=reason))
         else:
             rows.append(_row("HOLD", c, name_map, prices, cur, tgt))
 
@@ -104,7 +107,7 @@ def size_rebalance(
     return sheet, summary
 
 
-def _row(action, code, name_map, prices, cur, tgt):
+def _row(action, code, name_map, prices, cur, tgt, *, execution_reason="frozen_target"):
     delta = tgt - cur
     return {
         "action": action,
@@ -116,7 +119,7 @@ def _row(action, code, name_map, prices, cur, tgt):
         "ideal_target_shares": int(tgt),
         "executable_target_shares": int(tgt),
         "residual_shares": 0,
-        "execution_reason": "mandatory_exit" if action == "SELL" else "frozen_target",
+        "execution_reason": execution_reason,
         "delta_shares": int(delta),
         "amount": round(abs(delta) * prices[code], 2),
     }

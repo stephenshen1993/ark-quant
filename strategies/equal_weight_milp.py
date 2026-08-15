@@ -298,17 +298,16 @@ def _prepare_problem(
         for code in mandatory_exit_codes
     )
     risk_targets: dict[str, int] = {}
-    if not allow_target_sells:
-        equal_weight_value_mills = total_value_mills // len(target_codes)
-        for code in target_codes:
-            current = holdings.get(code, 0)
-            if current * price_mills[code] > cap_value_mills:
-                risk_targets[code] = _equal_weight_risk_target_shares(
-                    current_shares=current,
-                    equal_weight_value_mills=equal_weight_value_mills,
-                    price_mills=price_mills[code],
-                    lot=lot,
-                )
+    equal_weight_value_mills = total_value_mills // len(target_codes)
+    for code in target_codes:
+        current = holdings.get(code, 0)
+        if current * price_mills[code] > cap_value_mills:
+            risk_targets[code] = _equal_weight_risk_target_shares(
+                current_shares=current,
+                equal_weight_value_mills=equal_weight_value_mills,
+                price_mills=price_mills[code],
+                lot=lot,
+            )
     mandatory_risk_turnover = sum(
         (holdings[code] - target_shares) * price_mills[code]
         for code, target_shares in risk_targets.items()

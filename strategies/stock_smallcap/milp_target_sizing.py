@@ -17,6 +17,7 @@ def solve_stock_targets(
     lot: int,
     max_single_weight: float,
     ordinary_order_threshold: float,
+    allow_target_sells: bool = True,
 ) -> MilpTargetResult:
     """Solve stock targets with stock-specific execution constraints."""
     return solve_equal_weight_targets(
@@ -27,6 +28,6 @@ def solve_stock_targets(
         lot=lot,
         max_single_weight=max_single_weight,
         ordinary_order_threshold=ordinary_order_threshold,
-        allow_target_sells=False,
+        allow_target_sells=allow_target_sells,
         fee_schedule=STOCK_FEE_SCHEDULE,
     )
