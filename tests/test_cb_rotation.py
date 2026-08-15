@@ -377,6 +377,10 @@ class ConvertibleBondRotationTests(unittest.TestCase):
         self.assertEqual(summary["total_value"], 20000.0)  # 持仓15000 + 现金5000
         self.assertGreaterEqual(summary["cash_left"], 0)  # 永不超支
         self.assertTrue((sheet["target_shares"] % size_orders.LOT == 0).all())  # 张数都是10的整数倍
+        self.assertEqual(summary["allocation_method"], "equal_weight_lexicographic_milp")
+        self.assertEqual(summary["fee_schedule"], "convertible_bond")
+        self.assertTrue(summary["allow_target_sells"])
+        self.assertEqual(summary["solver_status"], "OPTIMAL")
 
     def test_size_rebalance_rejects_missing_cb_slots(self) -> None:
         from strategies.cb_rotation import size_orders

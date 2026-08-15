@@ -26,8 +26,8 @@ from strategies.cb_rotation.run import (
     setup_logging,
 )
 from strategies.discrete_target_sizing import (
+    CB_FEE_SCHEDULE,
     MAX_SINGLE_WEIGHT,
-    cb_fee_estimate,
     size_discrete_targets,
 )
 
@@ -83,7 +83,8 @@ def size_rebalance(
         cash=cash,
         lot=lot,
         max_single_weight=max_single_weight,
-        fee_estimator=lambda candidate: cb_fee_estimate(candidate, held, target_codes, prices),
+        fee_schedule=CB_FEE_SCHEDULE,
+        allow_target_sells=True,
     )
     rows = []
     for c in sorted(set(held) - set(target_codes)):
