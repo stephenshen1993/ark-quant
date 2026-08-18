@@ -15,9 +15,11 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, time
 from pathlib import Path
+from time import perf_counter
 
 try:
     import pandas as pd
@@ -156,6 +158,42 @@ def apply_filters(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     return filtered
 
 
+def fetch_snapshot_with_probe(fetcher, codes, probe_size: int) -> pd.DataFrame:
+    """Avoid walking a full market when the first quote batch is unusable."""
+    started_at = perf_counter()
+    source_name = getattr(fetcher, "__name__", type(fetcher).__name__)
+    code_list = [str(code).zfill(6) for code in dict.fromkeys(codes) if str(code).strip()]
+    if not code_list:
+        return pd.DataFrame()
+    probe_size = max(1, int(probe_size))
+    probe = fetcher(code_list[:probe_size])
+    amount = pd.to_numeric(probe.get("amount_yuan"), errors="coerce") if not probe.empty else None
+    if probe.empty or amount is None or not amount.fillna(0).gt(0).any():
+        logging.info(
+            "Snapshot source %s rejected after %.2fs probe (probe=%s, total=%s).",
+            source_name,
+            perf_counter() - started_at,
+            min(probe_size, len(code_list)),
+            len(code_list),
+        )
+        return probe
+    remainder_codes = code_list[probe_size:]
+    if not remainder_codes:
+        return probe
+    remainder = fetcher(remainder_codes)
+    if remainder.empty:
+        return probe
+    result = pd.concat([probe, remainder], ignore_index=True).drop_duplicates("stock_code", keep="last")
+    logging.info(
+        "Snapshot source %s finished in %.2fs (requested=%s, returned=%s).",
+        source_name,
+        perf_counter() - started_at,
+        len(code_list),
+        len(result),
+    )
+    return result
+
+
 def fetch_deducted_roe_ttm(ak, code: str) -> float | None:
     """TTM 扣非净资产收益率(%) via THS quarterly + annual data.
 
@@ -209,22 +247,41 @@ def select_smallcap(ak, df: pd.DataFrame, config: dict) -> pd.DataFrame:
     min_roe = config["filters"]["min_roe_pct"]
     ranked = df.sort_values("total_mv_yuan", ascending=True).reset_index(drop=True)
     pool, fetched = [], 0
-    for _, r in ranked.iterrows():
-        if len(pool) >= sel["candidate_pool"] or fetched >= sel["max_roe_fetch"]:
-            break
-        roe = fetch_deducted_roe_ttm(ak, r["stock_code"])
-        fetched += 1
-        if roe is None or roe <= min_roe:
-            continue
-        row = r.to_dict()
-        row["roe_pct"] = roe
-        pool.append(row)
-        if fetched % 25 == 0:
-            logging.info("扣非ROE-screened %s stocks, pool=%s", fetched, len(pool))
+    max_workers = max(1, min(8, int(sel.get("roe_fetch_workers", 4))))
+    candidates = ranked.head(sel["max_roe_fetch"]).to_dict("records")
+    fetch_started_at = perf_counter()
+
+    def _fetch_one(row: dict) -> tuple[dict, float | None]:
+        return row, fetch_deducted_roe_ttm(ak, row["stock_code"])
+
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(candidates) or 1)) as executor:
+        for start in range(0, len(candidates), max_workers):
+            batch = candidates[start : start + max_workers]
+            results = list(executor.map(_fetch_one, batch))
+            previous_fetched = fetched
+            fetched += len(batch)
+            for row, roe in results:
+                if len(pool) >= sel["candidate_pool"]:
+                    break
+                if roe is None or roe <= min_roe:
+                    continue
+                selected = dict(row)
+                selected["roe_pct"] = roe
+                pool.append(selected)
+            if fetched // 25 > previous_fetched // 25:
+                logging.info("扣非ROE-screened %s stocks, pool=%s", fetched, len(pool))
+            if len(pool) >= sel["candidate_pool"]:
+                break
     result = pd.DataFrame(pool)
     if not result.empty:
         result["rank"] = range(1, len(result) + 1)
-    logging.info("Small-cap pool after 扣非ROE filter: %s (fetches=%s)", len(result), fetched)
+    logging.info(
+        "Small-cap pool after 扣非ROE filter: %s (fetches=%s, workers=%s, elapsed=%.2fs)",
+        len(result),
+        fetched,
+        max_workers,
+        perf_counter() - fetch_started_at,
+    )
     return result
 
 
@@ -382,7 +439,7 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
             universe = universe.head(max_universe).copy()
             logging.info("Limited universe to first %s for test run.", max_universe)
 
-        snap = fetch_tencent_snapshot(universe["stock_code"])
+        snap = fetch_snapshot_with_probe(fetch_tencent_snapshot, universe["stock_code"], probe_size=60)
         # Fallback chain: Tencent → Sina (live) → cached snapshot.
         if snap.empty or (snap["amount_yuan"] == 0).all():
             import glob as _glob
@@ -395,7 +452,7 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
                 cs["stock_code"] = cs["stock_code"].astype(str).str.zfill(6)
                 return cs
 
-            sina_snap = fetch_sina_snapshot(universe["stock_code"])
+            sina_snap = fetch_snapshot_with_probe(fetch_sina_snapshot, universe["stock_code"], probe_size=50)
             if not sina_snap.empty and not (sina_snap["amount_yuan"] == 0).all():
                 logging.info("Tencent unavailable, using Sina live snapshot")
                 snap = sina_snap

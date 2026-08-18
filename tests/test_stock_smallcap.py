@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import date
+from threading import Barrier, BrokenBarrierError
 from unittest.mock import patch
 
 import pandas as pd
@@ -22,6 +23,64 @@ CONFIG = {
 
 
 class StockSmallCapTests(unittest.TestCase):
+    def test_snapshot_probe_stops_before_full_universe_when_source_is_not_viable(self) -> None:
+        calls: list[list[str]] = []
+
+        def zero_amount_snapshot(codes) -> pd.DataFrame:
+            batch = list(codes)
+            calls.append(batch)
+            return pd.DataFrame({"stock_code": batch, "amount_yuan": 0.0})
+
+        codes = [f"{600000 + index:06d}" for index in range(120)]
+        result = run.fetch_snapshot_with_probe(zero_amount_snapshot, codes, probe_size=20)
+
+        self.assertEqual([len(batch) for batch in calls], [20])
+        self.assertTrue((result["amount_yuan"] == 0).all())
+
+    def test_snapshot_probe_fetches_remainder_and_preserves_order_when_source_is_viable(self) -> None:
+        calls: list[list[str]] = []
+
+        def live_snapshot(codes) -> pd.DataFrame:
+            batch = list(codes)
+            calls.append(batch)
+            return pd.DataFrame({"stock_code": batch, "amount_yuan": 1.0})
+
+        codes = [f"{600000 + index:06d}" for index in range(45)]
+        result = run.fetch_snapshot_with_probe(live_snapshot, codes, probe_size=20)
+
+        self.assertEqual([len(batch) for batch in calls], [20, 25])
+        self.assertEqual(result["stock_code"].tolist(), codes)
+
+    def test_roe_screen_uses_bounded_parallel_requests_without_changing_rank_order(self) -> None:
+        barrier = Barrier(2)
+        overlapped: list[bool] = []
+        candidates = pd.DataFrame({
+            "stock_code": ["600002", "600001"],
+            "total_mv_yuan": [2.0, 1.0],
+        })
+
+        def fetch_roe(_ak, _code: str) -> float:
+            try:
+                barrier.wait(timeout=0.2)
+                overlapped.append(True)
+            except BrokenBarrierError:
+                overlapped.append(False)
+            return 5.0
+
+        config = {
+            "filters": {"min_roe_pct": -1.0},
+            "selection": {
+                "candidate_pool": 2,
+                "max_roe_fetch": 2,
+                "roe_fetch_workers": 2,
+            },
+        }
+        with patch.object(run, "fetch_deducted_roe_ttm", side_effect=fetch_roe):
+            result = run.select_smallcap(object(), candidates, config)
+
+        self.assertEqual(result["stock_code"].tolist(), ["600001", "600002"])
+        self.assertEqual(overlapped, [True, True])
+
     def test_persist_rankings_propagates_database_failure(self) -> None:
         with patch("datasource.db.init_db"), patch(
             "datasource.db.create_complete_strategy_run",

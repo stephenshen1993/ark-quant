@@ -4,9 +4,11 @@ import argparse
 import json
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from time import perf_counter
 from typing import Iterable
 
 try:
@@ -454,31 +456,57 @@ def fetch_cb_daily_turnover(ak, bond_codes: Iterable[str], config: dict) -> pd.D
 
     missing_codes = [code for code in codes if code not in cached_codes]
     failure_count = 0
-    max_failures = int(config.get("data", {}).get("max_per_symbol_fetch_failures", 10))
-    for i, code in enumerate(missing_codes, start=1):
+    data_config = config.get("data", {})
+    max_failures = int(data_config.get("max_per_symbol_fetch_failures", 10))
+    max_workers = max(1, min(8, int(data_config.get("per_symbol_fetch_workers", 4))))
+    fetch_started_at = perf_counter()
+
+    def _fetch_one(code: str) -> tuple[dict | None, Exception | None]:
         try:
             hist = ak.bond_zh_hs_cov_daily(symbol=bond_symbol_with_exchange(code))
             if hist.empty:
-                continue
+                return None, None
             latest = hist.tail(1).iloc[0]
             close = pd.to_numeric(latest.get("close"), errors="coerce")
             volume = pd.to_numeric(latest.get("volume"), errors="coerce")
-            rows.append(
-                {
-                    "bond_code": code,
-                    "cb_close_daily": close,
-                    "turnover_yuan_daily": close * volume,
-                    "turnover_trade_date": latest.get("date"),
-                }
-            )
-            if i % 50 == 0:
-                logging.info("Fetched bond daily turnover for %s symbols.", i)
+            return {
+                "bond_code": code,
+                "cb_close_daily": close,
+                "turnover_yuan_daily": close * volume,
+                "turnover_trade_date": latest.get("date"),
+            }, None
         except Exception as exc:
-            logging.warning("Failed to fetch bond daily turnover for %s: %s", code, exc)
-            failure_count += 1
-            if failure_count >= max_failures:
-                logging.warning("Stop fetching bond daily turnover after %s failures.", failure_count)
+            return None, exc
+
+    stop_fetching = False
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(missing_codes) or 1)) as executor:
+        for start in range(0, len(missing_codes), max_workers):
+            batch = missing_codes[start : start + max_workers]
+            for offset, (code, result) in enumerate(zip(batch, executor.map(_fetch_one, batch)), start=1):
+                row, exc = result
+                i = start + offset
+                if row is not None:
+                    rows.append(row)
+                if i % 50 == 0:
+                    logging.info("Fetched bond daily turnover for %s symbols.", i)
+                if exc is None:
+                    continue
+                logging.warning("Failed to fetch bond daily turnover for %s: %s", code, exc)
+                failure_count += 1
+                if failure_count >= max_failures:
+                    logging.warning("Stop fetching bond daily turnover after %s failures.", failure_count)
+                    stop_fetching = True
+                    break
+            if stop_fetching:
                 break
+
+    logging.info(
+        "Bond turnover fetch finished in %.2fs (requested=%s, returned=%s, workers=%s).",
+        perf_counter() - fetch_started_at,
+        len(missing_codes),
+        len(rows),
+        max_workers,
+    )
 
     turnover = pd.DataFrame(
         rows,
@@ -490,7 +518,6 @@ def fetch_cb_daily_turnover(ak, bond_codes: Iterable[str], config: dict) -> pd.D
         logging.info("Saved bond turnover cache: %s", data_cache)
         return turnover
 
-    data_config = config.get("data", {})
     if data_config.get("use_cache_on_failure", True):
         cached = latest_dated_cache("bond_daily_turnover", int(data_config.get("max_cache_age_days", 7)))
         if cached is not None:
@@ -525,10 +552,14 @@ def fetch_stock_factors(ak, stock_codes: Iterable[str], end: date, config: dict)
     start = end - timedelta(days=90)
     rows: list[dict] = []
     failure_count = 0
-    max_failures = int(config.get("data", {}).get("max_per_symbol_fetch_failures", 10))
-    for i, code in enumerate(sorted({normalize_stock_code(c) for c in stock_codes if pd.notna(c)}), start=1):
-        if not code:
-            continue
+    data_config = config.get("data", {})
+    max_failures = int(data_config.get("max_per_symbol_fetch_failures", 10))
+    max_workers = max(1, min(8, int(data_config.get("per_symbol_fetch_workers", 4))))
+    codes = sorted({normalize_stock_code(c) for c in stock_codes if pd.notna(c)})
+    codes = [code for code in codes if code]
+    fetch_started_at = perf_counter()
+
+    def _fetch_one(code: str) -> tuple[dict | None, Exception | None]:
         try:
             try:
                 hist = ak.stock_zh_a_daily(
@@ -547,10 +578,10 @@ def fetch_stock_factors(ak, stock_codes: Iterable[str], end: date, config: dict)
             close_col = first_existing_col(hist, ["收盘", "close"])
             if close_col is None or len(hist) < 21:
                 logging.warning("Stock %s history is insufficient; skipping factors.", code)
-                continue
+                return None, None
             close = pd.to_numeric(hist[close_col], errors="coerce").dropna()
             if len(close) < 21:
-                continue
+                return None, None
             ret = close.pct_change().dropna()
             trade_date_col = first_existing_col(hist, ["日期", "date"])
             trade_date = hist.iloc[-1][trade_date_col] if trade_date_col is not None else hist.index[-1]
@@ -560,23 +591,44 @@ def fetch_stock_factors(ak, stock_codes: Iterable[str], end: date, config: dict)
                 shares = pd.to_numeric(hist[share_col], errors="coerce").dropna()
                 if not shares.empty:
                     market_cap_estimate = close.iloc[-1] * shares.iloc[-1]
-            rows.append(
-                {
-                    "stock_code": code,
-                    "stock_momentum_20d": close.iloc[-1] / close.iloc[-21] - 1,
-                    "stock_volatility_20d": ret.tail(20).std() * np.sqrt(252),
-                    "market_cap_estimate": market_cap_estimate,
-                    "stock_factor_trade_date": trade_date,
-                }
-            )
-            if i % 50 == 0:
-                logging.info("Fetched stock history for %s symbols.", i)
+            return {
+                "stock_code": code,
+                "stock_momentum_20d": close.iloc[-1] / close.iloc[-21] - 1,
+                "stock_volatility_20d": ret.tail(20).std() * np.sqrt(252),
+                "market_cap_estimate": market_cap_estimate,
+                "stock_factor_trade_date": trade_date,
+            }, None
         except Exception as exc:
-            logging.warning("Failed to fetch stock history for %s: %s", code, exc)
-            failure_count += 1
-            if failure_count >= max_failures:
-                logging.warning("Stop fetching stock history after %s failures.", failure_count)
+            return None, exc
+
+    stop_fetching = False
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(codes) or 1)) as executor:
+        for start_index in range(0, len(codes), max_workers):
+            batch = codes[start_index : start_index + max_workers]
+            for offset, (code, result) in enumerate(zip(batch, executor.map(_fetch_one, batch)), start=1):
+                row, exc = result
+                i = start_index + offset
+                if row is not None:
+                    rows.append(row)
+                if i % 50 == 0:
+                    logging.info("Fetched stock history for %s symbols.", i)
+                if exc is None:
+                    continue
+                logging.warning("Failed to fetch stock history for %s: %s", code, exc)
+                failure_count += 1
+                if failure_count >= max_failures:
+                    logging.warning("Stop fetching stock history after %s failures.", failure_count)
+                    stop_fetching = True
+                    break
+            if stop_fetching:
                 break
+    logging.info(
+        "Stock factor fetch finished in %.2fs (requested=%s, returned=%s, workers=%s).",
+        perf_counter() - fetch_started_at,
+        len(codes),
+        len(rows),
+        max_workers,
+    )
     return pd.DataFrame(
         rows,
         columns=[

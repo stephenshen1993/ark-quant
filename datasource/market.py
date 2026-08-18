@@ -7,10 +7,32 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
-from typing import Iterable
+from typing import Callable, Iterable
 
 import pandas as pd
+
+
+def _fetch_batches_in_order(
+    codes: list[str],
+    batch_size: int,
+    max_workers: int,
+    fetch_batch: Callable[[list[str]], list[dict]],
+) -> list[dict]:
+    """Fetch independent quote batches concurrently while preserving input order."""
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    batches = [codes[start : start + batch_size] for start in range(0, len(codes), batch_size)]
+    if not batches:
+        return []
+    worker_count = max(1, min(int(max_workers), len(batches), 8))
+    if worker_count == 1:
+        batch_rows = [fetch_batch(batch) for batch in batches]
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            batch_rows = list(executor.map(fetch_batch, batches))
+    return [row for rows in batch_rows for row in rows]
 
 
 def normalize_stock_code(code: str) -> str:
@@ -142,21 +164,25 @@ def fetch_stock_market_caps_tencent(stock_codes: Iterable[str], batch_size: int 
     return caps
 
 
-def fetch_tencent_snapshot(codes: Iterable[str], batch_size: int = 60) -> pd.DataFrame:
+def fetch_tencent_snapshot(
+    codes: Iterable[str],
+    batch_size: int = 60,
+    max_workers: int = 6,
+) -> pd.DataFrame:
     """Snapshot fields from Tencent qt.gtimg.cn (eastmoney-free, batched)."""
     import requests
 
     codes = [str(c).zfill(6) for c in dict.fromkeys(codes) if str(c).strip()]
-    rows: list[dict] = []
-    for start in range(0, len(codes), batch_size):
-        batch = codes[start : start + batch_size]
+
+    def _fetch_batch(batch: list[str]) -> list[dict]:
         query = ",".join(stock_symbol_with_exchange(c) for c in batch)
         try:
             resp = requests.get(f"http://qt.gtimg.cn/q={query}", timeout=10)
             resp.encoding = "gbk"
         except Exception as exc:
             logging.warning("Tencent snapshot batch failed (%s..): %s", batch[0], exc)
-            continue
+            return []
+        rows: list[dict] = []
         for line in resp.text.split(";"):
             if '="' not in line:
                 continue
@@ -177,6 +203,9 @@ def fetch_tencent_snapshot(codes: Iterable[str], batch_size: int = 60) -> pd.Dat
                     "limit_down": _to_num(f[48]),
                 })
             )
+        return rows
+
+    rows = _fetch_batches_in_order(codes, batch_size, max_workers, _fetch_batch)
     snap = pd.DataFrame(rows)
     if not snap.empty:
         snap["stock_code"] = snap["stock_code"].astype(str).str.zfill(6)
@@ -184,7 +213,11 @@ def fetch_tencent_snapshot(codes: Iterable[str], batch_size: int = 60) -> pd.Dat
     return snap
 
 
-def fetch_sina_snapshot(codes: Iterable[str], batch_size: int = 50) -> pd.DataFrame:
+def fetch_sina_snapshot(
+    codes: Iterable[str],
+    batch_size: int = 50,
+    max_workers: int = 6,
+) -> pd.DataFrame:
     """Fallback snapshot from Sina hq.sinajs.cn — price/volume/amount only.
 
     Sina does not provide PE, total market cap, or explicit limit-up/down. Those fields
@@ -193,16 +226,16 @@ def fetch_sina_snapshot(codes: Iterable[str], batch_size: int = 50) -> pd.DataFr
     import requests
 
     codes = [str(c).zfill(6) for c in dict.fromkeys(codes) if str(c).strip()]
-    rows: list[dict] = []
-    for start in range(0, len(codes), batch_size):
-        batch = codes[start : start + batch_size]
+
+    def _fetch_batch(batch: list[str]) -> list[dict]:
         query = ",".join(stock_symbol_with_exchange(c) for c in batch)
         try:
             resp = requests.get(f"http://hq.sinajs.cn/list={query}", timeout=10)
             resp.encoding = "gbk"
         except Exception as exc:
             logging.warning("Sina snapshot batch failed (%s..): %s", batch[0], exc)
-            continue
+            return []
+        rows: list[dict] = []
         for line in resp.text.split("\n"):
             line = line.strip()
             if not line or '="' not in line:
@@ -232,6 +265,9 @@ def fetch_sina_snapshot(codes: Iterable[str], batch_size: int = 50) -> pd.DataFr
                     "limit_down": float("nan"),
                 }
             )
+        return rows
+
+    rows = _fetch_batches_in_order(codes, batch_size, max_workers, _fetch_batch)
     snap = pd.DataFrame(rows)
     if not snap.empty:
         snap["stock_code"] = snap["stock_code"].astype(str).str.zfill(6)

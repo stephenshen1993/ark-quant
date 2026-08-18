@@ -4,6 +4,7 @@ import unittest
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Barrier, BrokenBarrierError
 from unittest.mock import patch
 
 import pandas as pd
@@ -260,6 +261,62 @@ class ConvertibleBondRotationTests(unittest.TestCase):
                 )
 
         self.assertEqual(sorted(out["stock_code"].astype(str).str.zfill(6).tolist()), ["000001", "000002"])
+
+    def test_fetch_stock_factors_uses_bounded_parallel_requests(self) -> None:
+        barrier = Barrier(2)
+        overlapped: list[bool] = []
+        history = pd.DataFrame({
+            "date": pd.date_range("2026-05-01", periods=25),
+            "close": range(10, 35),
+        })
+
+        class FakeAk:
+            @staticmethod
+            def stock_zh_a_daily(**_kwargs) -> pd.DataFrame:
+                try:
+                    barrier.wait(timeout=0.2)
+                    overlapped.append(True)
+                except BrokenBarrierError:
+                    overlapped.append(False)
+                return history
+
+        factors = run.fetch_stock_factors(
+            FakeAk(),
+            ["000001", "000002"],
+            date(2026, 5, 28),
+            {"data": {"per_symbol_fetch_workers": 2}},
+        )
+
+        self.assertEqual(factors["stock_code"].tolist(), ["000001", "000002"])
+        self.assertEqual(overlapped, [True, True])
+
+    def test_fetch_bond_turnover_uses_bounded_parallel_requests(self) -> None:
+        barrier = Barrier(2)
+        overlapped: list[bool] = []
+
+        class FakeAk:
+            @staticmethod
+            def bond_zh_hs_cov_daily(symbol: str) -> pd.DataFrame:
+                try:
+                    barrier.wait(timeout=0.2)
+                    overlapped.append(True)
+                except BrokenBarrierError:
+                    overlapped.append(False)
+                return pd.DataFrame([{
+                    "date": date.today().isoformat(),
+                    "close": 120.0,
+                    "volume": 1000,
+                }])
+
+        with TemporaryDirectory() as temp_dir, patch.object(run, "CACHE_DIR", Path(temp_dir)):
+            turnover = run.fetch_cb_daily_turnover(
+                FakeAk(),
+                ["113001", "113002"],
+                {"data": {"per_symbol_fetch_workers": 2}},
+            )
+
+        self.assertEqual(turnover["bond_code"].tolist(), ["113001", "113002"])
+        self.assertEqual(overlapped, [True, True])
 
     def test_drop_uncovered_factor_data_removes_missing_factor_rows(self) -> None:
         candidates = pd.DataFrame(

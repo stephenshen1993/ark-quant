@@ -15,7 +15,8 @@
     "hold_n": 20,
     "sell_rank": 21,
     "candidate_pool": 25,
-    "max_roe_fetch": 200
+    "max_roe_fetch": 200,
+    "roe_fetch_workers": 4
   },
   "position": {
     "ideal_weight": 0.05,
