@@ -1,6 +1,6 @@
 import sqlite3
 import unittest
-from datetime import date
+from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -43,8 +43,9 @@ class TestStrategyRunner(unittest.TestCase):
     def test_ensure_rankings_generates_missing_rankings(self):
         from app import strategy_runner
 
-        def generate_rankings(strategy: str):
+        def generate_rankings(strategy: str, task):
             self.assertEqual(strategy, "stock")
+            self.assertEqual(task.effective_date, date(2026, 6, 29))
             generated_id = db.create_complete_strategy_run(
                 "stock",
                 date(2026, 6, 29),
@@ -66,6 +67,39 @@ class TestStrategyRunner(unittest.TestCase):
 
         self.assertTrue(result.generated)
         self.assertEqual(result.item_count, 1)
+
+    def test_run_task_freezes_started_at_and_effective_date(self):
+        from app import strategy_runner
+
+        task = strategy_runner.freeze_strategy_run_task(
+            effective_date="2026-06-29",
+            now=datetime(2026, 6, 30, 9, 24, 59),
+        )
+
+        self.assertEqual(task.started_at, datetime(2026, 6, 30, 9, 24, 59))
+        self.assertEqual(task.effective_date, date(2026, 6, 29))
+        self.assertEqual(task.effective_date_iso, "2026-06-29")
+
+    def test_strategy_adapter_forwards_one_frozen_task_to_strategy(self):
+        from app import strategy_runner
+        from strategies.stock_smallcap.run import DEFAULT_CONFIG, DEFAULT_POSITIONS
+
+        task = strategy_runner.StrategyRunTask(
+            started_at=datetime(2026, 6, 30, 9, 24, 59),
+            effective_date=date(2026, 6, 29),
+        )
+        artifacts = SimpleNamespace(run_id=7)
+
+        with patch("strategies.stock_smallcap.run.run", return_value=artifacts) as run_impl:
+            result = strategy_runner._run_strategy_impl("stock", task)
+
+        self.assertIs(result, artifacts)
+        run_impl.assert_called_once_with(
+            DEFAULT_CONFIG,
+            DEFAULT_POSITIONS,
+            effective_date=date(2026, 6, 29),
+            started_at=datetime(2026, 6, 30, 9, 24, 59),
+        )
 
     def test_ensure_rankings_rejects_generated_date_mismatch(self):
         from app import strategy_runner

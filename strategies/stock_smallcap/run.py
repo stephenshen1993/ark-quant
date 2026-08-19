@@ -424,13 +424,21 @@ def save_outputs(ranked: pd.DataFrame, rebalance: pd.DataFrame, config: dict, lo
     return RunArtifacts(candidates_csv, rebalance_csv, report_md)
 
 
-def run(config_path: Path, positions_path: Path, max_universe: int | None = None) -> RunArtifacts:
-    enforce_snapshot_run_window()
+def run(
+    config_path: Path,
+    positions_path: Path,
+    max_universe: int | None = None,
+    *,
+    effective_date: date | None = None,
+    started_at: datetime | None = None,
+) -> RunArtifacts:
+    enforce_snapshot_run_window(now=started_at)
     log_file = setup_logging()
     config = load_config(config_path)
     ak = require_akshare()
 
-    today_str = date.today().strftime("%Y%m%d")
+    data_date = effective_date or latest_completed_data_date(now=started_at)
+    cache_date = data_date.strftime("%Y%m%d")
 
     def _fetch_merged():
         universe = fetch_universe(ak)
@@ -475,7 +483,7 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
         logging.info("Snapshot coverage: %s/%s", len(merged), len(universe))
         return merged
 
-    merged = load_or_fetch("merged", _fetch_merged, today_str, "stock_smallcap")
+    merged = load_or_fetch("merged", _fetch_merged, cache_date, "stock_smallcap")
     merged["stock_code"] = merged["stock_code"].astype(str).str.zfill(6)
     for col in ("total_mv_yuan", "amount_yuan", "pe_ttm", "price",
                 "volume_hand", "prev_close", "limit_up", "limit_down"):
@@ -490,7 +498,7 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
             raise RuntimeError("没有股票通过全部过滤，无法生成榜单。请检查数据源或放宽配置。")
         return r
 
-    ranked = load_or_fetch("ranked", _fetch_ranked, today_str, "stock_smallcap")
+    ranked = load_or_fetch("ranked", _fetch_ranked, cache_date, "stock_smallcap")
     # Restore dtypes after CSV round-trip
     ranked["stock_code"] = ranked["stock_code"].astype(str).str.zfill(6)
     for col in ("total_mv_yuan", "amount_yuan", "pe_ttm", "roe_pct", "price",
@@ -503,7 +511,6 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
     current = load_current_positions(positions_path)
     target_df, rebalance = build_target_and_rebalance(current, ranked, config)
     notes = build_data_notes(config)
-    data_date = latest_completed_data_date()
     artifacts = save_outputs(ranked, rebalance, config, log_file, notes, data_date=data_date)
     logging.info("Saved report to %s", artifacts.report_md)
     run_id = persist_rankings(data_date, rankings_for_order_sizing(ranked, target_df, config))

@@ -292,9 +292,10 @@ def prepare_complete_plan_generation(plan_date: str | None = None) -> tuple[str,
 
 
 def ensure_rankings_for_plan_date(plan_date: str) -> None:
+    task = strategy_runner.freeze_strategy_run_task(effective_date=plan_date)
     for strategy in ("cb", "stock"):
         try:
-            strategy_runner.ensure_rankings(strategy, plan_date)
+            strategy_runner.ensure_rankings(strategy, plan_date, task=task)
         except strategy_runner.StrategyRunnerError as exc:
             detail = exc.detail
             if detail.get("code") == "STRATEGY_RANKING_DATE_MISMATCH":

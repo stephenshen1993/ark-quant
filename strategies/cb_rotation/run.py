@@ -417,9 +417,14 @@ def normalize_cb_data(raw: pd.DataFrame) -> pd.DataFrame:
     return df.drop_duplicates(subset=["bond_code"])
 
 
-def fetch_cb_daily_turnover(ak, bond_codes: Iterable[str], config: dict) -> pd.DataFrame:
+def fetch_cb_daily_turnover(
+    ak,
+    bond_codes: Iterable[str],
+    config: dict,
+    effective_date: date | None = None,
+) -> pd.DataFrame:
     codes = sorted({str(c).zfill(6) for c in bond_codes if pd.notna(c)})
-    expected_data_date = latest_completed_market_data_date()
+    expected_data_date = effective_date or latest_completed_market_data_date()
     data_cache = cache_path("bond_daily_turnover", stamp=f"{expected_data_date:%Y%m%d}")
 
     def _usable_cache(path: Path) -> pd.DataFrame | None:
@@ -526,8 +531,13 @@ def fetch_cb_daily_turnover(ak, bond_codes: Iterable[str], config: dict) -> pd.D
     return turnover
 
 
-def enrich_cb_with_daily_market_data(ak, cb: pd.DataFrame, config: dict) -> pd.DataFrame:
-    turnover = fetch_cb_daily_turnover(ak, cb["bond_code"], config)
+def enrich_cb_with_daily_market_data(
+    ak,
+    cb: pd.DataFrame,
+    config: dict,
+    effective_date: date | None = None,
+) -> pd.DataFrame:
+    turnover = fetch_cb_daily_turnover(ak, cb["bond_code"], config, effective_date)
     if turnover.empty:
         return cb
     if config.get("data", {}).get("strict_original_rules", True):
@@ -729,9 +739,15 @@ def fetch_stock_market_caps_close_snapshot(ak, stock_codes: Iterable[str]) -> pd
     return caps[caps["stock_code"].isin(codes)].copy()
 
 
-def fetch_stock_market_caps(ak, stock_codes: Iterable[str], config: dict) -> pd.DataFrame:
+def fetch_stock_market_caps(
+    ak,
+    stock_codes: Iterable[str],
+    config: dict,
+    effective_date: date | None = None,
+) -> pd.DataFrame:
     codes = sorted({normalize_stock_code(c) for c in stock_codes if pd.notna(c)})
-    name = f"stock_market_caps_{date.today():%Y%m%d}"
+    data_date = effective_date or date.today()
+    name = f"stock_market_caps_{data_date:%Y%m%d}"
     cached_today = cache_path(name, stamp="latest")
     rows: list[dict] = []
     cached_codes: set[str] = set()
@@ -787,7 +803,7 @@ def fetch_stock_market_caps(ak, stock_codes: Iterable[str], config: dict) -> pd.
                         "stock_name_spot": info.get("股票简称"),
                         "market_cap": pd.to_numeric(info.get("总市值"), errors="coerce"),
                         "industry": info.get("行业"),
-                        "market_cap_as_of_date": date.today().isoformat(),
+                        "market_cap_as_of_date": data_date.isoformat(),
                         "market_cap_source": "eastmoney_total_mv",
                     }
                 )
@@ -1200,10 +1216,17 @@ def snapshot_raw_data(
     return day_dir
 
 
-def run(config_path: Path, positions_path: Path, max_universe: int | None = None) -> RunArtifacts:
+def run(
+    config_path: Path,
+    positions_path: Path,
+    max_universe: int | None = None,
+    *,
+    effective_date: date | None = None,
+    started_at: datetime | None = None,
+) -> RunArtifacts:
     log_file = setup_logging()
     config = load_config(config_path)
-    enforce_snapshot_run_window(config)
+    enforce_snapshot_run_window(config, now=started_at)
     ak = require_akshare()
 
     raw_cb = fetch_cb_universe(ak, config)
@@ -1215,7 +1238,7 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
     cb = enrich_cb_with_redeem_data(ak, cb, config)
     enforce_cb_filter_coverage(cb, config)
     cb = apply_cb_prefilters(cb, config)
-    cb = enrich_cb_with_daily_market_data(ak, cb, config)
+    cb = enrich_cb_with_daily_market_data(ak, cb, config, effective_date)
     if config.get("data", {}).get("strict_original_rules", True):
         cb = drop_uncovered_cb_market_data(cb)
         assert_required_fields(cb, ["turnover_yuan"], "可转债成交额过滤", require_all_rows=True)
@@ -1241,7 +1264,8 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
         require_single_trade_date(cb, "turnover_trade_date", "可转债收盘行情")
     assert_required_fields(cb, ["turnover_yuan"], "可转债成交额过滤")
     enforce_original_rule_fields(cb, config)
-    stock_factors = fetch_stock_factors_with_cache(ak, cb["stock_code"].dropna(), date.today(), config)
+    factor_date = effective_date or date.today()
+    stock_factors = fetch_stock_factors_with_cache(ak, cb["stock_code"].dropna(), factor_date, config)
     merged = cb.merge(stock_factors, on="stock_code", how="left")
     logging.info(
         "Stock factor coverage after merge: momentum=%s/%s, volatility=%s/%s",
@@ -1250,7 +1274,7 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
         int(merged["stock_volatility_20d"].notna().sum()) if "stock_volatility_20d" in merged.columns else 0,
         len(merged),
     )
-    stock_caps = fetch_stock_market_caps(ak, merged["stock_code"].dropna(), config)
+    stock_caps = fetch_stock_market_caps(ak, merged["stock_code"].dropna(), config, effective_date)
     merged = merged.merge(stock_caps, on="stock_code", how="left")
     logging.info(
         "Stock market cap coverage after merge: market_cap=%s/%s",
@@ -1289,13 +1313,18 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
     rebalance = build_rebalance_plan(current, target)
     artifacts = save_outputs(target, rebalance, config, log_file, data_notes)
     logging.info("Saved report to %s", artifacts.report_md)
-    data_date = resolve_trade_date(scored)
+    observed_data_date = resolve_trade_date(scored)
+    if effective_date is not None and observed_data_date != effective_date:
+        raise RuntimeError(
+            f"策略输入数据日 {observed_data_date} 与任务冻结日期 {effective_date} 不一致"
+        )
+    data_date = effective_date or observed_data_date
     run_id = persist_rankings(data_date, target)
     artifacts = replace(artifacts, run_id=run_id, data_date=data_date)
     logging.info("DB write OK: cb rankings run_id=%s data_date=%s", run_id, data_date)
     try:
         snapshot_raw_data(
-            resolve_trade_date(scored),
+            data_date,
             {
                 "cb_universe_raw": raw_cb,
                 "enriched_universe": merged,

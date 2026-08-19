@@ -207,7 +207,10 @@ class TestPlanGeneration(unittest.TestCase):
     def test_generate_complete_plan_prepares_missing_rankings_through_strategy_runner(self):
         self._clear_strategy_outputs()
 
-        def generate_rankings(strategy: str):
+        observed_tasks = []
+
+        def generate_rankings(strategy: str, task):
+            observed_tasks.append(task)
             if strategy == "cb":
                 run_id = db.create_complete_strategy_run(
                     "cb",
@@ -255,6 +258,8 @@ class TestPlanGeneration(unittest.TestCase):
             )
 
         self.assertEqual([call.args[0] for call in run_impl.call_args_list], ["cb", "stock"])
+        self.assertIs(observed_tasks[0], observed_tasks[1])
+        self.assertEqual(observed_tasks[0].effective_date, date(2026, 6, 29))
         self.assertEqual(plan["generation"]["status"], "complete")
         self.assertEqual(plan["plan_date"], "2026-06-29")
         cb_size.assert_called_once()
@@ -511,7 +516,7 @@ class TestPlanGeneration(unittest.TestCase):
     def test_strategy_ranking_date_mismatch_has_plan_generation_stage(self):
         self._clear_strategy_outputs()
 
-        def generate_wrong_date(strategy: str):
+        def generate_wrong_date(strategy: str, _task):
             run_id = db.create_complete_strategy_run(
                 strategy,
                 date(2026, 6, 28),
