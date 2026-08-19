@@ -32,6 +32,7 @@ from datasource.fundamental_store import (
     expected_report_period,
     prepare_fundamentals,
 )
+from datasource.derived_store import prepare_strategy_ranking
 from datasource.market import (
     fetch_sina_snapshot,
     fetch_tencent_snapshot,
@@ -505,25 +506,18 @@ def run(
                 "amount_yuan",
                 "pe_ttm",
             ),
-            "ranked": (
-                "stock_code",
-                "price",
-                "total_mv_yuan",
-                "amount_yuan",
-                "pe_ttm",
-                "roe_pct",
-                "rank",
-            ),
-            "filtered": ("stock_code", "price", "total_mv_yuan"),
         },
         symbol_field="stock_code",
-        source="sina+tencent+ths",
-        source_version="smallcap-sources-v1",
-        algorithm_version="smallcap-input-v1",
-        config_fingerprint=stable_fingerprint(config),
+        source="sina+tencent",
+        source_version="smallcap-market-sources-v1",
+        algorithm_version="smallcap-raw-input-v1",
+        config_fingerprint=stable_fingerprint({
+            "universe": config.get("universe", {}),
+            "exclude_st": config.get("filters", {}).get("exclude_st", True),
+        }),
     )
 
-    def _fetch_complete_inputs() -> dict[str, pd.DataFrame]:
+    def _fetch_raw_inputs() -> dict[str, pd.DataFrame]:
         ak = require_akshare()
         universe = fetch_universe(ak)
         universe = filter_board_and_st(universe, config)
@@ -579,27 +573,49 @@ def run(
             if col in merged.columns:
                 merged[col] = pd.to_numeric(merged[col], errors="coerce")
 
-        filtered = apply_filters(merged, config)
-        ranked = select_smallcap(ak, filtered, config, effective_date=data_date)
-        if ranked.empty:
-            raise RuntimeError("没有股票通过全部过滤，无法生成榜单。请检查数据源或放宽配置。")
-        return {"merged": merged, "filtered": filtered, "ranked": ranked}
+        return {"merged": merged}
 
     bundle = prepare_market_data_bundle(
         requirements,
         data_date,
-        _fetch_complete_inputs,
+        _fetch_raw_inputs,
     )
     logging.info("数据准备: %s", json.dumps(bundle.metadata.to_dict(), ensure_ascii=False))
     merged = bundle.frames["merged"].copy()
-    filtered = bundle.frames["filtered"].copy()
-    ranked = bundle.frames["ranked"].copy()
-    # Restore dtypes after CSV round-trip
-    ranked["stock_code"] = ranked["stock_code"].astype(str).str.zfill(6)
+    merged["stock_code"] = merged["stock_code"].astype(str).str.zfill(6)
     for col in ("total_mv_yuan", "amount_yuan", "pe_ttm", "roe_pct", "price",
                 "volume_hand", "prev_close", "limit_up", "limit_down"):
-        if col in ranked.columns:
-            ranked[col] = pd.to_numeric(ranked[col], errors="coerce")
+        if col in merged.columns:
+            merged[col] = pd.to_numeric(merged[col], errors="coerce")
+    filtered = apply_filters(merged, config)
+    ranking_input_fingerprint = stable_fingerprint({
+        "market": bundle.input_fingerprint,
+        "fundamental_report_period": expected_report_period(data_date),
+        "fundamental_source_version": "v1",
+    })
+
+    def _compute_ranking() -> pd.DataFrame:
+        ranked_local = select_smallcap(
+            require_akshare(),
+            filtered,
+            config,
+            effective_date=data_date,
+        )
+        if ranked_local.empty:
+            raise RuntimeError("没有股票通过全部过滤，无法生成榜单。请检查数据源或放宽配置。")
+        return ranked_local
+
+    ranking = prepare_strategy_ranking(
+        strategy="stock",
+        effective_date=data_date,
+        strategy_version="smallcap-v1",
+        config_fingerprint=stable_fingerprint(config),
+        input_fingerprint=ranking_input_fingerprint,
+        compute=_compute_ranking,
+    )
+    logging.info("榜单准备: %s", json.dumps(ranking.metadata.to_dict(), ensure_ascii=False))
+    ranked = ranking.frame.copy()
+    ranked["stock_code"] = ranked["stock_code"].astype(str).str.zfill(6)
     if "rank" not in ranked.columns or ranked["rank"].isna().any():
         ranked["rank"] = range(1, len(ranked) + 1)
 
@@ -613,7 +629,10 @@ def run(
         artifacts,
         run_id=run_id,
         data_date=data_date,
-        preparation=bundle.metadata.to_dict(),
+        preparation={
+            "market": bundle.metadata.to_dict(),
+            "ranking": ranking.metadata.to_dict(),
+        },
     )
     logging.info("DB write OK: stock rankings run_id=%s data_date=%s", run_id, data_date)
     try:
