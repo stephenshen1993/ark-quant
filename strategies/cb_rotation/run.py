@@ -963,11 +963,17 @@ def enforce_original_rule_fields(df: pd.DataFrame, config: dict) -> None:
     )
 
 
-def enforce_cb_filter_coverage(df: pd.DataFrame, config: dict) -> None:
+def enforce_cb_filter_coverage(
+    df: pd.DataFrame,
+    config: dict,
+    *,
+    as_of: date | None = None,
+) -> None:
     if not config.get("data", {}).get("strict_original_rules", True):
         return
     filters = config["filters"]
-    listed = pd.to_datetime(df["listing_date"], errors="coerce") <= pd.Timestamp(date.today())
+    filter_date = as_of or date.today()
+    listed = pd.to_datetime(df["listing_date"], errors="coerce") <= pd.Timestamp(filter_date)
     active = df["active_reference"].eq(True) if "active_reference" in df.columns else False
     potential = df.loc[active & listed & df["cb_price"].notna() & (df["cb_price"] < filters["max_cb_price"])].copy()
     assert_required_fields(
@@ -989,19 +995,27 @@ def enforce_factor_fields(df: pd.DataFrame, config: dict) -> None:
     )
 
 
-def apply_cb_prefilters(df: pd.DataFrame, config: dict) -> pd.DataFrame:
+def apply_cb_prefilters(
+    df: pd.DataFrame,
+    config: dict,
+    *,
+    as_of: date | None = None,
+) -> pd.DataFrame:
     filters = config["filters"]
+    filter_date = as_of or date.today()
     mask = pd.Series(True, index=df.index)
     if config.get("data", {}).get("strict_original_rules", True):
         mask &= df["active_reference"].eq(True)
-    mask &= pd.to_datetime(df["listing_date"], errors="coerce") <= pd.Timestamp(date.today())
+    mask &= pd.to_datetime(df["listing_date"], errors="coerce") <= pd.Timestamp(filter_date)
     mask &= df["cb_price"] < filters["max_cb_price"]
     if df["remaining_size_100m"].notna().any():
         mask &= df["remaining_size_100m"] > filters["min_remaining_size_100m"]
     if df["remaining_years"].notna().any():
         mask &= df["remaining_years"] > filters["min_years_to_maturity"]
     elif df["maturity_date"].notna().any():
-        min_maturity = pd.Timestamp(date.today() + timedelta(days=365 * filters["min_years_to_maturity"]))
+        min_maturity = pd.Timestamp(
+            filter_date + timedelta(days=365 * filters["min_years_to_maturity"])
+        )
         mask &= pd.to_datetime(df["maturity_date"], errors="coerce") > min_maturity
     if filters.get("exclude_call_risk", True) and df["call_status"].notna().any():
         risk_words = (
@@ -1480,8 +1494,14 @@ def prepare_cb_history_inputs(
 ) -> CbHistoryInputs:
     """Prepare reusable CB turnover and underlying-stock factors from raw history."""
     trading_days = load_exchange_trading_days(as_of=effective_date)
-    bond_codes = sorted({str(value).zfill(6) for value in universe["bond_code"].dropna()})
-    stock_codes = sorted({normalize_stock_code(value) for value in universe["stock_code"].dropna()})
+    history_universe = apply_cb_prefilters(universe, config, as_of=effective_date)
+    bond_codes = sorted({
+        str(value).zfill(6) for value in history_universe["bond_code"].dropna()
+    })
+    stock_codes = sorted({
+        normalize_stock_code(value)
+        for value in history_universe["stock_code"].dropna()
+    })
     stock_codes = [value for value in stock_codes if value]
 
     bond_requirements = _cb_history_requirements(
@@ -1667,9 +1687,20 @@ def run(
             universe = universe.head(max_universe).copy()
             logging.info("Limited universe to first %s bonds for test run.", max_universe)
         universe = enrich_cb_with_redeem_data(ak, universe, config)
-        history_inputs = prepare_cb_history_inputs(ak, universe, config, data_date)
+        enforce_cb_filter_coverage(universe, config, as_of=data_date)
+        eligible_universe = apply_cb_prefilters(universe, config, as_of=data_date)
+        history_inputs = prepare_cb_history_inputs(
+            ak,
+            eligible_universe,
+            config,
+            data_date,
+        )
         history_preparation = history_inputs.preparation
-        with_turnover = universe.merge(history_inputs.turnover, on="bond_code", how="left")
+        with_turnover = eligible_universe.merge(
+            history_inputs.turnover,
+            on="bond_code",
+            how="left",
+        )
         with_turnover["cb_price"] = with_turnover["cb_close_daily"].where(
             with_turnover["cb_close_daily"].notna(),
             with_turnover["cb_price"],
@@ -1704,8 +1735,8 @@ def run(
     )
     raw_cb = bundle.frames["cb_universe"].copy()
     cb = bundle.frames["enriched_universe"].copy()
-    enforce_cb_filter_coverage(cb, config)
-    cb = apply_cb_prefilters(cb, config)
+    enforce_cb_filter_coverage(cb, config, as_of=data_date)
+    cb = apply_cb_prefilters(cb, config, as_of=data_date)
     if config.get("data", {}).get("strict_original_rules", True):
         cb = drop_uncovered_cb_market_data(cb)
         assert_required_fields(cb, ["turnover_yuan"], "可转债成交额过滤", require_all_rows=True)

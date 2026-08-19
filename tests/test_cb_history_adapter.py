@@ -29,6 +29,98 @@ class _FakeAkshare:
 
 
 class ConvertibleBondHistoryAdapterTests(unittest.TestCase):
+    def test_history_adapter_excludes_bonds_not_listed_by_effective_date(self) -> None:
+        effective_date = date(2026, 8, 19)
+        trading_days = [effective_date - timedelta(days=20 - index) for index in range(21)]
+        universe = pd.DataFrame([
+            {
+                "bond_code": "113001",
+                "stock_code": "600001",
+                "stock_name": "已上市正股",
+                "active_reference": True,
+                "listing_date": date(2020, 1, 1),
+                "cb_price": 110.0,
+                "remaining_size_100m": 10.0,
+                "remaining_years": 2.0,
+                "maturity_date": date(2028, 1, 1),
+                "call_status": "",
+            },
+            {
+                "bond_code": "111026",
+                "stock_code": "605123",
+                "stock_name": "尚未上市正股",
+                "active_reference": True,
+                "listing_date": None,
+                "cb_price": 100.0,
+                "remaining_size_100m": 15.8,
+                "remaining_years": 6.0,
+                "maturity_date": date(2032, 8, 1),
+                "call_status": "",
+            },
+            {
+                "bond_code": "123283",
+                "stock_code": "301459",
+                "stock_name": "次日上市正股",
+                "active_reference": True,
+                "listing_date": effective_date + timedelta(days=1),
+                "cb_price": 100.0,
+                "remaining_size_100m": 6.0,
+                "remaining_years": 6.0,
+                "maturity_date": date(2032, 8, 1),
+                "call_status": "",
+            },
+        ])
+        config = {
+            "data": {"strict_original_rules": True, "per_symbol_fetch_workers": 2},
+            "filters": {
+                "max_cb_price": 150.0,
+                "min_remaining_size_100m": 1.0,
+                "min_years_to_maturity": 1.0,
+                "exclude_call_risk": True,
+                "exclude_st_stock": True,
+            },
+        }
+        ak = _FakeAkshare(trading_days)
+        requested_bonds: list[str] = []
+
+        def bond_turnover(_ak, codes, _config, target, *, include_metadata=False):
+            requested_bonds.extend(codes)
+            if list(codes) != ["113001"]:
+                raise AssertionError(f"unexpected history scope: {list(codes)}")
+            frame = pd.DataFrame([{
+                "bond_code": "113001",
+                "cb_close_daily": 110.0,
+                "turnover_yuan_daily": 11_000_000.0,
+                "turnover_trade_date": target.isoformat(),
+            }])
+            if include_metadata:
+                return cb_run.MarketFetchResult(frame=frame, external_calls=1)
+            return frame
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with (
+                patch.object(cb_run, "load_exchange_trading_days", return_value=trading_days),
+                patch.object(cb_run, "fetch_cb_daily_turnover", side_effect=bond_turnover),
+                patch.object(
+                    cb_run,
+                    "fetch_stock_history_batch",
+                    return_value=cb_run.MarketFetchResult(pd.DataFrame(), 0),
+                ),
+            ):
+                result = cb_run.prepare_cb_history_inputs(
+                    ak,
+                    universe,
+                    config,
+                    effective_date,
+                    history_store_path=root / "history.sqlite3",
+                    derived_store_path=root / "derived.sqlite3",
+                )
+
+        self.assertEqual(requested_bonds, ["113001"])
+        self.assertEqual(result.turnover["bond_code"].tolist(), ["113001"])
+        self.assertEqual(result.stock_factors["stock_code"].tolist(), ["600001"])
+
     def test_tushare_batch_source_uses_two_physical_calls_per_missing_date(self) -> None:
         requested: list[tuple[str, str]] = []
 
@@ -77,8 +169,28 @@ class ConvertibleBondHistoryAdapterTests(unittest.TestCase):
         all_days = [effective_date - timedelta(days=20 - index) for index in range(22)]
         trading_days = all_days[:21]
         next_trading_days = all_days[1:]
-        universe = pd.DataFrame([{"bond_code": "113001", "stock_code": "600001"}])
-        config = {"data": {"per_symbol_fetch_workers": 2}}
+        universe = pd.DataFrame([{
+            "bond_code": "113001",
+            "stock_code": "600001",
+            "stock_name": "测试正股",
+            "active_reference": True,
+            "listing_date": date(2020, 1, 1),
+            "cb_price": 110.0,
+            "remaining_size_100m": 10.0,
+            "remaining_years": 2.0,
+            "maturity_date": date(2028, 1, 1),
+            "call_status": "",
+        }])
+        config = {
+            "data": {"per_symbol_fetch_workers": 2},
+            "filters": {
+                "max_cb_price": 150.0,
+                "min_remaining_size_100m": 1.0,
+                "min_years_to_maturity": 1.0,
+                "exclude_call_risk": True,
+                "exclude_st_stock": True,
+            },
+        }
         ak = _FakeAkshare(all_days)
 
         def bond_turnover(_ak, _codes, _config, target, *, include_metadata=False):
