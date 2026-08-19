@@ -81,13 +81,16 @@ class ConvertibleBondHistoryAdapterTests(unittest.TestCase):
         config = {"data": {"per_symbol_fetch_workers": 2}}
         ak = _FakeAkshare(all_days)
 
-        def bond_turnover(_ak, _codes, _config, target):
-            return pd.DataFrame([{
+        def bond_turnover(_ak, _codes, _config, target, *, include_metadata=False):
+            frame = pd.DataFrame([{
                 "bond_code": "113001",
                 "cb_close_daily": 120.0,
                 "turnover_yuan_daily": 12_000_000.0,
                 "turnover_trade_date": target.isoformat(),
             }])
+            if include_metadata:
+                return cb_run.MarketFetchResult(frame=frame, external_calls=1)
+            return frame
 
         with tempfile.TemporaryDirectory() as tmp:
             history_store = Path(tmp) / "history.sqlite3"
@@ -141,17 +144,20 @@ class ConvertibleBondHistoryAdapterTests(unittest.TestCase):
             ],
         )
         self.assertEqual(first.preparation["stock_history"]["mode"], "cold_build")
+        self.assertEqual(first.preparation["bond_history"]["external_calls"], 1)
         self.assertEqual(first.preparation["stock_history"]["batch_requests"], 1)
         self.assertEqual(first.preparation["stock_history"]["fallback_symbols"], 1)
         self.assertEqual(first.preparation["stock_history"]["external_calls"], 2)
         self.assertEqual(first.preparation["momentum"]["mode"], "cold_build")
         self.assertEqual(second.preparation["bond_history"]["mode"], "cache_hit")
+        self.assertEqual(second.preparation["bond_history"]["external_calls"], 0)
         self.assertEqual(second.preparation["stock_history"]["mode"], "cache_hit")
         self.assertEqual(second.preparation["momentum"]["mode"], "cache_hit")
         self.assertEqual(second.preparation["volatility"]["mode"], "cache_hit")
         self.assertEqual(second.preparation["stock_history"]["external_calls"], 0)
         self.assertEqual(second.stock_factors["stock_code"].tolist(), ["600001"])
         self.assertEqual(third.preparation["stock_history"]["mode"], "incremental")
+        self.assertEqual(third.preparation["bond_history"]["external_calls"], 1)
         self.assertEqual(third.preparation["stock_history"]["refreshed_records"], 1)
         self.assertEqual(third.preparation["stock_history"]["external_calls"], 2)
 

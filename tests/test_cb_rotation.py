@@ -309,14 +309,52 @@ class ConvertibleBondRotationTests(unittest.TestCase):
                 }])
 
         with TemporaryDirectory() as temp_dir, patch.object(run, "CACHE_DIR", Path(temp_dir)):
-            turnover = run.fetch_cb_daily_turnover(
+            turnover_result = run.fetch_cb_daily_turnover(
                 FakeAk(),
                 ["113001", "113002"],
                 {"data": {"per_symbol_fetch_workers": 2}},
+                include_metadata=True,
             )
 
+        self.assertIsInstance(turnover_result, run.MarketFetchResult)
+        turnover = turnover_result.frame
+        self.assertEqual(turnover_result.external_calls, 2)
         self.assertEqual(turnover["bond_code"].tolist(), ["113001", "113002"])
         self.assertEqual(overlapped, [True, True])
+
+    def test_fetch_bond_turnover_cache_hit_reports_zero_physical_calls(self) -> None:
+        class FakeAk:
+            calls = 0
+
+            @classmethod
+            def bond_zh_hs_cov_daily(cls, symbol: str) -> pd.DataFrame:
+                del symbol
+                cls.calls += 1
+                return pd.DataFrame([{
+                    "date": "2026-08-19",
+                    "close": 120.0,
+                    "volume": 1000,
+                }])
+
+        with TemporaryDirectory() as temp_dir, patch.object(run, "CACHE_DIR", Path(temp_dir)):
+            first = run.fetch_cb_daily_turnover(
+                FakeAk(),
+                ["113001"],
+                {},
+                date(2026, 8, 19),
+                include_metadata=True,
+            )
+            second = run.fetch_cb_daily_turnover(
+                FakeAk(),
+                ["113001"],
+                {},
+                date(2026, 8, 19),
+                include_metadata=True,
+            )
+
+        self.assertEqual(first.external_calls, 1)
+        self.assertEqual(second.external_calls, 0)
+        self.assertEqual(FakeAk.calls, 1)
 
     def test_drop_uncovered_factor_data_removes_missing_factor_rows(self) -> None:
         candidates = pd.DataFrame(

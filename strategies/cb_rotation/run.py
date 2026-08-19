@@ -449,10 +449,18 @@ def fetch_cb_daily_turnover(
     bond_codes: Iterable[str],
     config: dict,
     effective_date: date | None = None,
-) -> pd.DataFrame:
+    *,
+    include_metadata: bool = False,
+) -> pd.DataFrame | MarketFetchResult:
     codes = sorted({str(c).zfill(6) for c in bond_codes if pd.notna(c)})
     expected_data_date = effective_date or latest_completed_market_data_date()
     data_cache = cache_path("bond_daily_turnover", stamp=f"{expected_data_date:%Y%m%d}")
+    external_calls = 0
+
+    def _result(frame: pd.DataFrame) -> pd.DataFrame | MarketFetchResult:
+        if include_metadata:
+            return MarketFetchResult(frame=frame, external_calls=external_calls)
+        return frame
 
     def _usable_cache(path: Path) -> pd.DataFrame | None:
         if not path.exists():
@@ -476,7 +484,7 @@ def fetch_cb_daily_turnover(
 
     cached = _usable_cache(data_cache)
     if cached is not None:
-        return cached
+        return _result(cached)
 
     rows: list[dict] = []
     cached_codes: set[str] = set()
@@ -514,7 +522,9 @@ def fetch_cb_daily_turnover(
     with ThreadPoolExecutor(max_workers=min(max_workers, len(missing_codes) or 1)) as executor:
         for start in range(0, len(missing_codes), max_workers):
             batch = missing_codes[start : start + max_workers]
-            for offset, (code, result) in enumerate(zip(batch, executor.map(_fetch_one, batch)), start=1):
+            batch_results = list(executor.map(_fetch_one, batch))
+            external_calls += len(batch_results)
+            for offset, (code, result) in enumerate(zip(batch, batch_results), start=1):
                 row, exc = result
                 i = start + offset
                 if row is not None:
@@ -548,14 +558,14 @@ def fetch_cb_daily_turnover(
     if not turnover.empty:
         turnover.to_csv(data_cache, index=False, encoding="utf-8-sig")
         logging.info("Saved bond turnover cache: %s", data_cache)
-        return turnover
+        return _result(turnover)
 
     if data_config.get("use_cache_on_failure", True):
         cached = latest_dated_cache("bond_daily_turnover", int(data_config.get("max_cache_age_days", 7)))
         if cached is not None:
             logging.warning("Using cached bond turnover: %s", cached)
-            return pd.read_csv(cached, dtype={"bond_code": str})
-    return turnover
+            return _result(pd.read_csv(cached, dtype={"bond_code": str}))
+    return _result(turnover)
 
 
 def enrich_cb_with_daily_market_data(
@@ -1480,11 +1490,20 @@ def prepare_cb_history_inputs(
         source="akshare-cb-daily",
     )
 
-    def _fetch_bond_batch(missing_dates: Iterable[date]) -> pd.DataFrame:
+    def _fetch_bond_batch(missing_dates: Iterable[date]) -> MarketFetchResult:
         target = max(missing_dates)
-        rows = fetch_cb_daily_turnover(ak, bond_codes, config, target)
+        fetched = fetch_cb_daily_turnover(
+            ak,
+            bond_codes,
+            config,
+            target,
+            include_metadata=True,
+        )
+        if not isinstance(fetched, MarketFetchResult):
+            raise TypeError("bond turnover fetch must include physical request metadata")
+        rows = fetched.frame
         if rows.empty:
-            return pd.DataFrame()
+            return fetched
         result = rows.rename(columns={
             "cb_close_daily": "raw_close",
             "turnover_yuan_daily": "amount",
@@ -1492,7 +1511,7 @@ def prepare_cb_history_inputs(
         }).copy()
         result["volume"] = result["amount"] / result["raw_close"]
         result["adjustment_factor"] = 1.0
-        return result
+        return MarketFetchResult(frame=result, external_calls=fetched.external_calls)
 
     def _fetch_bond_one(symbol: str, start: date, end: date) -> pd.DataFrame:
         history = ak.bond_zh_hs_cov_daily(symbol=bond_symbol_with_exchange(symbol))
