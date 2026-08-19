@@ -15,19 +15,33 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, time
 from pathlib import Path
+from time import perf_counter
 
 try:
     import pandas as pd
 except ImportError as exc:
     raise SystemExit("缺少基础依赖。请先运行: python3 -m pip install -r requirements.txt") from exc
 
+from datasource.fundamental_store import (
+    DEFAULT_FUNDAMENTAL_STORE,
+    FundamentalRequirements,
+    expected_report_period,
+    prepare_fundamentals,
+)
+from datasource.derived_store import prepare_strategy_ranking
 from datasource.market import (
     fetch_sina_snapshot,
     fetch_tencent_snapshot,
-    load_or_fetch,
+)
+from datasource.market_data_bundle import (
+    DataRequirements,
+    preparation_mode_label,
+    prepare_market_data_bundle,
+    stable_fingerprint,
 )
 from datasource.trade_calendar import enforce_snapshot_run_window
 from strategies.cb_rotation.run import snapshot_raw_data
@@ -46,6 +60,7 @@ class RunArtifacts:
     report_md: Path
     run_id: int | None = None
     data_date: date | None = None
+    preparation: dict | None = None
 
 
 def setup_logging() -> Path:
@@ -156,6 +171,42 @@ def apply_filters(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     return filtered
 
 
+def fetch_snapshot_with_probe(fetcher, codes, probe_size: int) -> pd.DataFrame:
+    """Avoid walking a full market when the first quote batch is unusable."""
+    started_at = perf_counter()
+    source_name = getattr(fetcher, "__name__", type(fetcher).__name__)
+    code_list = [str(code).zfill(6) for code in dict.fromkeys(codes) if str(code).strip()]
+    if not code_list:
+        return pd.DataFrame()
+    probe_size = max(1, int(probe_size))
+    probe = fetcher(code_list[:probe_size])
+    amount = pd.to_numeric(probe.get("amount_yuan"), errors="coerce") if not probe.empty else None
+    if probe.empty or amount is None or not amount.fillna(0).gt(0).any():
+        logging.info(
+            "Snapshot source %s rejected after %.2fs probe (probe=%s, total=%s).",
+            source_name,
+            perf_counter() - started_at,
+            min(probe_size, len(code_list)),
+            len(code_list),
+        )
+        return probe
+    remainder_codes = code_list[probe_size:]
+    if not remainder_codes:
+        return probe
+    remainder = fetcher(remainder_codes)
+    if remainder.empty:
+        return probe
+    result = pd.concat([probe, remainder], ignore_index=True).drop_duplicates("stock_code", keep="last")
+    logging.info(
+        "Snapshot source %s finished in %.2fs (requested=%s, returned=%s).",
+        source_name,
+        perf_counter() - started_at,
+        len(code_list),
+        len(result),
+    )
+    return result
+
+
 def fetch_deducted_roe_ttm(ak, code: str) -> float | None:
     """TTM 扣非净资产收益率(%) via THS quarterly + annual data.
 
@@ -203,28 +254,95 @@ def fetch_deducted_roe_ttm(ak, code: str) -> float | None:
     return None
 
 
-def select_smallcap(ak, df: pd.DataFrame, config: dict) -> pd.DataFrame:
+def select_smallcap(
+    ak,
+    df: pd.DataFrame,
+    config: dict,
+    *,
+    effective_date: date | None = None,
+    fundamental_store_path: Path | None = None,
+) -> pd.DataFrame:
     """Walk smallest-cap first, applying the 扣非ROE filter, until the candidate pool is filled."""
     sel = config["selection"]
     min_roe = config["filters"]["min_roe_pct"]
     ranked = df.sort_values("total_mv_yuan", ascending=True).reset_index(drop=True)
     pool, fetched = [], 0
-    for _, r in ranked.iterrows():
-        if len(pool) >= sel["candidate_pool"] or fetched >= sel["max_roe_fetch"]:
-            break
-        roe = fetch_deducted_roe_ttm(ak, r["stock_code"])
-        fetched += 1
-        if roe is None or roe <= min_roe:
-            continue
-        row = r.to_dict()
-        row["roe_pct"] = roe
-        pool.append(row)
-        if fetched % 25 == 0:
-            logging.info("扣非ROE-screened %s stocks, pool=%s", fetched, len(pool))
+    max_workers = max(1, min(8, int(sel.get("roe_fetch_workers", 4))))
+    candidates = ranked.head(sel["max_roe_fetch"]).to_dict("records")
+    fetch_started_at = perf_counter()
+
+    def _fetch_one(row: dict) -> tuple[dict, float | None]:
+        return row, fetch_deducted_roe_ttm(ak, row["stock_code"])
+
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(candidates) or 1)) as executor:
+        for start in range(0, len(candidates), max_workers):
+            batch = candidates[start : start + max_workers]
+            if effective_date is None:
+                results = list(executor.map(_fetch_one, batch))
+            else:
+                report_period = expected_report_period(effective_date)
+                requirements = FundamentalRequirements(
+                    symbol_field="stock_code",
+                    metrics=("roe_pct",),
+                    caliber="deducted-profit-ttm/annual-net-assets",
+                    source="ths-financial-abstract",
+                    source_version="v1",
+                )
+
+                def _fetch_missing(symbols, period, _metrics) -> pd.DataFrame:
+                    values = list(
+                        executor.map(
+                            lambda code: fetch_deducted_roe_ttm(ak, code),
+                            symbols,
+                        )
+                    )
+                    return pd.DataFrame(
+                        {
+                            "stock_code": list(symbols),
+                            "report_period": period,
+                            "roe_pct": values,
+                        }
+                    )
+
+                fundamentals = prepare_fundamentals(
+                    requirements,
+                    [row["stock_code"] for row in batch],
+                    report_period,
+                    _fetch_missing,
+                    effective_date=effective_date,
+                    store_path=fundamental_store_path or DEFAULT_FUNDAMENTAL_STORE,
+                )
+                logging.info(
+                    "基本面准备[%s]: %s",
+                    preparation_mode_label(fundamentals.metadata.mode),
+                    json.dumps(fundamentals.metadata.to_dict(), ensure_ascii=False),
+                )
+                values = fundamentals.frame.set_index("stock_code")["roe_pct"].to_dict()
+                results = [(row, values.get(row["stock_code"])) for row in batch]
+            previous_fetched = fetched
+            fetched += len(batch)
+            for row, roe in results:
+                if len(pool) >= sel["candidate_pool"]:
+                    break
+                if roe is None or roe <= min_roe:
+                    continue
+                selected = dict(row)
+                selected["roe_pct"] = roe
+                pool.append(selected)
+            if fetched // 25 > previous_fetched // 25:
+                logging.info("扣非ROE-screened %s stocks, pool=%s", fetched, len(pool))
+            if len(pool) >= sel["candidate_pool"]:
+                break
     result = pd.DataFrame(pool)
     if not result.empty:
         result["rank"] = range(1, len(result) + 1)
-    logging.info("Small-cap pool after 扣非ROE filter: %s (fetches=%s)", len(result), fetched)
+    logging.info(
+        "Small-cap pool after 扣非ROE filter: %s (fetches=%s, workers=%s, elapsed=%.2fs)",
+        len(result),
+        fetched,
+        max_workers,
+        perf_counter() - fetch_started_at,
+    )
     return result
 
 
@@ -367,22 +485,61 @@ def save_outputs(ranked: pd.DataFrame, rebalance: pd.DataFrame, config: dict, lo
     return RunArtifacts(candidates_csv, rebalance_csv, report_md)
 
 
-def run(config_path: Path, positions_path: Path, max_universe: int | None = None) -> RunArtifacts:
-    enforce_snapshot_run_window()
+def market_data_requirements(
+    config: dict,
+    max_universe: int | None = None,
+) -> DataRequirements:
+    """Declare remote stock inputs independently from local filter and ranking parameters."""
+    return DataRequirements(
+        strategy="stock",
+        dataset_fields={
+            "universe": ("stock_code",),
+            "merged": (
+                "stock_code",
+                "price",
+                "total_mv_yuan",
+                "amount_yuan",
+                "pe_ttm",
+            ),
+        },
+        symbol_field="stock_code",
+        source="sina+tencent",
+        source_version="smallcap-market-sources-v1",
+        algorithm_version="smallcap-raw-input-v1",
+        config_fingerprint=stable_fingerprint({
+            "universe": config.get("universe", {}),
+            "exclude_st": config.get("filters", {}).get("exclude_st", True),
+            "max_universe": max_universe,
+        }),
+        expected_symbols_dataset="universe",
+        coverage_datasets=("merged",),
+    )
+
+
+def run(
+    config_path: Path,
+    positions_path: Path,
+    max_universe: int | None = None,
+    *,
+    effective_date: date | None = None,
+    started_at: datetime | None = None,
+) -> RunArtifacts:
+    enforce_snapshot_run_window(now=started_at)
     log_file = setup_logging()
     config = load_config(config_path)
-    ak = require_akshare()
 
-    today_str = date.today().strftime("%Y%m%d")
+    data_date = effective_date or latest_completed_data_date(now=started_at)
+    requirements = market_data_requirements(config, max_universe=max_universe)
 
-    def _fetch_merged():
+    def _fetch_raw_inputs() -> dict[str, pd.DataFrame]:
+        ak = require_akshare()
         universe = fetch_universe(ak)
         universe = filter_board_and_st(universe, config)
         if max_universe:
             universe = universe.head(max_universe).copy()
             logging.info("Limited universe to first %s for test run.", max_universe)
 
-        snap = fetch_tencent_snapshot(universe["stock_code"])
+        snap = fetch_snapshot_with_probe(fetch_tencent_snapshot, universe["stock_code"], probe_size=60)
         # Fallback chain: Tencent → Sina (live) → cached snapshot.
         if snap.empty or (snap["amount_yuan"] == 0).all():
             import glob as _glob
@@ -395,7 +552,7 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
                 cs["stock_code"] = cs["stock_code"].astype(str).str.zfill(6)
                 return cs
 
-            sina_snap = fetch_sina_snapshot(universe["stock_code"])
+            sina_snap = fetch_snapshot_with_probe(fetch_sina_snapshot, universe["stock_code"], probe_size=50)
             if not sina_snap.empty and not (sina_snap["amount_yuan"] == 0).all():
                 logging.info("Tencent unavailable, using Sina live snapshot")
                 snap = sina_snap
@@ -416,46 +573,94 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
 
         merged = universe.merge(snap, on="stock_code", how="inner")
         logging.info("Snapshot coverage: %s/%s", len(merged), len(universe))
-        return merged
+        merged["stock_code"] = merged["stock_code"].astype(str).str.zfill(6)
+        for col in (
+            "total_mv_yuan",
+            "amount_yuan",
+            "pe_ttm",
+            "price",
+            "volume_hand",
+            "prev_close",
+            "limit_up",
+            "limit_down",
+        ):
+            if col in merged.columns:
+                merged[col] = pd.to_numeric(merged[col], errors="coerce")
 
-    merged = load_or_fetch("merged", _fetch_merged, today_str, "stock_smallcap")
+        return {"universe": universe[["stock_code"]].copy(), "merged": merged}
+
+    bundle = prepare_market_data_bundle(
+        requirements,
+        data_date,
+        _fetch_raw_inputs,
+    )
+    logging.info(
+        "数据准备[%s]: %s",
+        preparation_mode_label(bundle.metadata.mode),
+        json.dumps(bundle.metadata.to_dict(), ensure_ascii=False),
+    )
+    merged = bundle.frames["merged"].copy()
     merged["stock_code"] = merged["stock_code"].astype(str).str.zfill(6)
-    for col in ("total_mv_yuan", "amount_yuan", "pe_ttm", "price",
+    for col in ("total_mv_yuan", "amount_yuan", "pe_ttm", "roe_pct", "price",
                 "volume_hand", "prev_close", "limit_up", "limit_down"):
         if col in merged.columns:
             merged[col] = pd.to_numeric(merged[col], errors="coerce")
-
     filtered = apply_filters(merged, config)
+    ranking_input_fingerprint = stable_fingerprint({
+        "market": bundle.input_fingerprint,
+        "fundamental_report_period": expected_report_period(data_date),
+        "fundamental_source_version": "v1",
+    })
 
-    def _fetch_ranked():
-        r = select_smallcap(ak, filtered, config)
-        if r.empty:
+    def _compute_ranking() -> pd.DataFrame:
+        ranked_local = select_smallcap(
+            require_akshare(),
+            filtered,
+            config,
+            effective_date=data_date,
+        )
+        if ranked_local.empty:
             raise RuntimeError("没有股票通过全部过滤，无法生成榜单。请检查数据源或放宽配置。")
-        return r
+        return ranked_local
 
-    ranked = load_or_fetch("ranked", _fetch_ranked, today_str, "stock_smallcap")
-    # Restore dtypes after CSV round-trip
+    ranking = prepare_strategy_ranking(
+        strategy="stock",
+        effective_date=data_date,
+        strategy_version="smallcap-v1",
+        config_fingerprint=stable_fingerprint(config),
+        input_fingerprint=ranking_input_fingerprint,
+        compute=_compute_ranking,
+    )
+    logging.info(
+        "榜单准备[%s]: %s",
+        preparation_mode_label(ranking.metadata.mode),
+        json.dumps(ranking.metadata.to_dict(), ensure_ascii=False),
+    )
+    ranked = ranking.frame.copy()
     ranked["stock_code"] = ranked["stock_code"].astype(str).str.zfill(6)
-    for col in ("total_mv_yuan", "amount_yuan", "pe_ttm", "roe_pct", "price",
-                "volume_hand", "prev_close", "limit_up", "limit_down"):
-        if col in ranked.columns:
-            ranked[col] = pd.to_numeric(ranked[col], errors="coerce")
     if "rank" not in ranked.columns or ranked["rank"].isna().any():
         ranked["rank"] = range(1, len(ranked) + 1)
 
     current = load_current_positions(positions_path)
     target_df, rebalance = build_target_and_rebalance(current, ranked, config)
     notes = build_data_notes(config)
-    data_date = latest_completed_data_date()
     artifacts = save_outputs(ranked, rebalance, config, log_file, notes, data_date=data_date)
     logging.info("Saved report to %s", artifacts.report_md)
     run_id = persist_rankings(data_date, rankings_for_order_sizing(ranked, target_df, config))
-    artifacts = replace(artifacts, run_id=run_id, data_date=data_date)
+    artifacts = replace(
+        artifacts,
+        run_id=run_id,
+        data_date=data_date,
+        preparation={
+            "market": bundle.metadata.to_dict(),
+            "ranking": ranking.metadata.to_dict(),
+        },
+    )
     logging.info("DB write OK: stock rankings run_id=%s data_date=%s", run_id, data_date)
     try:
         snapshot_raw_data(
             data_date,
-            {"universe_snapshot": merged, "filtered": filtered, "smallcap_pool": ranked, "rebalance_plan": rebalance},
+            {"universe_snapshot": merged, "merged": merged, "filtered": filtered, "smallcap_pool": ranked, "rebalance_plan": rebalance},
             config,
             subdir="stock_smallcap",
         )

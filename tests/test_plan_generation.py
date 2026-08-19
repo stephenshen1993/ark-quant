@@ -1,13 +1,15 @@
 import sqlite3
 import unittest
 from datetime import date, datetime
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 from unittest.mock import Mock, patch
 
 import pandas as pd
 
-from app import account_current_state, plan_generation, plan_lifecycle
+from app import account_current_state, order_sizing, plan_generation, plan_lifecycle, plan_service
 from app.plan_service import PlanServiceError
 from datasource import db
 from datasource.youzhiyouxing import DATA_URL
@@ -29,10 +31,16 @@ class TestPlanGeneration(unittest.TestCase):
                 "113062": {"name": "常银转债", "price": (227183 - 110) / 10},
             },
         )
+        self.cb_price_snapshot = patch(
+            "datasource.market.fetch_cb_prices_tencent",
+            return_value={"113062": 126.80},
+        )
         self.stock_quotes_mock = self.stock_quotes.start()
         self.cb_quotes.start()
+        self.cb_price_snapshot.start()
         self.addCleanup(self.stock_quotes.stop)
         self.addCleanup(self.cb_quotes.stop)
+        self.addCleanup(self.cb_price_snapshot.stop)
         self.temperature_clock = patch(
             "datasource.youzhiyouxing._now_shanghai",
             return_value=datetime(2026, 6, 29, 16, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
@@ -93,6 +101,7 @@ class TestPlanGeneration(unittest.TestCase):
                 "total_mv_yuan": 1000000000,
                 "pe_ttm": 10.0,
                 "roe_pct": 12.0,
+                "price": 5.68,
             }]),
         )
         db.insert_stock_orders(stock_run_id, pd.DataFrame([{
@@ -198,7 +207,10 @@ class TestPlanGeneration(unittest.TestCase):
     def test_generate_complete_plan_prepares_missing_rankings_through_strategy_runner(self):
         self._clear_strategy_outputs()
 
-        def generate_rankings(strategy: str):
+        observed_tasks = []
+
+        def generate_rankings(strategy: str, task):
+            observed_tasks.append(task)
             if strategy == "cb":
                 run_id = db.create_complete_strategy_run(
                     "cb",
@@ -225,6 +237,7 @@ class TestPlanGeneration(unittest.TestCase):
                         "total_mv_yuan": 1000000000,
                         "pe_ttm": 10.0,
                         "roe_pct": 12.0,
+                        "price": 5.68,
                     }]),
                 )
             return SimpleNamespace(run_id=run_id)
@@ -245,10 +258,181 @@ class TestPlanGeneration(unittest.TestCase):
             )
 
         self.assertEqual([call.args[0] for call in run_impl.call_args_list], ["cb", "stock"])
+        self.assertIs(observed_tasks[0], observed_tasks[1])
+        self.assertEqual(observed_tasks[0].effective_date, date(2026, 6, 29))
         self.assertEqual(plan["generation"]["status"], "complete")
         self.assertEqual(plan["plan_date"], "2026-06-29")
         cb_size.assert_called_once()
         stock_size.assert_called_once()
+
+    def test_complete_plan_persists_a_frozen_versioned_snapshot(self):
+        cb_size = Mock(return_value={
+            "orders": [],
+            "summary": {
+                "starting_cash": 110.0,
+                "transfer_delta": 0.0,
+                "order_delta": 0.0,
+                "cash_left": 110.0,
+            },
+        })
+        stock_size = Mock(return_value={
+            "orders": [],
+            "summary": {
+                "starting_cash": 274.0,
+                "transfer_delta": 0.0,
+                "order_delta": 0.0,
+                "cash_left": 274.0,
+            },
+        })
+
+        plan = plan_generation.generate_complete_plan(
+            size_cb_orders=cb_size,
+            size_stock_orders=stock_size,
+        )
+
+        snapshot = plan["snapshot"]
+        plan_id = plan["generation"]["plan_id"]
+        self.assertEqual(snapshot["version"], 1)
+        self.assertEqual(snapshot["plan_id"], plan_id)
+        self.assertEqual(snapshot["data_date"], "2026-06-29")
+        self.assertEqual(snapshot["execution_date"], "2026-06-30")
+        self.assertEqual(snapshot["scope"], "complete_next_trading_day")
+        self.assertEqual(snapshot["generated_at"], plan["generated_at"])
+        self.assertEqual(
+            snapshot["input_provenance"]["strategies"]["stock"],
+            {"data_date": "2026-06-29", "trade_date": "2026-06-30"},
+        )
+
+        before_stale = plan_lifecycle.get_plan(plan_id)["plan"]
+        plan_lifecycle.mark_stale()
+        after_stale = plan_lifecycle.get_plan(plan_id)
+        self.assertEqual(after_stale["status"], plan_lifecycle.STALE)
+        self.assertEqual(after_stale["plan"], before_stale)
+
+        regenerated = plan_generation.generate_complete_plan(
+            size_cb_orders=cb_size,
+            size_stock_orders=stock_size,
+        )
+        self.assertNotEqual(regenerated["generation"]["plan_id"], plan_id)
+        self.assertEqual(
+            plan_lifecycle.get_plan(plan_id)["plan"],
+            before_stale,
+        )
+
+    def test_complete_plan_sizes_both_strategies_from_one_frozen_price_snapshot(self):
+        prices = {
+            "data_date": "2026-06-29",
+            "captured_at": "2026-06-30T08:00:00",
+            "cb": {"113062": 126.8},
+            "stock": {"600051": 5.68},
+        }
+        cb_size = Mock(return_value={
+            "orders": [],
+            "summary": {"starting_cash": 110.0, "transfer_delta": 0.0,
+                        "order_delta": 0.0, "cash_left": 110.0},
+        })
+        stock_size = Mock(return_value={
+            "orders": [],
+            "summary": {"starting_cash": 274.0, "transfer_delta": 0.0,
+                        "order_delta": 0.0, "cash_left": 274.0},
+        })
+
+        with patch(
+            "app.plan_generation.plan_service.capture_frozen_plan_prices",
+            return_value=prices,
+        ):
+            plan = plan_generation.generate_complete_plan(
+                size_cb_orders=cb_size,
+                size_stock_orders=stock_size,
+            )
+
+        self.assertEqual(plan["price_snapshot"], prices)
+        self.assertEqual(cb_size.call_args.kwargs["prices"], prices["cb"])
+        self.assertEqual(stock_size.call_args.kwargs["prices"], prices["stock"])
+        self.assertEqual(cb_size.call_args.kwargs["rankings"][0]["bond_code"], "113062")
+        self.assertEqual(stock_size.call_args.kwargs["rankings"][0]["stock_code"], "600051")
+
+    def test_complete_plan_snapshot_preserves_rankings_and_risk_inputs(self):
+        cb_size = Mock(return_value={"orders": [], "summary": {}})
+        stock_size = Mock(return_value={"orders": [], "summary": {}})
+
+        plan = plan_generation.generate_complete_plan(
+            size_cb_orders=cb_size,
+            size_stock_orders=stock_size,
+        )
+
+        rankings = plan["snapshot"]["input_provenance"]["strategy_rankings"]
+        self.assertEqual(rankings["cb"]["items"][0]["score"], 0.9)
+        self.assertEqual(rankings["stock"]["items"][0]["pe_ttm"], 10.0)
+
+    def test_frozen_price_capture_fails_closed_when_a_plan_code_has_no_price(self):
+        db._TEST_CONN.execute("UPDATE cb_rankings SET cb_price=NULL")
+        db._TEST_CONN.commit()
+        with self.assertRaises(PlanServiceError) as caught:
+            plan_generation.plan_service.capture_frozen_plan_prices("2026-06-29")
+
+        self.assertEqual(caught.exception.status_code, 503)
+        self.assertEqual(
+            caught.exception.detail["code"],
+            "PLAN_PRICE_SNAPSHOT_INCOMPLETE",
+        )
+        self.assertEqual(caught.exception.detail["missing"]["cb"], ["113062"])
+
+    def test_frozen_price_capture_uses_plan_date_inputs_not_realtime_quotes(self):
+        with patch(
+            "datasource.market.fetch_cb_prices_tencent",
+            side_effect=AssertionError("realtime quotes must not be read"),
+        ), patch(
+            "datasource.market.fetch_tencent_snapshot",
+            side_effect=AssertionError("realtime quotes must not be read"),
+        ):
+            prices = plan_generation.plan_service.capture_frozen_plan_prices("2026-06-29")
+
+        self.assertEqual(prices["cb"], {"113062": 126.8})
+        self.assertEqual(prices["stock"], {"600051": 5.68})
+
+    def test_complete_plan_blocks_stock_execution_when_fewer_than_twenty_candidates_qualify(self):
+        cb_size = Mock(return_value={
+            "orders": [],
+            "summary": {
+                "starting_cash": 110.0,
+                "transfer_delta": 0.0,
+                "order_delta": 0.0,
+                "cash_left": 110.0,
+            },
+        })
+
+        with self.assertRaises(PlanServiceError) as caught:
+            plan_generation.generate_complete_plan(
+                size_cb_orders=cb_size,
+                size_stock_orders=order_sizing.size_stock_orders,
+            )
+
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertEqual(caught.exception.detail["code"], "INSUFFICIENT_STOCK_CANDIDATES")
+
+    def test_failed_generation_never_exposes_a_partial_executable_plan(self):
+        cb_size = Mock(return_value={
+            "orders": [],
+            "summary": {"starting_cash": 110.0, "transfer_delta": 0.0,
+                        "order_delta": 0.0, "cash_left": 110.0},
+        })
+        stock_size = Mock(side_effect=PlanServiceError(
+            409,
+            {"code": "STOCK_SIZING_FAILED", "message": "stock sizing failed"},
+        ))
+
+        with self.assertRaises(PlanServiceError) as caught:
+            plan_generation.generate_complete_plan(
+                size_cb_orders=cb_size,
+                size_stock_orders=stock_size,
+            )
+
+        saved = plan_generation.get_generated_plan(caught.exception.detail["plan_id"])
+        self.assertEqual(saved["status"], plan_lifecycle.FAILED)
+        self.assertEqual(saved["plan"]["execution_status"], "non_executable")
+        self.assertEqual(saved["plan"]["execution_sequence"], [])
+        self.assertIsNone(saved["plan"]["execution_read_model"])
 
     def test_account_change_during_generation_returns_stale_instead_of_old_complete_plan(self):
         def cb_size(*_args, **_kwargs):
@@ -332,7 +516,7 @@ class TestPlanGeneration(unittest.TestCase):
     def test_strategy_ranking_date_mismatch_has_plan_generation_stage(self):
         self._clear_strategy_outputs()
 
-        def generate_wrong_date(strategy: str):
+        def generate_wrong_date(strategy: str, _task):
             run_id = db.create_complete_strategy_run(
                 strategy,
                 date(2026, 6, 28),
@@ -354,8 +538,55 @@ class TestPlanGeneration(unittest.TestCase):
 
         self.assertEqual(caught.exception.status_code, 409)
         self.assertEqual(caught.exception.detail["stage"], "strategy_rankings")
-        self.assertEqual(caught.exception.detail["code"], "PLAN_INPUT_DATE_MISMATCH")
-        self.assertEqual(caught.exception.detail["errors"][0]["input"], "cb")
+
+    def test_plan_generation_rejects_rankings_with_missing_risk_inputs(self):
+        db._TEST_CONN.execute("UPDATE cb_rankings SET score=NULL")
+        db._TEST_CONN.commit()
+
+        with self.assertRaises(PlanServiceError) as caught:
+            plan_generation.prepare_complete_plan_generation()
+
+        self.assertEqual(caught.exception.detail["stage"], "strategy_rankings")
+        self.assertEqual(caught.exception.detail["errors"][0]["input"], "cb.risk_fields")
+
+    def test_stock_ranking_can_source_close_price_from_its_plan_date_raw_snapshot(self):
+        db._TEST_CONN.execute("UPDATE stock_rankings SET close_price=NULL")
+        db._TEST_CONN.commit()
+
+        errors = plan_service.validate_strategy_inputs("2026-06-29")
+
+        self.assertNotIn("stock.risk_fields", {error["input"] for error in errors})
+
+    def test_generation_error_preserves_missing_price_codes_for_the_ui(self):
+        error = plan_service.generation_error(
+            "cb_orders",
+            {
+                "code": "PLAN_PRICE_SNAPSHOT_INCOMPLETE",
+                "message": "计划基准价不完整，无法生成冻结交易计划。",
+                "missing": {"stock": ["600051"]},
+            },
+        )
+
+        self.assertEqual(error["missing"], {"stock": ["600051"]})
+
+    def test_cb_exit_price_can_fall_back_to_the_plan_date_raw_universe(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary) / "20260629"
+            root.mkdir()
+            (root / "enriched_universe.csv").write_text(
+                "bond_code,bond_name,cb_price\n113001,候选转债,120.0\n",
+                encoding="utf-8",
+            )
+            (root / "cb_universe_raw.csv").write_text(
+                "债券代码,债券简称,债现价\n113682,益丰转债,130.113\n",
+                encoding="utf-8",
+            )
+            with patch("app.plan_service.RAW_DATA_DIR", Path(temporary)):
+                prices = plan_service._raw_snapshot_prices(
+                    "2026-06-29", "cb", ["113682"]
+                )
+
+        self.assertEqual(prices, {"113682": 130.113})
 
     def test_size_strategy_orders_uses_plan_generation_context(self):
         cb_size = Mock(return_value={"orders": [], "summary": {"cash_left": 0}})

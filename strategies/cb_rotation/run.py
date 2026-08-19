@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import logging
+import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from time import perf_counter
 from typing import Iterable
 
 try:
@@ -21,7 +25,23 @@ from datasource.market import (
     normalize_stock_code,
     stock_symbol_with_exchange,
 )
-from datasource.trade_calendar import is_market_hours
+from datasource.derived_store import (
+    DEFAULT_DERIVED_STORE,
+    prepare_derived_factors,
+    prepare_strategy_ranking,
+)
+from datasource.market_data_bundle import (
+    DataRequirements,
+    preparation_mode_label,
+    prepare_market_data_bundle,
+    stable_fingerprint,
+)
+from datasource.market_history import (
+    MarketFetchResult,
+    prepare_market_history,
+    reconcile_corporate_actions,
+)
+from datasource.trade_calendar import is_market_hours, load_exchange_trading_days
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -31,6 +51,7 @@ OUTPUT_DIR = ROOT / "outputs"
 LOG_DIR = ROOT / "logs"
 CACHE_DIR = ROOT / "data" / "cache"
 RAW_DIR = ROOT / "data" / "raw"
+CB_MARKET_HISTORY_STORE = CACHE_DIR / "cb_market_history.sqlite3"
 
 
 @dataclass(frozen=True)
@@ -41,6 +62,14 @@ class RunArtifacts:
     report_md: Path
     run_id: int | None = None
     data_date: date | None = None
+    preparation: dict | None = None
+
+
+@dataclass(frozen=True)
+class CbHistoryInputs:
+    turnover: pd.DataFrame
+    stock_factors: pd.DataFrame
+    preparation: dict
 
 
 def setup_logging() -> Path:
@@ -415,10 +444,23 @@ def normalize_cb_data(raw: pd.DataFrame) -> pd.DataFrame:
     return df.drop_duplicates(subset=["bond_code"])
 
 
-def fetch_cb_daily_turnover(ak, bond_codes: Iterable[str], config: dict) -> pd.DataFrame:
+def fetch_cb_daily_turnover(
+    ak,
+    bond_codes: Iterable[str],
+    config: dict,
+    effective_date: date | None = None,
+    *,
+    include_metadata: bool = False,
+) -> pd.DataFrame | MarketFetchResult:
     codes = sorted({str(c).zfill(6) for c in bond_codes if pd.notna(c)})
-    expected_data_date = latest_completed_market_data_date()
+    expected_data_date = effective_date or latest_completed_market_data_date()
     data_cache = cache_path("bond_daily_turnover", stamp=f"{expected_data_date:%Y%m%d}")
+    external_calls = 0
+
+    def _result(frame: pd.DataFrame) -> pd.DataFrame | MarketFetchResult:
+        if include_metadata:
+            return MarketFetchResult(frame=frame, external_calls=external_calls)
+        return frame
 
     def _usable_cache(path: Path) -> pd.DataFrame | None:
         if not path.exists():
@@ -442,7 +484,7 @@ def fetch_cb_daily_turnover(ak, bond_codes: Iterable[str], config: dict) -> pd.D
 
     cached = _usable_cache(data_cache)
     if cached is not None:
-        return cached
+        return _result(cached)
 
     rows: list[dict] = []
     cached_codes: set[str] = set()
@@ -454,31 +496,59 @@ def fetch_cb_daily_turnover(ak, bond_codes: Iterable[str], config: dict) -> pd.D
 
     missing_codes = [code for code in codes if code not in cached_codes]
     failure_count = 0
-    max_failures = int(config.get("data", {}).get("max_per_symbol_fetch_failures", 10))
-    for i, code in enumerate(missing_codes, start=1):
+    data_config = config.get("data", {})
+    max_failures = int(data_config.get("max_per_symbol_fetch_failures", 10))
+    max_workers = max(1, min(8, int(data_config.get("per_symbol_fetch_workers", 4))))
+    fetch_started_at = perf_counter()
+
+    def _fetch_one(code: str) -> tuple[dict | None, Exception | None]:
         try:
             hist = ak.bond_zh_hs_cov_daily(symbol=bond_symbol_with_exchange(code))
             if hist.empty:
-                continue
+                return None, None
             latest = hist.tail(1).iloc[0]
             close = pd.to_numeric(latest.get("close"), errors="coerce")
             volume = pd.to_numeric(latest.get("volume"), errors="coerce")
-            rows.append(
-                {
-                    "bond_code": code,
-                    "cb_close_daily": close,
-                    "turnover_yuan_daily": close * volume,
-                    "turnover_trade_date": latest.get("date"),
-                }
-            )
-            if i % 50 == 0:
-                logging.info("Fetched bond daily turnover for %s symbols.", i)
+            return {
+                "bond_code": code,
+                "cb_close_daily": close,
+                "turnover_yuan_daily": close * volume,
+                "turnover_trade_date": latest.get("date"),
+            }, None
         except Exception as exc:
-            logging.warning("Failed to fetch bond daily turnover for %s: %s", code, exc)
-            failure_count += 1
-            if failure_count >= max_failures:
-                logging.warning("Stop fetching bond daily turnover after %s failures.", failure_count)
+            return None, exc
+
+    stop_fetching = False
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(missing_codes) or 1)) as executor:
+        for start in range(0, len(missing_codes), max_workers):
+            batch = missing_codes[start : start + max_workers]
+            batch_results = list(executor.map(_fetch_one, batch))
+            external_calls += len(batch_results)
+            for offset, (code, result) in enumerate(zip(batch, batch_results), start=1):
+                row, exc = result
+                i = start + offset
+                if row is not None:
+                    rows.append(row)
+                if i % 50 == 0:
+                    logging.info("Fetched bond daily turnover for %s symbols.", i)
+                if exc is None:
+                    continue
+                logging.warning("Failed to fetch bond daily turnover for %s: %s", code, exc)
+                failure_count += 1
+                if failure_count >= max_failures:
+                    logging.warning("Stop fetching bond daily turnover after %s failures.", failure_count)
+                    stop_fetching = True
+                    break
+            if stop_fetching:
                 break
+
+    logging.info(
+        "Bond turnover fetch finished in %.2fs (requested=%s, returned=%s, workers=%s).",
+        perf_counter() - fetch_started_at,
+        len(missing_codes),
+        len(rows),
+        max_workers,
+    )
 
     turnover = pd.DataFrame(
         rows,
@@ -488,19 +558,23 @@ def fetch_cb_daily_turnover(ak, bond_codes: Iterable[str], config: dict) -> pd.D
     if not turnover.empty:
         turnover.to_csv(data_cache, index=False, encoding="utf-8-sig")
         logging.info("Saved bond turnover cache: %s", data_cache)
-        return turnover
+        return _result(turnover)
 
-    data_config = config.get("data", {})
     if data_config.get("use_cache_on_failure", True):
         cached = latest_dated_cache("bond_daily_turnover", int(data_config.get("max_cache_age_days", 7)))
         if cached is not None:
             logging.warning("Using cached bond turnover: %s", cached)
-            return pd.read_csv(cached, dtype={"bond_code": str})
-    return turnover
+            return _result(pd.read_csv(cached, dtype={"bond_code": str}))
+    return _result(turnover)
 
 
-def enrich_cb_with_daily_market_data(ak, cb: pd.DataFrame, config: dict) -> pd.DataFrame:
-    turnover = fetch_cb_daily_turnover(ak, cb["bond_code"], config)
+def enrich_cb_with_daily_market_data(
+    ak,
+    cb: pd.DataFrame,
+    config: dict,
+    effective_date: date | None = None,
+) -> pd.DataFrame:
+    turnover = fetch_cb_daily_turnover(ak, cb["bond_code"], config, effective_date)
     if turnover.empty:
         return cb
     if config.get("data", {}).get("strict_original_rules", True):
@@ -525,10 +599,14 @@ def fetch_stock_factors(ak, stock_codes: Iterable[str], end: date, config: dict)
     start = end - timedelta(days=90)
     rows: list[dict] = []
     failure_count = 0
-    max_failures = int(config.get("data", {}).get("max_per_symbol_fetch_failures", 10))
-    for i, code in enumerate(sorted({normalize_stock_code(c) for c in stock_codes if pd.notna(c)}), start=1):
-        if not code:
-            continue
+    data_config = config.get("data", {})
+    max_failures = int(data_config.get("max_per_symbol_fetch_failures", 10))
+    max_workers = max(1, min(8, int(data_config.get("per_symbol_fetch_workers", 4))))
+    codes = sorted({normalize_stock_code(c) for c in stock_codes if pd.notna(c)})
+    codes = [code for code in codes if code]
+    fetch_started_at = perf_counter()
+
+    def _fetch_one(code: str) -> tuple[dict | None, Exception | None]:
         try:
             try:
                 hist = ak.stock_zh_a_daily(
@@ -547,10 +625,10 @@ def fetch_stock_factors(ak, stock_codes: Iterable[str], end: date, config: dict)
             close_col = first_existing_col(hist, ["收盘", "close"])
             if close_col is None or len(hist) < 21:
                 logging.warning("Stock %s history is insufficient; skipping factors.", code)
-                continue
+                return None, None
             close = pd.to_numeric(hist[close_col], errors="coerce").dropna()
             if len(close) < 21:
-                continue
+                return None, None
             ret = close.pct_change().dropna()
             trade_date_col = first_existing_col(hist, ["日期", "date"])
             trade_date = hist.iloc[-1][trade_date_col] if trade_date_col is not None else hist.index[-1]
@@ -560,23 +638,44 @@ def fetch_stock_factors(ak, stock_codes: Iterable[str], end: date, config: dict)
                 shares = pd.to_numeric(hist[share_col], errors="coerce").dropna()
                 if not shares.empty:
                     market_cap_estimate = close.iloc[-1] * shares.iloc[-1]
-            rows.append(
-                {
-                    "stock_code": code,
-                    "stock_momentum_20d": close.iloc[-1] / close.iloc[-21] - 1,
-                    "stock_volatility_20d": ret.tail(20).std() * np.sqrt(252),
-                    "market_cap_estimate": market_cap_estimate,
-                    "stock_factor_trade_date": trade_date,
-                }
-            )
-            if i % 50 == 0:
-                logging.info("Fetched stock history for %s symbols.", i)
+            return {
+                "stock_code": code,
+                "stock_momentum_20d": close.iloc[-1] / close.iloc[-21] - 1,
+                "stock_volatility_20d": ret.tail(20).std() * np.sqrt(252),
+                "market_cap_estimate": market_cap_estimate,
+                "stock_factor_trade_date": trade_date,
+            }, None
         except Exception as exc:
-            logging.warning("Failed to fetch stock history for %s: %s", code, exc)
-            failure_count += 1
-            if failure_count >= max_failures:
-                logging.warning("Stop fetching stock history after %s failures.", failure_count)
+            return None, exc
+
+    stop_fetching = False
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(codes) or 1)) as executor:
+        for start_index in range(0, len(codes), max_workers):
+            batch = codes[start_index : start_index + max_workers]
+            for offset, (code, result) in enumerate(zip(batch, executor.map(_fetch_one, batch)), start=1):
+                row, exc = result
+                i = start_index + offset
+                if row is not None:
+                    rows.append(row)
+                if i % 50 == 0:
+                    logging.info("Fetched stock history for %s symbols.", i)
+                if exc is None:
+                    continue
+                logging.warning("Failed to fetch stock history for %s: %s", code, exc)
+                failure_count += 1
+                if failure_count >= max_failures:
+                    logging.warning("Stop fetching stock history after %s failures.", failure_count)
+                    stop_fetching = True
+                    break
+            if stop_fetching:
                 break
+    logging.info(
+        "Stock factor fetch finished in %.2fs (requested=%s, returned=%s, workers=%s).",
+        perf_counter() - fetch_started_at,
+        len(codes),
+        len(rows),
+        max_workers,
+    )
     return pd.DataFrame(
         rows,
         columns=[
@@ -677,9 +776,15 @@ def fetch_stock_market_caps_close_snapshot(ak, stock_codes: Iterable[str]) -> pd
     return caps[caps["stock_code"].isin(codes)].copy()
 
 
-def fetch_stock_market_caps(ak, stock_codes: Iterable[str], config: dict) -> pd.DataFrame:
+def fetch_stock_market_caps(
+    ak,
+    stock_codes: Iterable[str],
+    config: dict,
+    effective_date: date | None = None,
+) -> pd.DataFrame:
     codes = sorted({normalize_stock_code(c) for c in stock_codes if pd.notna(c)})
-    name = f"stock_market_caps_{date.today():%Y%m%d}"
+    data_date = effective_date or date.today()
+    name = f"stock_market_caps_{data_date:%Y%m%d}"
     cached_today = cache_path(name, stamp="latest")
     rows: list[dict] = []
     cached_codes: set[str] = set()
@@ -735,7 +840,7 @@ def fetch_stock_market_caps(ak, stock_codes: Iterable[str], config: dict) -> pd.
                         "stock_name_spot": info.get("股票简称"),
                         "market_cap": pd.to_numeric(info.get("总市值"), errors="coerce"),
                         "industry": info.get("行业"),
-                        "market_cap_as_of_date": date.today().isoformat(),
+                        "market_cap_as_of_date": data_date.isoformat(),
                         "market_cap_source": "eastmoney_total_mv",
                     }
                 )
@@ -1148,22 +1253,459 @@ def snapshot_raw_data(
     return day_dir
 
 
-def run(config_path: Path, positions_path: Path, max_universe: int | None = None) -> RunArtifacts:
+def market_data_requirements(config: dict, max_universe: int | None = None) -> DataRequirements:
+    """Declare the remote CB inputs independently from local ranking parameters."""
+    return DataRequirements(
+        strategy="cb",
+        dataset_fields={
+            "cb_universe": ("bond_code", "stock_code", "cb_price"),
+            "enriched_universe": (
+                "bond_code",
+                "stock_code",
+                "cb_price",
+                "turnover_yuan",
+                "turnover_trade_date",
+                "stock_momentum_20d",
+                "stock_volatility_20d",
+                "stock_factor_trade_date",
+                "market_cap",
+                "market_cap_as_of_date",
+            ),
+        },
+        symbol_field="bond_code",
+        source="akshare+tencent",
+        source_version="cb-market-sources-v1",
+        algorithm_version="cb-raw-input-v1",
+        config_fingerprint=stable_fingerprint({
+            "data": config.get("data", {}),
+            "max_universe": max_universe,
+        }),
+        lookback_trading_days=21,
+        market_fields=("raw_close", "volume", "amount", "adjustment_factor"),
+        expected_symbols_dataset="cb_universe",
+        coverage_datasets=("enriched_universe",),
+    )
+
+
+def _cb_history_requirements(*, symbol_field: str, lookback: int, source: str) -> DataRequirements:
+    return DataRequirements(
+        strategy="cb",
+        dataset_fields={},
+        symbol_field=symbol_field,
+        source=source,
+        source_version="cb-history-v1",
+        algorithm_version="raw-history-v1",
+        lookback_trading_days=lookback,
+        market_fields=("raw_close", "volume", "amount", "adjustment_factor"),
+    )
+
+
+def _normalize_daily_history(
+    frame: pd.DataFrame,
+    *,
+    symbol_field: str,
+    symbol: str,
+) -> pd.DataFrame:
+    if frame is None or frame.empty:
+        return pd.DataFrame(
+            columns=[symbol_field, "trade_date", "raw_close", "volume", "amount"]
+        )
+    normalized = frame.reset_index().copy()
+    date_col = first_existing_col(normalized, ["日期", "date", "trade_date", "index"])
+    close_col = first_existing_col(normalized, ["收盘", "close"])
+    volume_col = first_existing_col(normalized, ["成交量", "volume"])
+    amount_col = first_existing_col(normalized, ["成交额", "amount"])
+    if date_col is None or close_col is None or volume_col is None:
+        raise RuntimeError(f"{symbol} 历史行情缺少日期、收盘价或成交量")
+    result = pd.DataFrame({
+        symbol_field: symbol,
+        "trade_date": pd.to_datetime(normalized[date_col], errors="coerce").dt.date,
+        "raw_close": pd.to_numeric(normalized[close_col], errors="coerce"),
+        "volume": pd.to_numeric(normalized[volume_col], errors="coerce"),
+    })
+    if amount_col is not None:
+        result["amount"] = pd.to_numeric(normalized[amount_col], errors="coerce")
+    else:
+        result["amount"] = result["raw_close"] * result["volume"]
+    return result.dropna(subset=["trade_date", "raw_close", "volume", "amount"])
+
+
+def _fetch_stock_history_with_adjustment(
+    ak,
+    stock_code: str,
+    start: date,
+    end: date,
+) -> MarketFetchResult:
+    symbol = stock_symbol_with_exchange(stock_code)
+    external_calls = 0
+
+    def _fetch(adjust: str) -> pd.DataFrame:
+        nonlocal external_calls
+        try:
+            external_calls += 1
+            return ak.stock_zh_a_daily(
+                symbol=symbol,
+                start_date=start.strftime("%Y%m%d"),
+                end_date=end.strftime("%Y%m%d"),
+                adjust=adjust,
+            )
+        except Exception:
+            external_calls += 1
+            return ak.stock_zh_a_hist_tx(
+                symbol=symbol,
+                start_date=start.strftime("%Y%m%d"),
+                end_date=end.strftime("%Y%m%d"),
+                adjust=adjust,
+            )
+
+    raw = _normalize_daily_history(
+        _fetch(""),
+        symbol_field="stock_code",
+        symbol=stock_code,
+    )
+    adjusted = _normalize_daily_history(
+        _fetch("hfq"),
+        symbol_field="stock_code",
+        symbol=stock_code,
+    )[["stock_code", "trade_date", "raw_close"]].rename(
+        columns={"raw_close": "adjusted_close"}
+    )
+    result = raw.merge(adjusted, on=["stock_code", "trade_date"], how="left")
+    result["adjustment_factor"] = result["adjusted_close"] / result["raw_close"]
+    return MarketFetchResult(
+        frame=result.drop(columns=["adjusted_close"]),
+        external_calls=external_calls,
+    )
+
+
+def fetch_stock_history_batch(
+    stock_codes: Iterable[str],
+    missing_dates: Iterable[date],
+) -> MarketFetchResult:
+    """Fetch full-market daily rows by date through Tushare when configured."""
+    token = os.getenv("TUSHARE_TOKEN", "").strip()
+    if not token:
+        return MarketFetchResult(pd.DataFrame(), external_calls=0)
+    try:
+        tushare = importlib.import_module("tushare")
+        pro = tushare.pro_api(token)
+    except Exception as exc:
+        logging.warning("Tushare 全市场批量源不可用，转为逐证券回退: %s", exc)
+        return MarketFetchResult(pd.DataFrame(), external_calls=0)
+
+    expected_codes = {normalize_stock_code(value) for value in stock_codes}
+    expected_codes.discard("")
+    frames: list[pd.DataFrame] = []
+    external_calls = 0
+    for trading_day in sorted(set(missing_dates)):
+        stamp = trading_day.strftime("%Y%m%d")
+        try:
+            external_calls += 1
+            daily = pro.daily(trade_date=stamp)
+            external_calls += 1
+            factors = pro.adj_factor(trade_date=stamp)
+        except Exception as exc:
+            logging.warning("Tushare 批量历史行情 %s 失败，保留逐证券回退: %s", stamp, exc)
+            continue
+        if daily is None or daily.empty or factors is None or factors.empty:
+            continue
+        daily_required = {"ts_code", "trade_date", "close", "vol", "amount"}
+        factor_required = {"ts_code", "trade_date", "adj_factor"}
+        if not daily_required.issubset(daily.columns) or not factor_required.issubset(
+            factors.columns
+        ):
+            logging.warning("Tushare 批量历史行情 %s 字段不完整，保留逐证券回退", stamp)
+            continue
+        daily = daily.copy()
+        factors = factors.copy()
+        daily["stock_code"] = daily["ts_code"].astype(str).str[:6]
+        factors["stock_code"] = factors["ts_code"].astype(str).str[:6]
+        merged = daily.merge(
+            factors[["stock_code", "trade_date", "adj_factor"]],
+            on=["stock_code", "trade_date"],
+            how="left",
+        )
+        merged = merged[merged["stock_code"].isin(expected_codes)].copy()
+        if merged.empty:
+            continue
+        frames.append(pd.DataFrame({
+            "stock_code": merged["stock_code"],
+            "trade_date": pd.to_datetime(
+                merged["trade_date"],
+                format="%Y%m%d",
+                errors="coerce",
+            ).dt.date,
+            "raw_close": pd.to_numeric(merged["close"], errors="coerce"),
+            "volume": pd.to_numeric(merged["vol"], errors="coerce"),
+            "amount": pd.to_numeric(merged["amount"], errors="coerce") * 1000,
+            "adjustment_factor": pd.to_numeric(
+                merged["adj_factor"],
+                errors="coerce",
+            ),
+        }))
+    frame = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    return MarketFetchResult(frame=frame, external_calls=external_calls)
+
+
+def _compute_history_factor(
+    inputs: pd.DataFrame,
+    *,
+    factor_name: str,
+) -> pd.DataFrame:
+    rows: list[dict] = []
+    for stock_code, group in inputs.groupby("stock_code"):
+        ordered = group.sort_values("trade_date")
+        close = (
+            pd.to_numeric(ordered["raw_close"], errors="coerce")
+            * pd.to_numeric(ordered["adjustment_factor"], errors="coerce")
+        ).dropna()
+        if len(close) < 21:
+            continue
+        if factor_name == "stock_momentum_20d":
+            value = close.iloc[-1] / close.iloc[-21] - 1
+        else:
+            value = close.pct_change().dropna().tail(20).std() * np.sqrt(252)
+        rows.append({"stock_code": str(stock_code), factor_name: value})
+    return pd.DataFrame(rows, columns=["stock_code", factor_name])
+
+
+def prepare_cb_history_inputs(
+    ak,
+    universe: pd.DataFrame,
+    config: dict,
+    effective_date: date,
+    *,
+    history_store_path: Path = CB_MARKET_HISTORY_STORE,
+    derived_store_path: Path = DEFAULT_DERIVED_STORE,
+) -> CbHistoryInputs:
+    """Prepare reusable CB turnover and underlying-stock factors from raw history."""
+    trading_days = load_exchange_trading_days(as_of=effective_date)
+    bond_codes = sorted({str(value).zfill(6) for value in universe["bond_code"].dropna()})
+    stock_codes = sorted({normalize_stock_code(value) for value in universe["stock_code"].dropna()})
+    stock_codes = [value for value in stock_codes if value]
+
+    bond_requirements = _cb_history_requirements(
+        symbol_field="bond_code",
+        lookback=1,
+        source="akshare-cb-daily",
+    )
+
+    def _fetch_bond_batch(missing_dates: Iterable[date]) -> MarketFetchResult:
+        target = max(missing_dates)
+        fetched = fetch_cb_daily_turnover(
+            ak,
+            bond_codes,
+            config,
+            target,
+            include_metadata=True,
+        )
+        if not isinstance(fetched, MarketFetchResult):
+            raise TypeError("bond turnover fetch must include physical request metadata")
+        rows = fetched.frame
+        if rows.empty:
+            return fetched
+        result = rows.rename(columns={
+            "cb_close_daily": "raw_close",
+            "turnover_yuan_daily": "amount",
+            "turnover_trade_date": "trade_date",
+        }).copy()
+        result["volume"] = result["amount"] / result["raw_close"]
+        result["adjustment_factor"] = 1.0
+        return MarketFetchResult(frame=result, external_calls=fetched.external_calls)
+
+    def _fetch_bond_one(symbol: str, start: date, end: date) -> pd.DataFrame:
+        history = ak.bond_zh_hs_cov_daily(symbol=bond_symbol_with_exchange(symbol))
+        result = _normalize_daily_history(
+            history,
+            symbol_field="bond_code",
+            symbol=symbol,
+        )
+        result["adjustment_factor"] = 1.0
+        return result
+
+    bond_history = prepare_market_history(
+        bond_requirements,
+        effective_date,
+        bond_codes,
+        trading_days,
+        _fetch_bond_batch,
+        fallback_fetcher=_fetch_bond_one,
+        store_path=history_store_path,
+    )
+    turnover = bond_history.frame.rename(columns={
+        "raw_close": "cb_close_daily",
+        "amount": "turnover_yuan_daily",
+        "trade_date": "turnover_trade_date",
+    })[["bond_code", "cb_close_daily", "turnover_yuan_daily", "turnover_trade_date"]]
+
+    stock_requirements = _cb_history_requirements(
+        symbol_field="stock_code",
+        lookback=21,
+        source="tushare+akshare-stock-daily",
+    )
+    action_snapshots: list[pd.DataFrame] = []
+
+    def _record_action_snapshot(result: MarketFetchResult) -> MarketFetchResult:
+        if not result.frame.empty:
+            action_snapshots.append(
+                result.frame[["stock_code", "trade_date", "adjustment_factor"]].copy()
+            )
+        return result
+
+    def _fetch_stock_one(symbol: str, start: date, end: date) -> MarketFetchResult:
+        result = _fetch_stock_history_with_adjustment(
+            ak,
+            symbol,
+            start,
+            end,
+        )
+        return _record_action_snapshot(result)
+
+    def _fetch_stock_batch(missing_dates: Iterable[date]) -> MarketFetchResult:
+        return _record_action_snapshot(
+            fetch_stock_history_batch(stock_codes, missing_dates)
+        )
+
+    stock_history = prepare_market_history(
+        stock_requirements,
+        effective_date,
+        stock_codes,
+        trading_days,
+        _fetch_stock_batch,
+        fallback_fetcher=_fetch_stock_one,
+        store_path=history_store_path,
+        fallback_workers=int(config.get("data", {}).get("per_symbol_fetch_workers", 4)),
+    )
+    invalidation = None
+    if action_snapshots:
+        invalidation = reconcile_corporate_actions(
+            stock_requirements,
+            pd.concat(action_snapshots, ignore_index=True),
+            store_path=history_store_path,
+            derived_store_path=derived_store_path,
+        )
+        if invalidation.changed_symbols:
+            stock_history = prepare_market_history(
+                stock_requirements,
+                effective_date,
+                stock_codes,
+                trading_days,
+                _fetch_stock_batch,
+                fallback_fetcher=_fetch_stock_one,
+                store_path=history_store_path,
+            )
+
+    momentum = prepare_derived_factors(
+        stock_history.frame,
+        symbol_field="stock_code",
+        effective_date=effective_date,
+        factor_name="stock_momentum_20d",
+        algorithm_version="momentum-20d-v1",
+        input_fingerprint=stock_history.input_fingerprint,
+        compute=lambda frame: _compute_history_factor(
+            frame,
+            factor_name="stock_momentum_20d",
+        ),
+        store_path=derived_store_path,
+    )
+    volatility = prepare_derived_factors(
+        stock_history.frame,
+        symbol_field="stock_code",
+        effective_date=effective_date,
+        factor_name="stock_volatility_20d",
+        algorithm_version="volatility-20d-v1",
+        input_fingerprint=stock_history.input_fingerprint,
+        compute=lambda frame: _compute_history_factor(
+            frame,
+            factor_name="stock_volatility_20d",
+        ),
+        store_path=derived_store_path,
+    )
+    stock_factors = momentum.frame.merge(volatility.frame, on="stock_code", how="inner")
+    stock_factors["stock_factor_trade_date"] = effective_date.isoformat()
+    stock_factors["market_cap_estimate"] = np.nan
+    corporate_action_status = {
+        "changed_symbols": list(invalidation.changed_symbols) if invalidation else [],
+        "changed_dates": list(invalidation.changed_dates) if invalidation else [],
+        "invalidated_factors": invalidation.invalidated_factors if invalidation else 0,
+        "invalidated_rankings": invalidation.invalidated_rankings if invalidation else 0,
+    }
+    return CbHistoryInputs(
+        turnover=turnover,
+        stock_factors=stock_factors,
+        preparation={
+            "bond_history": bond_history.metadata.to_dict(),
+            "stock_history": stock_history.metadata.to_dict(),
+            "momentum": momentum.metadata.to_dict(),
+            "volatility": volatility.metadata.to_dict(),
+            "corporate_actions": corporate_action_status,
+        },
+    )
+
+
+def run(
+    config_path: Path,
+    positions_path: Path,
+    max_universe: int | None = None,
+    *,
+    effective_date: date | None = None,
+    started_at: datetime | None = None,
+) -> RunArtifacts:
     log_file = setup_logging()
     config = load_config(config_path)
-    enforce_snapshot_run_window(config)
-    ak = require_akshare()
+    enforce_snapshot_run_window(config, now=started_at)
+    data_date = effective_date or latest_completed_market_data_date(now=started_at)
+    requirements = market_data_requirements(config, max_universe)
+    history_preparation: dict = {}
 
-    raw_cb = fetch_cb_universe(ak, config)
-    cb = normalize_cb_data(raw_cb)
-    if max_universe:
-        cb = cb.head(max_universe).copy()
-        logging.info("Limited universe to first %s bonds for test run.", max_universe)
+    def _fetch_remote_inputs() -> dict[str, pd.DataFrame]:
+        nonlocal history_preparation
+        ak = require_akshare()
+        raw = fetch_cb_universe(ak, config)
+        universe = normalize_cb_data(raw)
+        if max_universe:
+            universe = universe.head(max_universe).copy()
+            logging.info("Limited universe to first %s bonds for test run.", max_universe)
+        universe = enrich_cb_with_redeem_data(ak, universe, config)
+        history_inputs = prepare_cb_history_inputs(ak, universe, config, data_date)
+        history_preparation = history_inputs.preparation
+        with_turnover = universe.merge(history_inputs.turnover, on="bond_code", how="left")
+        with_turnover["cb_price"] = with_turnover["cb_close_daily"].where(
+            with_turnover["cb_close_daily"].notna(),
+            with_turnover["cb_price"],
+        )
+        with_turnover["turnover_yuan"] = with_turnover["turnover_yuan_daily"].where(
+            with_turnover["turnover_yuan_daily"].notna(),
+            with_turnover["turnover_yuan"],
+        )
+        with_turnover = with_turnover.drop(
+            columns=["cb_close_daily", "turnover_yuan_daily"]
+        )
+        stock_factors = history_inputs.stock_factors
+        enriched = with_turnover.merge(stock_factors, on="stock_code", how="left")
+        stock_caps = fetch_stock_market_caps(
+            ak,
+            enriched["stock_code"].dropna(),
+            config,
+            data_date,
+        )
+        enriched = enriched.merge(stock_caps, on="stock_code", how="left")
+        return {"cb_universe": universe, "enriched_universe": enriched}
 
-    cb = enrich_cb_with_redeem_data(ak, cb, config)
+    bundle = prepare_market_data_bundle(
+        requirements,
+        data_date,
+        _fetch_remote_inputs,
+    )
+    logging.info(
+        "数据准备[%s]: %s",
+        preparation_mode_label(bundle.metadata.mode),
+        json.dumps(bundle.metadata.to_dict(), ensure_ascii=False),
+    )
+    raw_cb = bundle.frames["cb_universe"].copy()
+    cb = bundle.frames["enriched_universe"].copy()
     enforce_cb_filter_coverage(cb, config)
     cb = apply_cb_prefilters(cb, config)
-    cb = enrich_cb_with_daily_market_data(ak, cb, config)
     if config.get("data", {}).get("strict_original_rules", True):
         cb = drop_uncovered_cb_market_data(cb)
         assert_required_fields(cb, ["turnover_yuan"], "可转债成交额过滤", require_all_rows=True)
@@ -1189,8 +1731,7 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
         require_single_trade_date(cb, "turnover_trade_date", "可转债收盘行情")
     assert_required_fields(cb, ["turnover_yuan"], "可转债成交额过滤")
     enforce_original_rule_fields(cb, config)
-    stock_factors = fetch_stock_factors_with_cache(ak, cb["stock_code"].dropna(), date.today(), config)
-    merged = cb.merge(stock_factors, on="stock_code", how="left")
+    merged = cb
     logging.info(
         "Stock factor coverage after merge: momentum=%s/%s, volatility=%s/%s",
         int(merged["stock_momentum_20d"].notna().sum()) if "stock_momentum_20d" in merged.columns else 0,
@@ -1198,8 +1739,6 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
         int(merged["stock_volatility_20d"].notna().sum()) if "stock_volatility_20d" in merged.columns else 0,
         len(merged),
     )
-    stock_caps = fetch_stock_market_caps(ak, merged["stock_code"].dropna(), config)
-    merged = merged.merge(stock_caps, on="stock_code", how="left")
     logging.info(
         "Stock market cap coverage after merge: market_cap=%s/%s",
         int(merged["market_cap"].notna().sum()) if "market_cap" in merged.columns else 0,
@@ -1232,18 +1771,44 @@ def run(config_path: Path, positions_path: Path, max_universe: int | None = None
     enforce_factor_fields(filtered, config)
     data_notes = build_data_notes(filtered, config)
     scored = score_candidates(filtered, config)
-    target = assign_equal_weight(scored, config)
+    ranking = prepare_strategy_ranking(
+        strategy="cb",
+        effective_date=data_date,
+        strategy_version="cb-rotation-v1",
+        config_fingerprint=stable_fingerprint(config),
+        input_fingerprint=bundle.input_fingerprint,
+        compute=lambda: assign_equal_weight(scored, config),
+    )
+    logging.info(
+        "榜单准备[%s]: %s",
+        preparation_mode_label(ranking.metadata.mode),
+        json.dumps(ranking.metadata.to_dict(), ensure_ascii=False),
+    )
+    target = ranking.frame.copy()
     current = load_current_positions(positions_path)
     rebalance = build_rebalance_plan(current, target)
     artifacts = save_outputs(target, rebalance, config, log_file, data_notes)
     logging.info("Saved report to %s", artifacts.report_md)
-    data_date = resolve_trade_date(scored)
+    observed_data_date = resolve_trade_date(scored)
+    if observed_data_date != data_date:
+        raise RuntimeError(
+            f"策略输入数据日 {observed_data_date} 与任务冻结日期 {data_date} 不一致"
+        )
     run_id = persist_rankings(data_date, target)
-    artifacts = replace(artifacts, run_id=run_id, data_date=data_date)
+    artifacts = replace(
+        artifacts,
+        run_id=run_id,
+        data_date=data_date,
+        preparation={
+            "market": bundle.metadata.to_dict(),
+            **({"history": history_preparation} if history_preparation else {}),
+            "ranking": ranking.metadata.to_dict(),
+        },
+    )
     logging.info("DB write OK: cb rankings run_id=%s data_date=%s", run_id, data_date)
     try:
         snapshot_raw_data(
-            resolve_trade_date(scored),
+            data_date,
             {
                 "cb_universe_raw": raw_cb,
                 "enriched_universe": merged,

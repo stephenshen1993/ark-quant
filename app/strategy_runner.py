@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date, datetime
 import threading
+from time import perf_counter
 
 from datasource import db
+from datasource.market_data_bundle import PreparationMetadata
+from datasource.trade_calendar import resolve_effective_trading_date
 
 Strategy = str
 
@@ -24,6 +28,7 @@ class StrategyRunResult:
     item_count: int
     generated: bool
     items: list[dict] = field(repr=False, default_factory=list)
+    preparation: dict | None = field(repr=False, default=None)
 
     def to_ranking_response(self) -> dict:
         response = {
@@ -33,7 +38,19 @@ class StrategyRunResult:
         }
         if self.run_id is not None:
             response["run_id"] = self.run_id
+        if self.preparation is not None:
+            response["preparation"] = self.preparation
         return response
+
+
+@dataclass(frozen=True)
+class StrategyRunTask:
+    started_at: datetime
+    effective_date: date
+
+    @property
+    def effective_date_iso(self) -> str:
+        return self.effective_date.isoformat()
 
 
 _RUN_LOCKS: dict[Strategy, threading.Lock] = {
@@ -42,15 +59,55 @@ _RUN_LOCKS: dict[Strategy, threading.Lock] = {
 }
 
 
-def ensure_rankings(strategy: Strategy, plan_date: str) -> StrategyRunResult:
+def freeze_strategy_run_task(
+    *,
+    effective_date: str | date | None = None,
+    now: datetime | None = None,
+) -> StrategyRunTask:
+    started_at = now or datetime.now()
+    if effective_date is None:
+        frozen_date = resolve_effective_trading_date(now=started_at)
+    elif isinstance(effective_date, date):
+        frozen_date = effective_date
+    else:
+        frozen_date = date.fromisoformat(effective_date)
+    return StrategyRunTask(started_at=started_at, effective_date=frozen_date)
+
+
+def ensure_rankings(
+    strategy: Strategy,
+    plan_date: str,
+    *,
+    task: StrategyRunTask | None = None,
+) -> StrategyRunResult:
     """Ensure rankings for one strategy and plan date exist."""
+    started = perf_counter()
     _validate_strategy(strategy)
     existing = db.get_strategy_run_meta(strategy, plan_date)
     if existing:
         items = db.get_rankings_by_run_id(strategy, existing["id"])
-        return _result_from_run(strategy, existing, items, generated=False)
+        elapsed = int((perf_counter() - started) * 1000)
+        preparation = {
+            "ranking": PreparationMetadata(
+                effective_date=plan_date,
+                mode="cache_hit",
+                last_coverage_watermark=plan_date,
+                reused_records=len(items),
+                stage_timings_ms={"total": elapsed},
+            ).to_dict()
+        }
+        return _result_from_run(
+            strategy,
+            existing,
+            items,
+            generated=False,
+            preparation=preparation,
+        )
 
-    generated = run_strategy(strategy)
+    task = task or freeze_strategy_run_task(effective_date=plan_date)
+    if task.effective_date_iso != plan_date:
+        raise ValueError("策略运行任务的有效交易日与计划基准日不一致")
+    generated = run_strategy(strategy, task=task)
     if generated.data_date != plan_date:
         raise StrategyRunnerError(
             409,
@@ -68,7 +125,11 @@ def ensure_rankings(strategy: Strategy, plan_date: str) -> StrategyRunResult:
     return generated
 
 
-def run_strategy(strategy: Strategy) -> StrategyRunResult:
+def run_strategy(
+    strategy: Strategy,
+    *,
+    task: StrategyRunTask | None = None,
+) -> StrategyRunResult:
     """Run one strategy and return the exact persisted run just generated."""
     _validate_strategy(strategy)
     lock = _RUN_LOCKS[strategy]
@@ -82,7 +143,7 @@ def run_strategy(strategy: Strategy) -> StrategyRunResult:
         )
 
     try:
-        artifacts = _run_strategy_impl(strategy)
+        artifacts = _run_strategy_impl(strategy, task) if task is not None else _run_strategy_impl(strategy)
         run_id = getattr(artifacts, "run_id", None)
         if run_id is None:
             raise _persistence_error("策略运行没有返回 run_id")
@@ -92,7 +153,13 @@ def run_strategy(strategy: Strategy) -> StrategyRunResult:
         items = db.get_rankings_by_run_id(strategy, run_id)
         if not items:
             raise _persistence_error(f"策略运行 {run_id} 没有有效榜单")
-        return _result_from_run(strategy, strategy_run, items, generated=True)
+        return _result_from_run(
+            strategy,
+            strategy_run,
+            items,
+            generated=True,
+            preparation=getattr(artifacts, "preparation", None),
+        )
     except StrategyRunnerError:
         raise
     except (Exception, SystemExit) as exc:
@@ -135,6 +202,7 @@ def _result_from_run(
     items: list[dict],
     *,
     generated: bool,
+    preparation: dict | None = None,
 ) -> StrategyRunResult:
     return StrategyRunResult(
         strategy=strategy,
@@ -144,6 +212,7 @@ def _result_from_run(
         item_count=len(items),
         generated=generated,
         items=items,
+        preparation=preparation,
     )
 
 
@@ -172,12 +241,23 @@ def _classify_error(msg: str) -> str:
     return "STRATEGY_ERROR"
 
 
-def _run_strategy_impl(strategy: Strategy):
+def _run_strategy_impl(strategy: Strategy, task: StrategyRunTask | None = None):
+    task = task or freeze_strategy_run_task()
     if strategy == "cb":
         from strategies.cb_rotation.run import DEFAULT_CONFIG, DEFAULT_POSITIONS, run
 
-        return run(DEFAULT_CONFIG, DEFAULT_POSITIONS)
+        return run(
+            DEFAULT_CONFIG,
+            DEFAULT_POSITIONS,
+            effective_date=task.effective_date,
+            started_at=task.started_at,
+        )
 
     from strategies.stock_smallcap.run import DEFAULT_CONFIG, DEFAULT_POSITIONS, run
 
-    return run(DEFAULT_CONFIG, DEFAULT_POSITIONS)
+    return run(
+        DEFAULT_CONFIG,
+        DEFAULT_POSITIONS,
+        effective_date=task.effective_date,
+        started_at=task.started_at,
+    )

@@ -157,6 +157,45 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("if (rightValue === null) return -1", body)
         self.assertIn("localeCompare", body)
 
+    def test_account_holdings_split_code_and_name_and_keep_one_add_action_at_the_end(self):
+        self.assertIn(
+            "<span>代码</span><span>名称</span><span>数量</span><span>价格</span><span>市值</span>",
+            self.html,
+        )
+        self.assertIn('class="account-current-security-code"', self.html)
+        self.assertIn('class="account-current-security-name"', self.html)
+        self.assertIn(
+            ':class="`${securityStatusClass(row)}${!row.name ? \' is-placeholder\' : \'\'}`.trim()"',
+            self.html,
+        )
+        self.assertNotIn(
+            ':class="[securityStatusClass(row), { \'is-placeholder\': !row.name }]"',
+            self.html,
+        )
+        self.assertIn('class="account-current-add-row"', self.html)
+        self.assertEqual(self.html.count("＋ 添加证券"), 1)
+        self.assertNotIn("继续添加证券", self.html)
+        heading_start = self.html.index('<div class="account-current-section-heading">')
+        table_start = self.html.index('<div x-ref="holdingsTable"', heading_start)
+        self.assertNotIn("添加证券", self.html[heading_start:table_start])
+        self.assertIn("this.draft.positions.push({", self.html)
+        self.assertIn("this.$refs.holdingsAddMore?.scrollIntoView({ block: 'nearest' })", self.html)
+        self.assertIn("focus({ preventScroll: true })", self.html)
+
+    def test_account_review_changes_identify_securities_by_name_first(self):
+        self.assertIn("securityDisplayLabel(code)", self.html)
+        self.assertIn("return name ? `${name}（${normalizedCode}）` : normalizedCode", self.html)
+        self.assertIn(
+            "changes.push(`${this.securityDisplayLabel(code)}：${oldValue} → ${newValue}`)",
+            self.html,
+        )
+
+    def test_account_holding_quantity_uses_the_security_trading_unit(self):
+        self.assertIn(':step="holdingQuantityStep()"', self.html)
+        self.assertIn("holdingQuantityStep()", self.html)
+        self.assertIn("if (this.selectedId === 'stock') return 100", self.html)
+        self.assertIn("if (this.selectedId === 'cb') return 10", self.html)
+
     def test_new_security_code_lookup_gives_inline_feedback(self):
         self.assertIn("@input=\"handleSecurityCodeInput(row)\"", self.html)
         self.assertIn("if (/^\\d{6}$/.test(code)) this.lookupSecurity(row)", self.html)
@@ -201,6 +240,18 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("this.draft.positions = []", self.html[holdings_branch:holdings_end])
         self.assertNotIn("this.draft.available_cash = 0", self.html[holdings_branch:holdings_end])
 
+    def test_account_clear_action_lives_with_save_actions_without_forced_editor_space(self):
+        self.assertNotIn("min-height: 560px", self.html)
+        editor_start = self.html.index('class="account-current-editor"')
+        review_start = self.html.index('class="account-current-review"', editor_start)
+        self.assertNotIn("清空当前账户数据", self.html[editor_start:review_start])
+        review_end = self.html.index("</aside>", review_start)
+        review_body = self.html[review_start:review_end]
+        self.assertIn('class="account-current-account-actions"', review_body)
+        self.assertIn("清空当前账户数据…", review_body)
+        self.assertIn("余额归零，并把当前持仓记录为空仓。", review_body)
+        self.assertLess(review_body.index("account-current-primary"), review_body.index("account-current-account-actions"))
+
     def test_global_status_uses_lightweight_shared_status_without_full_plan_fetch(self):
         self.assertIn("Alpine.store('workStatus', createWorkStatusStore())", self.html)
         self.assertIn("function createWorkStatusStore()", self.html)
@@ -235,19 +286,22 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn("b_recovery", self.html[start:end])
         self.assertNotIn("ad_hoc", self.html[start:end])
 
-    def test_complete_plan_prefers_server_endpoint_and_falls_back_for_legacy_backend(self):
+    def test_complete_plan_uses_the_only_frozen_server_endpoint(self):
         self.assertIn("async generateCompletePlan()", self.html)
         start = self.html.index("async generateCompletePlan()")
         end = self.html.index("async loadPlan(", start)
         body = self.html[start:end]
         self.assertIn("await this.saveFundingContext()", body)
         self.assertIn("fetch('/api/plan/generate', { method: 'POST' })", body)
-        self.assertIn("response.status === 404", body)
-        self.assertIn("await this.generateCompletePlanLegacy()", body)
+        self.assertNotIn("response.status === 404", body)
+        self.assertNotIn("size-orders", self.html)
         self.assertIn("componentErrors: { cb: '', stock: '' }", self.html)
-        self.assertIn("async generateCompletePlanLegacy()", self.html)
-        self.assertIn("await this.ensureRanking(strategy)", self.html)
-        self.assertIn("await this.generateOrders(strategy)", self.html)
+        self.assertNotIn("async generateCompletePlanLegacy()", self.html)
+        self.assertIn("请通过“生成完整计划”一并冻结调拨、定价和订单。", self.html)
+
+    def test_complete_plan_error_lists_the_missing_plan_date_prices(self):
+        self.assertIn("Object.entries(detail.missing || {})", self.html)
+        self.assertIn("缺少计划日收盘价", self.html)
 
     def test_context_save_handles_legacy_backend_and_validation_details(self):
         self.assertIn("async postFundingContext(payload)", self.html)
@@ -411,8 +465,14 @@ class TestTradingPageInteraction(unittest.TestCase):
 
     def test_no_action_does_not_render_an_empty_action_summary(self):
         self.assertIn("isReviewableExecutionPlan()", self.html)
-        self.assertIn('<template x-if="isReviewableExecutionPlan()">', self.html)
+        self.assertIn('<template x-if="isReviewableExecutionPlan() || (isHistoricalPlanSnapshot() && snapshotExpanded)">', self.html)
         self.assertNotIn('x-show="[\'action\', \'no-action\'].includes(planState())" class="ark-panel plan-action-summary', self.html)
+
+    def test_plan_page_exposes_read_only_history_snapshots(self):
+        self.assertIn('aria-label="历史计划"', self.html)
+        self.assertIn("fetch('/api/plan/generated/history')", self.html)
+        self.assertIn("async loadHistoricalPlan(planId)", self.html)
+        self.assertIn("仅供追溯，不应据此执行交易", self.html)
 
     def test_execution_copy_keeps_same_day_inflow_and_next_day_return_separate(self):
         self.assertIn("fundingPlan().groups", self.html)
@@ -548,9 +608,9 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("未到执行窗口不要交易", self.html)
         self.assertIn("['action', 'future-action'].includes(this.planState())", self.html)
 
-    def test_account_plan_details_render_one_execution_table_with_row_trade_side(self):
+    def test_account_plan_details_render_one_execution_table_with_action_as_the_only_trade_semantic(self):
         self.assertIn("accountTradeOrders(plan)", self.html)
-        self.assertIn('x-for="order in accountTradeOrders(plan)"', self.html)
+        self.assertIn('x-for="(order, orderIndex) in accountTradeOrders(plan)"', self.html)
         self.assertIn("actionRank = { SELL: 0, TRIM: 1, BUY: 2, ADD: 3 }", self.html)
         self.assertIn("left?.execution_priority", self.html)
         self.assertIn("right?.execution_priority", self.html)
@@ -560,10 +620,10 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("actions: ['SELL', 'TRIM']", self.html)
         self.assertIn("actions: ['BUY', 'ADD']", self.html)
         self.assertIn("positionActionText(action)", self.html)
-        self.assertIn("tradeSideText(action)", self.html)
-        self.assertIn("tradeSideClass(action)", self.html)
-        self.assertIn('x-text="tradeSideText(order.action)"', self.html)
-        self.assertIn(':class="tradeSideClass(order.action)"', self.html)
+        self.assertNotIn("tradeSideText(action)", self.html)
+        self.assertNotIn("tradeSideClass(action)", self.html)
+        self.assertNotIn('x-text="tradeSideText(order.action)"', self.html)
+        self.assertNotIn(':class="tradeSideClass(order.action)"', self.html)
         self.assertNotIn("tradeInstructionText(order)", self.html)
         self.assertNotIn("tradeDirectionText(order?.action)", self.html)
         self.assertIn("order.code", self.html)
@@ -579,23 +639,29 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn(">证券代码<", self.html)
         self.assertIn(">证券名称<", self.html)
         self.assertNotIn(">证券代码与名称<", self.html)
-        self.assertIn(">仓位<", self.html)
-        self.assertIn(">买卖<", self.html)
-        self.assertIn(">交易数量<", self.html)
-        self.assertIn('data-label="仓位"', self.html)
-        self.assertIn('data-label="买卖"', self.html)
-        self.assertIn('data-label="交易数量"', self.html)
+        self.assertIn(">调仓动作<", self.html)
+        self.assertIn(">委托数量<", self.html)
+        self.assertIn(">预计金额<", self.html)
+        self.assertIn('data-label="调仓动作"', self.html)
+        self.assertIn('data-label="委托数量"', self.html)
+        self.assertIn('data-label="预计金额"', self.html)
+        self.assertNotIn(">仓位<", self.html)
+        self.assertNotIn(">买卖<", self.html)
+        self.assertNotIn(">交易数量<", self.html)
         self.assertIn('class="plan-trade-action"', self.html)
+        self.assertIn('class="plan-trade-action-badge"', self.html)
         self.assertIn('class="plan-trade-action-col"', self.html)
-        self.assertIn('class="plan-trade-side"', self.html)
+        self.assertNotIn('class="plan-trade-side"', self.html)
         self.assertIn('class="plan-trade-name-col"', self.html)
-        self.assertIn('class="plan-trade-side-col"', self.html)
+        self.assertNotIn('class="plan-trade-side-col"', self.html)
         self.assertIn('class="plan-trade-quantity-col"', self.html)
         self.assertIn('class="plan-trade-price-col"', self.html)
         self.assertIn('class="plan-trade-amount-col"', self.html)
         self.assertIn("width: min(100%, 720px);", self.html)
-        self.assertIn(".plan-trade-name-col { width: 166px; }", self.html)
+        self.assertIn(".plan-trade-name-col { width: 184px; }", self.html)
         self.assertIn('x-text="positionActionText(order.action)"', self.html)
+        self.assertIn('tradeActionToneClass(order.action)', self.html)
+        self.assertIn('tradeActionGroupStartClass(accountTradeOrders(plan)[orderIndex - 1]?.action, order.action)', self.html)
         self.assertIn('class="plan-trade-quantity"', self.html)
         self.assertIn(':title="positionRouteText(order)"', self.html)
         self.assertIn("positionRouteText(order)", self.html)
@@ -603,7 +669,6 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn('class="plan-trade-position-route"', self.html)
         self.assertIn('class="plan-trade-position"', self.html)
         self.assertIn(">参考价<", self.html)
-        self.assertIn(">估算金额<", self.html)
         self.assertNotIn('data-label="顺序"', self.html)
         self.assertNotIn('data-label="仓位动作"', self.html)
         self.assertNotIn('x-for="group in accountTradeGroups(plan)"', self.html)
@@ -622,6 +687,22 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn("买入阶段", self.html)
         self.assertNotIn("executionStepLabel(", self.html)
         self.assertNotIn('colspan="6"', self.html)
+        self.assertIn("if (!action || previousAction === action) return ''", self.html)
+
+    def test_account_plan_trade_summary_uses_compact_four_action_overview(self):
+        self.assertIn('class="plan-trade-summary"', self.html)
+        self.assertIn('aria-label="交易动作汇总"', self.html)
+        self.assertIn('x-for="summary in accountTradeActionOverview(plan)"', self.html)
+        self.assertIn('class="plan-trade-summary-item"', self.html)
+        self.assertIn('class="plan-trade-summary-count"', self.html)
+        self.assertIn('class="plan-trade-summary-amount"', self.html)
+        self.assertIn("accountTradeActionOverview(plan)", self.html)
+        self.assertIn("amount_label: '预计回笼'", self.html)
+        self.assertIn("amount_label: '预计占用'", self.html)
+        self.assertIn("tradeActionGroupStartClass(previousAction, action)", self.html)
+        self.assertIn("is-action-group-start", self.html)
+        self.assertIn(".plan-trade-row.is-action-group-start td", self.html)
+        self.assertIn("grid-template-columns: repeat(4, minmax(0, 1fr));", self.html)
 
     def test_account_plan_summary_exposes_the_trade_detail_toggle(self):
         self.assertIn("plan.account_name + '交易计划'", self.html)
@@ -666,7 +747,10 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("fetch('/api/plan/generated')", self.html)
         self.assertIn("fetch(`/api/plan/generated/${this.latestGeneration.plan_id}`)", self.html)
         self.assertIn("hasCurrentGeneratedPlan()", self.html)
-        self.assertIn("if (!this.hasCurrentGeneratedPlan()) return null", self.html)
+        self.assertIn("hasSavedGeneratedPlan()", self.html)
+        self.assertIn("isReadablePlanSnapshot()", self.html)
+        self.assertIn("已保存计划快照", self.html)
+        self.assertIn("if (!this.isReadablePlanSnapshot()) return null", self.html)
         self.assertIn("planState()", self.html)
         self.assertIn("planStateTitle()", self.html)
         self.assertIn("今日需要操作", self.html)
@@ -689,10 +773,17 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn('class="plan-execution-status"', self.html)
         self.assertNotIn("planReady && isReviewableExecutionPlan()\"", self.html)
         self.assertIn("planReady && !isReviewableExecutionPlan()", self.html)
-        self.assertIn('<template x-if="isReviewableExecutionPlan()">', self.html)
-        self.assertIn("if (!this.hasCurrentGeneratedPlan()) return null", self.html)
+        self.assertIn('<template x-if="isReviewableExecutionPlan() || (isHistoricalPlanSnapshot() && snapshotExpanded)">', self.html)
+        self.assertIn("if (!this.isReadablePlanSnapshot()) return null", self.html)
         self.assertIn("planTimelineText()", self.html)
         self.assertIn("planRevisionText()", self.html)
+        self.assertIn("failureStageStrategy(stage)", self.html)
+        self.assertIn("if (stage === 'stock_orders') return 'stock'", self.html)
+        self.assertIn("const failedStrategy = this.latestGeneration?.status === 'failed'", self.html)
+        self.assertLess(
+            self.html.index("if (failedStrategy === strategy) return { state: 'failed', text: '生成失败' }"),
+            self.html.index("if (section?.orders?.length) return { state: 'ready', text: '订单已生成' }"),
+        )
         status = self.html.index('class="plan-masthead-state"')
         decision = self.html.index('class="plan-decision-hero')
         actions = self.html.index('class="plan-execution-dossier')

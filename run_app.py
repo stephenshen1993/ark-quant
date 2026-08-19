@@ -10,6 +10,7 @@ if __name__ == "__main__":
             "app",
             "datasource",
             "strategies",
+            "portfolio_rebalance.py",
             "rebalance.py",
             "value_accounts.py",
         ],

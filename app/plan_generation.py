@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Callable
 
 from app import plan_lifecycle
 from app import plan_service
 from app import strategy_runner
+from app.execution_guard import evaluate as evaluate_execution_guard
 from datasource import db
 from portfolio_rebalance import PlanValidationError
 
@@ -28,7 +30,45 @@ def get_generated_plan(plan_id: str) -> dict | None:
     plan = record.get("plan")
     if not isinstance(plan, dict):
         return record
-    return {**record, "plan": plan_service.hydrate_execution_read_model(plan)}
+    record_status = record.get("status", plan_lifecycle.COMPLETE)
+    if record_status not in {plan_lifecycle.COMPLETE, plan_lifecycle.STALE}:
+        return {
+            **record,
+            "plan": {
+                **plan,
+                "execution_status": "non_executable",
+                "execution_sequence": [],
+                "execution_read_model": None,
+            },
+        }
+    execution_status = (
+        "executable" if record_status == plan_lifecycle.COMPLETE else "stale"
+    )
+    hydrated_plan = (
+        plan
+        if plan.get("snapshot") and plan.get("execution_read_model") is not None
+        else plan_service.hydrate_execution_read_model(plan)
+    )
+    return {
+        **record,
+        "plan": {
+            **hydrated_plan,
+            "execution_status": execution_status,
+        },
+    }
+
+
+def evaluate_generated_plan_execution(plan_id: str, realtime: dict) -> dict | None:
+    record = plan_lifecycle.get_plan(plan_id)
+    if record is None:
+        return None
+    if record.get("status") != plan_lifecycle.COMPLETE:
+        raise plan_service.PlanServiceError(
+            409,
+            {"code": "PLAN_NOT_EXECUTABLE", "message": "只有完整冻结计划可进行执行守卫评估。"},
+        )
+    plan = record.get("plan") or {}
+    return {"plan_id": plan_id, **evaluate_execution_guard(plan, realtime)}
 
 
 def generate_complete_plan(
@@ -42,9 +82,16 @@ def generate_complete_plan(
         raise _generation_in_progress_error(plan_date, running_generation)
 
     plan_id = plan_lifecycle.new_plan_id(plan_date)
+    generated_at = datetime.now().isoformat()
     failed_stage = "cb_orders"
     plan = {
         "plan_date": plan_date,
+        "generated_at": generated_at,
+        "snapshot": plan_service.build_plan_snapshot(
+            plan_id=plan_id,
+            plan_date=plan_date,
+            generated_at=generated_at,
+        ),
         "generation": {
             "plan_id": plan_id,
             "plan_date": plan_date,
@@ -58,13 +105,24 @@ def generate_complete_plan(
 
     try:
         plan_date, account, market_temperature, fund_transfer = prepare_complete_plan_generation(plan_date)
+        strategy_rankings = {
+            strategy: {
+                "run": db.get_strategy_run_meta(strategy, plan_date),
+                "items": db.get_rankings(strategy, plan_date),
+            }
+            for strategy in ("cb", "stock")
+        }
+        price_snapshot = plan_service.capture_frozen_plan_prices(plan_date, strategy_rankings)
         plan = plan_service.build_generated_plan_response(
             plan_id=plan_id,
             status=plan_lifecycle.RUNNING,
             plan_date=plan_date,
+            generated_at=generated_at,
             market_temperature=market_temperature,
             account=account,
             fund_transfer=fund_transfer,
+            price_snapshot=price_snapshot,
+            strategy_rankings=strategy_rankings,
             cb_result=None,
             stock_result=None,
         )
@@ -79,7 +137,13 @@ def generate_complete_plan(
         cb_result = size_cb_orders(
             plan_service.strategy_cash_after_transfer("cb", account, deltas),
             plan_date=plan_date,
+            prices=price_snapshot["cb"],
+            rankings=strategy_rankings["cb"]["items"],
         )
+        cb_result = {
+            **cb_result,
+            "orders": plan_service.explain_order_targets(cb_result.get("orders", [])),
+        }
         plan_lifecycle.record_order_batch(
             plan_id, "cb", cb_result["orders"], cb_result["summary"]
         )
@@ -87,9 +151,12 @@ def generate_complete_plan(
             plan_id=plan_id,
             status=plan_lifecycle.RUNNING,
             plan_date=plan_date,
+            generated_at=generated_at,
             market_temperature=market_temperature,
             account=account,
             fund_transfer=fund_transfer,
+            price_snapshot=price_snapshot,
+            strategy_rankings=strategy_rankings,
             cb_result=cb_result,
             stock_result=None,
         )
@@ -98,7 +165,13 @@ def generate_complete_plan(
         stock_result = size_stock_orders(
             plan_service.strategy_cash_after_transfer("stock", account, deltas),
             plan_date=plan_date,
+            prices=price_snapshot["stock"],
+            rankings=strategy_rankings["stock"]["items"],
         )
+        stock_result = {
+            **stock_result,
+            "orders": plan_service.explain_order_targets(stock_result.get("orders", [])),
+        }
         plan_lifecycle.record_order_batch(
             plan_id, "stock", stock_result["orders"], stock_result["summary"]
         )
@@ -106,9 +179,12 @@ def generate_complete_plan(
             plan_id=plan_id,
             status=plan_lifecycle.COMPLETE,
             plan_date=plan_date,
+            generated_at=generated_at,
             market_temperature=market_temperature,
             account=account,
             fund_transfer=fund_transfer,
+            price_snapshot=price_snapshot,
+            strategy_rankings=strategy_rankings,
             cb_result=cb_result,
             stock_result=stock_result,
         )
@@ -216,9 +292,10 @@ def prepare_complete_plan_generation(plan_date: str | None = None) -> tuple[str,
 
 
 def ensure_rankings_for_plan_date(plan_date: str) -> None:
+    task = strategy_runner.freeze_strategy_run_task(effective_date=plan_date)
     for strategy in ("cb", "stock"):
         try:
-            strategy_runner.ensure_rankings(strategy, plan_date)
+            strategy_runner.ensure_rankings(strategy, plan_date, task=task)
         except strategy_runner.StrategyRunnerError as exc:
             detail = exc.detail
             if detail.get("code") == "STRATEGY_RANKING_DATE_MISMATCH":

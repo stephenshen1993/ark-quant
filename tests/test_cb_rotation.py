@@ -4,6 +4,7 @@ import unittest
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Barrier, BrokenBarrierError
 from unittest.mock import patch
 
 import pandas as pd
@@ -261,6 +262,100 @@ class ConvertibleBondRotationTests(unittest.TestCase):
 
         self.assertEqual(sorted(out["stock_code"].astype(str).str.zfill(6).tolist()), ["000001", "000002"])
 
+    def test_fetch_stock_factors_uses_bounded_parallel_requests(self) -> None:
+        barrier = Barrier(2)
+        overlapped: list[bool] = []
+        history = pd.DataFrame({
+            "date": pd.date_range("2026-05-01", periods=25),
+            "close": range(10, 35),
+        })
+
+        class FakeAk:
+            @staticmethod
+            def stock_zh_a_daily(**_kwargs) -> pd.DataFrame:
+                try:
+                    barrier.wait(timeout=0.2)
+                    overlapped.append(True)
+                except BrokenBarrierError:
+                    overlapped.append(False)
+                return history
+
+        factors = run.fetch_stock_factors(
+            FakeAk(),
+            ["000001", "000002"],
+            date(2026, 5, 28),
+            {"data": {"per_symbol_fetch_workers": 2}},
+        )
+
+        self.assertEqual(factors["stock_code"].tolist(), ["000001", "000002"])
+        self.assertEqual(overlapped, [True, True])
+
+    def test_fetch_bond_turnover_uses_bounded_parallel_requests(self) -> None:
+        barrier = Barrier(2)
+        overlapped: list[bool] = []
+
+        class FakeAk:
+            @staticmethod
+            def bond_zh_hs_cov_daily(symbol: str) -> pd.DataFrame:
+                try:
+                    barrier.wait(timeout=0.2)
+                    overlapped.append(True)
+                except BrokenBarrierError:
+                    overlapped.append(False)
+                return pd.DataFrame([{
+                    "date": date.today().isoformat(),
+                    "close": 120.0,
+                    "volume": 1000,
+                }])
+
+        with TemporaryDirectory() as temp_dir, patch.object(run, "CACHE_DIR", Path(temp_dir)):
+            turnover_result = run.fetch_cb_daily_turnover(
+                FakeAk(),
+                ["113001", "113002"],
+                {"data": {"per_symbol_fetch_workers": 2}},
+                include_metadata=True,
+            )
+
+        self.assertIsInstance(turnover_result, run.MarketFetchResult)
+        turnover = turnover_result.frame
+        self.assertEqual(turnover_result.external_calls, 2)
+        self.assertEqual(turnover["bond_code"].tolist(), ["113001", "113002"])
+        self.assertEqual(overlapped, [True, True])
+
+    def test_fetch_bond_turnover_cache_hit_reports_zero_physical_calls(self) -> None:
+        class FakeAk:
+            calls = 0
+
+            @classmethod
+            def bond_zh_hs_cov_daily(cls, symbol: str) -> pd.DataFrame:
+                del symbol
+                cls.calls += 1
+                return pd.DataFrame([{
+                    "date": "2026-08-19",
+                    "close": 120.0,
+                    "volume": 1000,
+                }])
+
+        with TemporaryDirectory() as temp_dir, patch.object(run, "CACHE_DIR", Path(temp_dir)):
+            first = run.fetch_cb_daily_turnover(
+                FakeAk(),
+                ["113001"],
+                {},
+                date(2026, 8, 19),
+                include_metadata=True,
+            )
+            second = run.fetch_cb_daily_turnover(
+                FakeAk(),
+                ["113001"],
+                {},
+                date(2026, 8, 19),
+                include_metadata=True,
+            )
+
+        self.assertEqual(first.external_calls, 1)
+        self.assertEqual(second.external_calls, 0)
+        self.assertEqual(FakeAk.calls, 1)
+
     def test_drop_uncovered_factor_data_removes_missing_factor_rows(self) -> None:
         candidates = pd.DataFrame(
             [
@@ -357,28 +452,105 @@ class ConvertibleBondRotationTests(unittest.TestCase):
         from strategies.cb_rotation import size_orders
 
         target = pd.DataFrame(
-            [
-                {"bond_code": "100001", "bond_name": "甲转债"},
-                {"bond_code": "100002", "bond_name": "乙转债"},
-            ]
+            [{"bond_code": f"{100001 + index:06d}", "bond_name": f"转债{index}"} for index in range(20)]
         )
         positions = pd.DataFrame(
             [
                 {"bond_code": "100002", "bond_name": "乙转债", "shares": 50},
-                {"bond_code": "100003", "bond_name": "丙转债", "shares": 100},
+                {"bond_code": "199999", "bond_name": "丙转债", "shares": 100},
             ]
         )
-        prices = {"100001": 100.0, "100002": 200.0, "100003": 50.0}
+        prices = {code: 50.0 for code in target["bond_code"]}
+        prices.update({"100001": 100.0, "100002": 200.0, "199999": 50.0})
         sheet, summary = size_orders.size_rebalance(target, positions, cash=5000.0, prices=prices)
 
         actions = dict(zip(sheet["bond_code"], sheet["action"]))
         deltas = dict(zip(sheet["bond_code"], sheet["delta_shares"]))
-        self.assertEqual(actions["100003"], "SELL")
-        self.assertEqual(deltas["100003"], -100)  # 不在目标里，全清
+        self.assertEqual(actions["199999"], "SELL")
+        self.assertEqual(deltas["199999"], -100)  # 不在目标里，全清
+        exit_row = sheet.loc[sheet["bond_code"] == "199999"].iloc[0]
+        self.assertEqual(exit_row["target_shares"], 0)
+        self.assertEqual(exit_row["execution_reason"], "mandatory_exit")
         self.assertEqual(actions["100001"], "BUY")
         self.assertEqual(summary["total_value"], 20000.0)  # 持仓15000 + 现金5000
         self.assertGreaterEqual(summary["cash_left"], 0)  # 永不超支
         self.assertTrue((sheet["target_shares"] % size_orders.LOT == 0).all())  # 张数都是10的整数倍
+        self.assertEqual(summary["allocation_method"], "equal_weight_lexicographic_milp")
+        self.assertEqual(summary["fee_schedule"], "convertible_bond")
+        self.assertTrue(summary["allow_target_sells"])
+        self.assertEqual(summary["solver_status"], "OPTIMAL")
+
+    def test_cb_top_twenty_holding_can_trim_but_not_clear(self) -> None:
+        from strategies.cb_rotation import size_orders
+
+        target = pd.DataFrame(
+            [{"bond_code": f"{110000 + index:06d}", "bond_name": f"转债{index}"} for index in range(20)]
+        )
+        positions = pd.DataFrame(
+            [
+                {"bond_code": "110000", "bond_name": "转债0", "shares": 200},
+                {"bond_code": "110001", "bond_name": "转债1", "shares": 100},
+                {"bond_code": "119999", "bond_name": "退出债", "shares": 100},
+            ]
+        )
+        prices = {code: 100.0 for code in target["bond_code"]}
+        prices["119999"] = 100.0
+
+        sheet, summary = size_orders.size_rebalance(target, positions, cash=-1_500.0, prices=prices)
+
+        exit_row = sheet.loc[sheet["bond_code"] == "119999"].iloc[0]
+        self.assertEqual(exit_row["action"], "SELL")
+        self.assertEqual(exit_row["target_shares"], 0)
+        self.assertEqual(exit_row["execution_reason"], "mandatory_exit")
+
+        target_trimmed = sheet[(sheet["bond_code"].isin(["110000", "110001"])) & (sheet["delta_shares"] < 0)]
+        self.assertEqual(len(target_trimmed), 2)
+        self.assertTrue((target_trimmed["target_shares"] > 0).all())
+        self.assertTrue((target_trimmed["execution_reason"] == "target_rebalance").all())
+        self.assertGreaterEqual(summary["cash_left"], 0)
+
+    def test_cb_negative_budget_marks_target_trims_as_budget_reduction(self) -> None:
+        from strategies.cb_rotation import size_orders
+
+        target = pd.DataFrame(
+            [{"bond_code": f"{110000 + index:06d}", "bond_name": f"转债{index}"} for index in range(20)]
+        )
+        positions = pd.DataFrame(
+            [{"bond_code": row.bond_code, "bond_name": row.bond_name, "shares": 30} for row in target.itertuples()]
+        )
+        prices = {code: 100.0 for code in target["bond_code"]}
+
+        sheet, summary = size_orders.size_rebalance(
+            target,
+            positions,
+            cash=-1_500.0,
+            prices=prices,
+            budget_reduction_context=True,
+        )
+
+        trimmed = sheet[sheet["delta_shares"] < 0]
+        self.assertGreater(len(trimmed), 0)
+        self.assertTrue((trimmed["target_shares"] > 0).all())
+        self.assertTrue((trimmed["execution_reason"] == "budget_reduction").all())
+        self.assertGreaterEqual(summary["cash_left"], 0)
+
+    def test_size_rebalance_rejects_missing_cb_slots(self) -> None:
+        from strategies.cb_rotation import size_orders
+        from strategies.discrete_target_sizing import DiscreteSizingError
+
+        target = pd.DataFrame([
+            {"bond_code": "100001", "bond_name": "甲转债"},
+            {"bond_code": "100002", "bond_name": "乙转债"},
+        ])
+        positions = pd.DataFrame(columns=["bond_code", "bond_name", "shares"])
+
+        with self.assertRaisesRegex(DiscreteSizingError, "CAPACITY_CONFLICT"):
+            size_orders.size_rebalance(
+                target,
+                positions,
+                cash=20_000.0,
+                prices={"100001": 100.0, "100002": 100.0},
+            )
 
     def test_snapshot_raw_data_writes_frames_and_manifest(self) -> None:
         import json

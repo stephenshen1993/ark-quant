@@ -3,6 +3,8 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from threading import Barrier, BrokenBarrierError
+from unittest.mock import patch
 
 from datasource import market, store
 
@@ -60,6 +62,46 @@ class StockPriceAdjustmentTests(unittest.TestCase):
 
         self.assertEqual(adjusted["price"], 15.49)
         self.assertNotIn("price_adjustment", adjusted)
+
+
+class SnapshotBatchingTests(unittest.TestCase):
+    @staticmethod
+    def _tencent_response(code: str):
+        fields = [""] * 49
+        fields[1] = f"股票{code}"
+        fields[2] = code
+        fields[3] = "10"
+        fields[4] = "9.8"
+        fields[6] = "100"
+        fields[37] = "20"
+        fields[39] = "12"
+        fields[45] = "8"
+        fields[47] = "11"
+        fields[48] = "9"
+        return type("Response", (), {"text": f'v_sh{code}="' + "~".join(fields) + '";'})()
+
+    def test_tencent_snapshot_fetches_batches_concurrently_and_preserves_order(self) -> None:
+        barrier = Barrier(2)
+        overlapped: list[bool] = []
+
+        def fake_get(url: str, timeout: int):
+            code = url[-6:]
+            try:
+                barrier.wait(timeout=0.2)
+                overlapped.append(True)
+            except BrokenBarrierError:
+                overlapped.append(False)
+            return self._tencent_response(code)
+
+        with patch("requests.get", side_effect=fake_get):
+            result = market.fetch_tencent_snapshot(
+                ["600001", "600002"],
+                batch_size=1,
+                max_workers=2,
+            )
+
+        self.assertEqual(result["stock_code"].tolist(), ["600001", "600002"])
+        self.assertEqual(overlapped, [True, True])
 
 
 class StoreTests(unittest.TestCase):

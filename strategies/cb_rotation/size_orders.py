@@ -25,9 +25,15 @@ from strategies.cb_rotation.run import (
     ROOT,
     setup_logging,
 )
+from strategies.discrete_target_sizing import (
+    CB_FEE_SCHEDULE,
+    MAX_SINGLE_WEIGHT,
+    size_discrete_targets,
+)
 
 DEFAULT_POSITIONS = ROOT / "portfolios" / "current_cb_positions.csv"
 LOT = 10  # 沪深可转债最小交易单位与递增均为 10 张
+TARGET_SLOTS = 20
 
 
 def latest_target_file() -> Path:
@@ -59,9 +65,11 @@ def size_rebalance(
     cash: float,
     prices: dict[str, float],
     lot: int = LOT,
-    max_single_weight: float = 0.08,
+    max_single_weight: float = MAX_SINGLE_WEIGHT,
+    *,
+    budget_reduction_context: bool = False,
 ) -> tuple[pd.DataFrame, dict]:
-    """Return (order sheet, summary). Equal-weight target with lot rounding under a cash constraint."""
+    """Return frozen net orders under the shared Top-20 sizing policy."""
     target = target.copy()
     target["bond_code"] = target["bond_code"].astype(str).str.zfill(6)
     target_codes = list(dict.fromkeys(target["bond_code"]))
@@ -70,51 +78,19 @@ def size_rebalance(
     for _, r in positions.iterrows():
         name_map.setdefault(r["bond_code"], r.get("bond_name", ""))
 
-    missing = [c for c in set(target_codes) | set(held) if c not in prices]
-    if missing:
-        raise SystemExit(f"缺少这些转债的报价，无法定张数: {missing}")
-
-    holdings_value = sum(held[c] * prices[c] for c in held)
-    total_value = holdings_value + cash
-    n = len(target_codes)
-    per = total_value / n
-    cap = max_single_weight * total_value
-    per = min(per, cap)
-
-    # 向下取整到 lot，保证不超目标权重，后续再用余额贪心补足。
-    desired = {c: max(int((per / prices[c]) // lot) * lot, 0) for c in target_codes}
-
-    def cash_left() -> float:
-        flow = cash
-        for c in held:  # 卖出不在目标里的，全清；在目标里的按差额
-            if c not in desired:
-                flow += held[c] * prices[c]
-        for c in target_codes:
-            flow -= (desired[c] - held.get(c, 0)) * prices[c]
-        return flow
-
-    left = cash_left()
-    # 余额不足则从排名靠后的目标里减仓位；有余额则给排名靠前/便宜的加仓位。
-    rank = {c: i for i, c in enumerate(target_codes)}
-    while left < 0:
-        candidates = [c for c in target_codes if desired[c] >= lot]
-        if not candidates:
-            break
-        c = max(candidates, key=lambda x: (rank[x], prices[x]))
-        desired[c] -= lot
-        left += prices[c] * lot
-    improved = True
-    while improved:
-        improved = False
-        for c in sorted(target_codes, key=lambda x: rank[x]):
-            if prices[c] * lot <= left and desired[c] + lot <= int(cap / prices[c]):
-                desired[c] += lot
-                left -= prices[c] * lot
-                improved = True
-
+    desired, summary = size_discrete_targets(
+        target_codes=target_codes,
+        holdings=held,
+        prices=prices,
+        cash=cash,
+        lot=lot,
+        max_single_weight=max_single_weight,
+        fee_schedule=CB_FEE_SCHEDULE,
+        allow_target_sells=True,
+    )
     rows = []
     for c in sorted(set(held) - set(target_codes)):
-        rows.append(_row("SELL", c, name_map, prices, held[c], 0))
+        rows.append(_row("SELL", c, name_map, prices, held[c], 0, execution_reason="mandatory_exit"))
     for c in target_codes:
         cur, tgt = held.get(c, 0), desired[c]
         if cur == 0:
@@ -122,23 +98,16 @@ def size_rebalance(
         elif tgt > cur:
             rows.append(_row("ADD", c, name_map, prices, cur, tgt))
         elif tgt < cur:
-            rows.append(_row("TRIM", c, name_map, prices, cur, tgt))
+            reason = "budget_reduction" if budget_reduction_context else "target_rebalance"
+            rows.append(_row("TRIM", c, name_map, prices, cur, tgt, execution_reason=reason))
         else:
             rows.append(_row("HOLD", c, name_map, prices, cur, tgt))
 
     sheet = pd.DataFrame(rows)
-    summary = {
-        "total_value": total_value,
-        "holdings_value": holdings_value,
-        "cash_in": cash,
-        "per_target": per,
-        "cash_left": left,
-        "n_target": n,
-    }
     return sheet, summary
 
 
-def _row(action, code, name_map, prices, cur, tgt):
+def _row(action, code, name_map, prices, cur, tgt, *, execution_reason="frozen_target"):
     delta = tgt - cur
     return {
         "action": action,
@@ -147,6 +116,10 @@ def _row(action, code, name_map, prices, cur, tgt):
         "price": round(prices[code], 3),
         "current_shares": int(cur),
         "target_shares": int(tgt),
+        "ideal_target_shares": int(tgt),
+        "executable_target_shares": int(tgt),
+        "residual_shares": 0,
+        "execution_reason": execution_reason,
         "delta_shares": int(delta),
         "amount": round(abs(delta) * prices[code], 2),
     }

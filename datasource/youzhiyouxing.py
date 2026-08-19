@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 DATA_URL = "https://youzhiyouxing.cn/data"
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 CACHE_TTL = timedelta(hours=1)
+OFFICIAL_SNAPSHOT_FALLBACK_TTL = timedelta(days=3)
 FAILURE_RETRY_TTL = timedelta(minutes=5)
 _REFRESH_LOCK = threading.Lock()
 
@@ -72,32 +73,46 @@ def _get_or_fetch_market_temperature(*, refresh: bool, timeout: float) -> Market
             if failed_attempt and _is_recent(
                 failed_attempt["last_attempt_at"], FAILURE_RETRY_TTL
             ):
+                if _can_use_official_snapshot(cached):
+                    return cached
                 raise TemperatureFetchError(failed_attempt["last_error"])
-        return _fetch_and_save_temperature(db, timeout)
+        return _fetch_and_save_temperature(
+            db,
+            timeout,
+            fallback=cached if not refresh else None,
+        )
 
 
-def _fetch_and_save_temperature(db, timeout: float) -> MarketTemperature:
+def _fetch_and_save_temperature(
+    db,
+    timeout: float,
+    *,
+    fallback: MarketTemperature | None = None,
+) -> MarketTemperature:
     attempted_at = _storage_timestamp(_now_shanghai())
     try:
         fresh = _canonicalize_market_temperature(fetch_market_temperature(timeout=timeout))
-        saved = db.insert_market_temperature(
-            temperature=fresh.temperature,
-            label=fresh.label,
-            source_updated_at=fresh.updated_at,
-            source=fresh.source,
-            fetched_at=attempted_at,
-        )
-        if (
-            float(saved["temperature"]) != fresh.temperature
-            or saved.get("label") != fresh.label
-        ):
-            raise TemperatureFetchError(
-                "market temperature source conflict: same source timestamp has changed data"
-            )
-        result = _canonicalize_market_temperature(_from_db_row(saved))
     except TemperatureFetchError as exc:
         db.record_market_temperature_refresh_failure(DATA_URL, attempted_at, str(exc))
+        if _can_use_official_snapshot(fallback):
+            return fallback
         raise
+
+    saved = db.insert_market_temperature(
+        temperature=fresh.temperature,
+        label=fresh.label,
+        source_updated_at=fresh.updated_at,
+        source=fresh.source,
+        fetched_at=attempted_at,
+    )
+    if (
+        float(saved["temperature"]) != fresh.temperature
+        or saved.get("label") != fresh.label
+    ):
+        raise TemperatureFetchError(
+            "market temperature source conflict: same source timestamp has changed data"
+        )
+    result = _canonicalize_market_temperature(_from_db_row(saved))
     db.clear_market_temperature_refresh_state(DATA_URL)
     return result
 
@@ -209,6 +224,10 @@ def _storage_timestamp(value: datetime) -> str:
 
 def _is_fresh(fetched_at: str | None) -> bool:
     return _is_recent(fetched_at, CACHE_TTL)
+
+
+def _can_use_official_snapshot(cached: MarketTemperature | None) -> bool:
+    return bool(cached and _is_recent(cached.fetched_at, OFFICIAL_SNAPSHOT_FALLBACK_TTL))
 
 
 def _is_recent(timestamp: str | None, ttl: timedelta) -> bool:

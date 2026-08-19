@@ -193,7 +193,13 @@ def _account_trading_plans(
         orders = [
             normalized
             for order in section.get("orders") or []
-            if (normalized := _normalize_order(strategy, order)) is not None
+            if (
+                normalized := _normalize_order(
+                    strategy,
+                    order,
+                    price_basis_date=section.get("data_date") or plan_date,
+                )
+            ) is not None
         ]
         if not orders:
             continue
@@ -239,6 +245,7 @@ def _account_trading_plans(
             if order["action"] in BUY_ACTIONS
         ))
         summary = section.get("summary") or {}
+        estimated_fees = _money(summary.get("estimated_fees"))
         starting_available = summary.get("starting_cash")
         if starting_available is None:
             starting_available = account.get("available_cash")
@@ -249,6 +256,7 @@ def _account_trading_plans(
             - transfer_out
             + expected_sell
             - expected_buy
+            - estimated_fees
         )
         state, available_on = _funding_state(
             incoming_availability,
@@ -311,6 +319,7 @@ def _account_trading_plans(
                     1 for order in orders if order["action"] in BUY_ACTIONS
                 ),
                 "buy_estimated_amount": expected_buy,
+                "estimated_fees": estimated_fees,
             },
             "cash": {
                 "starting_available": starting_available,
@@ -318,6 +327,7 @@ def _account_trading_plans(
                 "transfer_out": transfer_out,
                 "expected_sell": expected_sell,
                 "expected_buy": expected_buy,
+                "estimated_fees": estimated_fees,
                 "expected_ending": expected_ending,
             },
             "phases": phases,
@@ -387,7 +397,12 @@ def _execution_guardrails(
     }
 
 
-def _normalize_order(strategy: str, order: dict) -> dict | None:
+def _normalize_order(
+    strategy: str,
+    order: dict,
+    *,
+    price_basis_date: str,
+) -> dict | None:
     action = order.get("action")
     quantity = float(order.get("delta_shares", order.get("shares", 0)) or 0)
     amount = _money(abs(float(order.get("amount") or 0)))
@@ -399,6 +414,12 @@ def _normalize_order(strategy: str, order: dict) -> dict | None:
     price = order.get("price")
     current_quantity = _quantity_or_none(order.get("current_shares"))
     target_quantity = _quantity_or_none(order.get("target_shares"))
+    ideal_target_quantity = _quantity_or_none(order.get("ideal_target_shares"))
+    executable_target_quantity = _quantity_or_none(
+        order.get("executable_target_shares", order.get("target_shares"))
+    )
+    residual_quantity = _quantity_or_none(order.get("residual_shares"))
+    reference_price = round(float(price), 3) if price is not None else None
     return {
         "action": action,
         "execution_priority": ACTION_EXECUTION_ORDER[action],
@@ -407,8 +428,17 @@ def _normalize_order(strategy: str, order: dict) -> dict | None:
         "quantity": abs(quantity),
         "current_quantity": current_quantity,
         "target_quantity": target_quantity,
+        "ideal_target_quantity": ideal_target_quantity,
+        "executable_target_quantity": executable_target_quantity,
+        "residual_quantity": residual_quantity,
+        "execution_reason": order.get("execution_reason", "frozen_target"),
         "unit": "张" if is_cb else "股",
-        "reference_price": round(float(price), 3) if price is not None else None,
+        "reference_price": reference_price,
+        "price_basis_date": price_basis_date,
+        "current_value": _quantity_value(current_quantity, reference_price),
+        "ideal_target_value": _quantity_value(ideal_target_quantity, reference_price),
+        "executable_target_value": _quantity_value(executable_target_quantity, reference_price),
+        "budget_occupancy": amount if action in BUY_ACTIONS else 0.0,
         "max_execution_price": (
             _cb_buy_price_ceiling()
             if is_cb and action in BUY_ACTIONS
@@ -418,8 +448,18 @@ def _normalize_order(strategy: str, order: dict) -> dict | None:
     }
 
 
-def _order_execution_key(order: dict) -> int:
-    return int(order.get("execution_priority", ACTION_EXECUTION_ORDER[order["action"]]))
+def _order_execution_key(order: dict) -> tuple[int, float, int, str]:
+    """Order the executable list by cash dependency, then market impact.
+
+    Sells must be visible before buys because their proceeds fund the latter.
+    Within either phase, execute the larger estimated amount first to reduce
+    the gap between the frozen close-based plan and the next open.
+    """
+    action = order["action"]
+    phase = 0 if action in SELL_ACTIONS else 1
+    amount = _money(order.get("estimated_amount"))
+    action_order = int(order.get("execution_priority", ACTION_EXECUTION_ORDER[action]))
+    return (phase, -amount, action_order, str(order.get("code") or ""))
 
 
 def _quantity_or_none(value: object) -> int | float | None:
@@ -427,6 +467,12 @@ def _quantity_or_none(value: object) -> int | float | None:
         return None
     quantity = float(value)
     return int(quantity) if quantity.is_integer() else quantity
+
+
+def _quantity_value(quantity: int | float | None, price: float | None) -> float | None:
+    if quantity is None or price is None:
+        return None
+    return _money(float(quantity) * price)
 
 
 def _funding_state(

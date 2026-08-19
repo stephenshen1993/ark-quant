@@ -13,6 +13,7 @@ from datasource.youzhiyouxing import DATA_URL
 
 class TestPlansApi(unittest.TestCase):
     def setUp(self):
+        self.cb_codes = ["113062", *[f"{113100 + index:06d}" for index in range(19)]]
         self.stock_quotes = patch(
             "datasource.market.fetch_tencent_snapshot",
             return_value=pd.DataFrame([{
@@ -24,7 +25,8 @@ class TestPlansApi(unittest.TestCase):
         self.cb_quotes = patch(
             "datasource.market.fetch_cb_quotes_tencent",
             return_value={
-                "113062": {"name": "常银转债", "price": (227183 - 110) / 10},
+                code: {"name": f"转债{rank}", "price": (227183 - 110) / 10}
+                for rank, code in enumerate(self.cb_codes, start=1)
             },
         )
         self.stock_quotes_mock = self.stock_quotes.start()
@@ -55,9 +57,10 @@ class TestPlansApi(unittest.TestCase):
         db.insert_account_value_snapshot("overseas", "2026-06-29", 93030)
         self.cb_run_id = db.insert_strategy_run("cb", date(2026, 6, 29))
         db.insert_cb_rankings(self.cb_run_id, pd.DataFrame([{
-            "bond_code": "113062", "bond_name": "常银转债",
-            "cb_price": 126.80, "premium_rate": 10.0, "double_low": 136.8, "score": 0.9,
-        }]))
+            "bond_code": code, "bond_name": f"转债{rank}",
+            "cb_price": 126.80, "premium_rate": 10.0, "double_low": 136.8,
+            "score": 1 - rank / 100,
+        } for rank, code in enumerate(self.cb_codes, start=1)]))
         db.insert_cb_orders(self.cb_run_id, pd.DataFrame([{
             "action": "BUY", "bond_code": "123150", "bond_name": "九强转债",
             "price": 128.67, "delta_shares": 90, "amount": 11580.3,
@@ -65,7 +68,7 @@ class TestPlansApi(unittest.TestCase):
         run_id2 = db.insert_strategy_run("stock", date(2026, 6, 29))
         db.insert_stock_rankings(run_id2, pd.DataFrame([{
             "rank": 1, "stock_code": "600051", "stock_name": "宁波联合",
-            "total_mv_yuan": 1000000000, "pe_ttm": 10.0, "roe_pct": 12.0,
+            "total_mv_yuan": 1000000000, "pe_ttm": 10.0, "roe_pct": 12.0, "price": 5.68,
         }]))
         db.insert_stock_orders(run_id2, pd.DataFrame([{
             "action": "SELL", "stock_code": "600051", "stock_name": "宁波联合",
@@ -97,11 +100,11 @@ class TestPlansApi(unittest.TestCase):
         self.assertGreater(len(data["stock"]["orders"]), 0)
         self.assertEqual(
             set(data["cb"]["summary"]),
-            {"starting_cash", "transfer_delta", "order_delta", "cash_left"},
+            {"starting_cash", "transfer_delta", "order_delta", "estimated_fees", "cash_left_before_fees", "cash_left"},
         )
         self.assertEqual(
             set(data["stock"]["summary"]),
-            {"starting_cash", "transfer_delta", "order_delta", "cash_left"},
+            {"starting_cash", "transfer_delta", "order_delta", "estimated_fees", "cash_left_before_fees", "cash_left"},
         )
         self.assertLess(data["cb"]["summary"]["cash_left"], 110)
         self.assertGreater(data["stock"]["summary"]["cash_left"], 274)
@@ -142,7 +145,7 @@ class TestPlansApi(unittest.TestCase):
         )
         self.assertEqual(
             account_plans[1]["cash"]["expected_ending"],
-            -230196.37,
+            -69514.72,
         )
 
     def test_plan_service_builds_current_plan_without_http_route(self):
@@ -402,7 +405,10 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(saved["status"], "failed")
         self.assertEqual(saved["error"]["stage"], "stock_orders")
         self.assertEqual(saved["error"]["code"], "STOCK_SIZING_FAILED")
-        self.assertEqual(saved["plan"]["cb"]["orders"], cb_orders)
+        self.assertEqual(
+            saved["plan"]["cb"]["orders"],
+            [{**cb_orders[0], "execution_reason": "frozen_target"}],
+        )
 
     def test_generate_plan_reports_stock_stage_after_empty_cb_order_batch(self):
         with patch(
@@ -496,9 +502,69 @@ class TestPlansApi(unittest.TestCase):
         self.assertNotIn("plan", generation)
         self.assertNotIn("orders", generation)
 
-    def test_latest_generated_plan_returns_a_structured_service_error(self):
+    def test_generated_plan_history_lists_complete_and_stale_snapshots(self):
+        complete_id = "plan-2026-06-27-complete"
+        stale_id = "plan-2026-06-28-stale"
+        legacy_stale_id = "plan-2026-06-30-legacy"
+        failed_id = "plan-2026-06-29-failed"
+        plan = {
+            "execution_read_model": {
+                "funding_plan": {"groups": [{"actions": [{"amount": 1}]}]},
+                "account_trading_plans": [{"account_id": "stock"}],
+            },
+        }
+        db.insert_generated_plan(complete_id, "2026-06-27", "complete", plan)
+        db.insert_generated_plan(stale_id, "2026-06-28", "stale", plan)
+        db.insert_generated_plan(failed_id, "2026-06-29", "failed", plan)
+        db.insert_generated_plan(
+            legacy_stale_id,
+            "2026-06-30",
+            "stale",
+            {"execution_read_model": None},
+        )
+
+        response = self.client.get("/api/plan/generated/history")
+
+        self.assertEqual(response.status_code, 200)
+        history = response.json()["history"]
+        self.assertEqual(
+            [item["plan_id"] for item in history],
+            [legacy_stale_id, stale_id, complete_id],
+        )
+        self.assertEqual(history[0]["status"], "stale")
+        self.assertEqual(history[0]["summary"], {
+            "funding_action_count": 0,
+            "account_trading_plan_count": 0,
+        })
+        self.assertEqual(history[1]["summary"]["funding_action_count"], 1)
+        self.assertEqual(history[1]["summary"]["account_trading_plan_count"], 1)
+        self.assertNotIn("plan", history[0])
+
+    def test_latest_generated_plan_is_readable_when_current_plan_inputs_are_unavailable(self):
+        plan_id = "plan-2026-06-28-deadbeef"
+        db.insert_generated_plan(
+            plan_id,
+            "2026-06-28",
+            "complete",
+            {
+                "plan_date": "2026-06-28",
+                "generation": {"plan_id": plan_id, "status": "complete"},
+                "execution_read_model": {"funding_plan": {"groups": []}, "account_trading_plans": []},
+            },
+        )
+
         with patch(
             "app.routers.plans.plan_lifecycle.get_latest_plan_status",
+            side_effect=AssertionError("current inputs must not be read"),
+        ):
+            response = self.client.get("/api/plan/generated")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["generation"]["plan_id"], plan_id)
+
+    def test_latest_generated_plan_returns_a_structured_service_error(self):
+        with patch(
+            "app.routers.plans.plan_lifecycle.get_latest_complete_plan_status",
             side_effect=RuntimeError("database offline"),
         ):
             response = self.client.get("/api/plan/generated")
@@ -605,7 +671,7 @@ class TestPlansApi(unittest.TestCase):
         r = self.client.post("/api/plan/cb/size-orders")
 
         self.assertEqual(r.status_code, 409)
-        self.assertIn("account.overseas", {e["input"] for e in r.json()["detail"]["errors"]})
+        self.assertEqual(r.json()["detail"]["code"], "FROZEN_COMPLETE_PLAN_REQUIRED")
 
     def test_get_plan_returns_transfer_with_trade_errors_when_rankings_missing(self):
         db._TEST_CONN.execute("DELETE FROM cb_rankings")
@@ -657,7 +723,7 @@ class TestPlansApi(unittest.TestCase):
         }])
         stock_run_id = db.create_complete_strategy_run("stock", date(2026, 6, 30), date(2026, 7, 1), pd.DataFrame([{
             "rank": 1, "stock_code": "600051", "stock_name": "宁波联合",
-            "total_mv_yuan": 1000000000, "pe_ttm": 10.0, "roe_pct": 12.0,
+            "total_mv_yuan": 1000000000, "pe_ttm": 10.0, "roe_pct": 12.0, "price": 5.68,
         }]))
         db.insert_stock_orders(stock_run_id, pd.DataFrame([{
             "action": "HOLD", "stock_code": "600051", "stock_name": "宁波联合",
@@ -708,13 +774,19 @@ class TestPlansApi(unittest.TestCase):
         r = self.client.post("/api/plan/unknown/size-orders", json={"cash": 10000})
         self.assertEqual(r.status_code, 400)
 
+    def test_legacy_single_strategy_sizing_requires_complete_frozen_plan(self):
+        r = self.client.post("/api/plan/cb/size-orders")
+
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.json()["detail"]["code"], "FROZEN_COMPLETE_PLAN_REQUIRED")
+
     def test_size_orders_no_rankings(self):
         """没有榜单时 size-orders 在输入一致性校验阶段拦截"""
         db._TEST_CONN.execute("DELETE FROM cb_rankings")
         db._TEST_CONN.commit()
         r = self.client.post("/api/plan/cb/size-orders")
         self.assertEqual(r.status_code, 409)
-        self.assertIn("PLAN_INPUT_DATE_MISMATCH", r.json()["detail"]["code"])
+        self.assertEqual(r.json()["detail"]["code"], "FROZEN_COMPLETE_PLAN_REQUIRED")
 
     def test_size_cb_orders_generates_and_persists_orders(self):
         db._TEST_CONN.execute("DELETE FROM cb_orders")
@@ -731,36 +803,21 @@ class TestPlansApi(unittest.TestCase):
             },
         ]))
 
-        with patch(
-            "app.plan_service.strategy_cash_after_transfer",
-            return_value=30000,
-        ), patch(
-            "datasource.market.fetch_cb_prices_tencent",
-            return_value={"113062": 126.80, "113052": 115.09},
-        ):
-            r = self.client.post("/api/plan/cb/size-orders")
+        r = self.client.post("/api/plan/cb/size-orders")
 
-        self.assertEqual(r.status_code, 200)
-        data = r.json()
-        self.assertGreater(len(data["orders"]), 0)
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.json()["detail"]["code"], "FROZEN_COMPLETE_PLAN_REQUIRED")
         persisted = db.get_orders("cb", "2026-06-29")
-        self.assertGreater(len(persisted), 0)
+        self.assertEqual(persisted, [])
 
     def test_size_orders_rejects_insufficient_releasable_cash_before_persisting(self):
         db._TEST_CONN.execute("DELETE FROM cb_orders")
         db._TEST_CONN.commit()
 
-        with patch(
-            "app.plan_service.strategy_cash_after_transfer",
-            return_value=-5000,
-        ), patch(
-            "datasource.market.fetch_cb_prices_tencent",
-            return_value={"113062": 126.80},
-        ):
-            r = self.client.post("/api/plan/cb/size-orders")
+        r = self.client.post("/api/plan/cb/size-orders")
 
         self.assertEqual(r.status_code, 409)
-        self.assertEqual(r.json()["detail"]["code"], "INSUFFICIENT_RELEASABLE_CASH")
+        self.assertEqual(r.json()["detail"]["code"], "FROZEN_COMPLETE_PLAN_REQUIRED")
         self.assertEqual(db.get_orders("cb", "2026-06-29"), [])
 
     def test_order_cash_uses_available_cash_not_cash_balance(self):
@@ -786,18 +843,10 @@ class TestPlansApi(unittest.TestCase):
             },
         ]))
 
-        with patch(
-            "app.plan_service.strategy_cash_after_transfer",
-            return_value=10000,
-        ), patch(
-            "datasource.market.fetch_cb_prices_tencent",
-            return_value={"113062": 126.80},
-        ):
-            r = self.client.post("/api/plan/cb/size-orders")
+        r = self.client.post("/api/plan/cb/size-orders")
 
-        self.assertEqual(r.status_code, 500)
-        self.assertEqual(r.json()["detail"]["code"], "DATA_SOURCE_UNAVAILABLE")
-        self.assertIn("113052", r.json()["detail"]["message"])
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.json()["detail"]["code"], "FROZEN_COMPLETE_PLAN_REQUIRED")
 
     def test_size_orders_accepts_confirmed_empty_position_snapshot(self):
         db._TEST_CONN.execute("DELETE FROM cb_orders")
@@ -805,17 +854,10 @@ class TestPlansApi(unittest.TestCase):
         db._TEST_CONN.commit()
         db.insert_positions("cb", "2026-06-29", [])
 
-        with patch(
-            "app.plan_service.strategy_cash_after_transfer",
-            return_value=10000,
-        ), patch(
-            "datasource.market.fetch_cb_prices_tencent",
-            return_value={"113062": 126.80},
-        ):
-            r = self.client.post("/api/plan/cb/size-orders")
+        r = self.client.post("/api/plan/cb/size-orders")
 
-        self.assertEqual(r.status_code, 200)
-        self.assertTrue(any(order["action"] == "BUY" for order in r.json()["orders"]))
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.json()["detail"]["code"], "FROZEN_COMPLETE_PLAN_REQUIRED")
 
     def test_order_summary_uses_explicit_internal_transfer_plan(self):
         r = self.client.get("/api/plan")
@@ -829,7 +871,7 @@ class TestPlansApi(unittest.TestCase):
         cb_available = data["account"]["bond_available_cash"]
         self.assertEqual(
             cb_summary["cash_left"],
-            round(cb_available + cb_summary["transfer_delta"] + cb_summary["order_delta"], 2),
+            round(cb_available + cb_summary["transfer_delta"] + cb_summary["order_delta"] - cb_summary["estimated_fees"], 2),
         )
 
     def test_overseas_stale_blocks_complete_funding_plan(self):

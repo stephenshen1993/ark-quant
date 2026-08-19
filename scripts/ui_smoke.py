@@ -829,6 +829,101 @@ def browser_check_code(
                 'account.holdingSortOrder', expectedHoldingSortOrder, accountMetrics.holdingSortOrder,
               ));
             }}
+            accountMetrics.holdingColumns = await accountPage
+              .locator('.account-current-holding-head span')
+              .allInnerTexts();
+            const stockSecurityName = accountPage.locator('.account-current-security-name').first();
+            const stockSecurityNameText = (await stockSecurityName.innerText()).trim();
+            accountMetrics.securityNameStyle = await stockSecurityName.evaluate(element => {{
+              const style = window.getComputedStyle(element);
+              return {{
+                fontSize: Number.parseFloat(style.fontSize),
+                fontWeight: Number.parseInt(style.fontWeight, 10),
+              }};
+            }});
+            const expectedHoldingColumns = ['代码', '名称', '数量', '价格', '市值', ''];
+            if (JSON.stringify(accountMetrics.holdingColumns) !== JSON.stringify(expectedHoldingColumns)
+                || accountMetrics.securityNameStyle.fontSize < 12
+                || accountMetrics.securityNameStyle.fontWeight < 600) {{
+              accountDifferences.push(difference(
+                'account.holdingIdentityColumns',
+                {{ columns: expectedHoldingColumns, nameStyle: {{ minFontSize: 12, minFontWeight: 600 }} }},
+                {{ columns: accountMetrics.holdingColumns, nameStyle: accountMetrics.securityNameStyle }},
+              ));
+            }}
+            accountMetrics.accountActionPlacement = await accountPage.evaluate(element => {{
+              const editor = element.querySelector('.account-current-editor');
+              const addRow = element.querySelector('.account-current-add-row');
+              const accountActions = element.querySelector('.account-current-account-actions');
+              const editorBox = editor?.getBoundingClientRect();
+              const addRowBox = addRow?.getBoundingClientRect();
+              return {{
+                clearActionInReview: Boolean(accountActions?.closest('.account-current-review')),
+                trailingEditorSpace: editorBox && addRowBox ? editorBox.bottom - addRowBox.bottom : null,
+              }};
+            }});
+            if (!accountMetrics.accountActionPlacement.clearActionInReview
+                || accountMetrics.accountActionPlacement.trailingEditorSpace === null
+                || accountMetrics.accountActionPlacement.trailingEditorSpace > 44) {{
+              accountDifferences.push(difference(
+                'account.accountActionPlacement',
+                {{ clearActionInReview: true, maxTrailingEditorSpace: 44 }},
+                accountMetrics.accountActionPlacement,
+              ));
+            }}
+            const stockQuantityInput = accountPage.getByLabel('持仓数量').first();
+            const stockQuantityBefore = Number(await stockQuantityInput.inputValue());
+            accountMetrics.stockQuantityStep = await stockQuantityInput.getAttribute('step');
+            await stockQuantityInput.press('ArrowUp');
+            accountMetrics.stockQuantityAfterStepUp = Number(await stockQuantityInput.inputValue());
+            accountMetrics.namedReviewChange = (await accountPage
+              .locator('.account-current-review li')
+              .first()
+              .innerText()).trim();
+            await stockQuantityInput.press('ArrowDown');
+            accountMetrics.stockQuantityRestored = Number(await stockQuantityInput.inputValue());
+            if (accountMetrics.stockQuantityStep !== '100'
+                || accountMetrics.stockQuantityAfterStepUp !== stockQuantityBefore + 100
+                || accountMetrics.stockQuantityRestored !== stockQuantityBefore
+                || !accountMetrics.namedReviewChange.startsWith(`${{stockSecurityNameText}}（`)) {{
+              accountDifferences.push(difference(
+                'account.stockQuantityStep',
+                {{
+                  step: '100',
+                  afterStepUp: stockQuantityBefore + 100,
+                  restored: stockQuantityBefore,
+                  reviewStartsWith: `${{stockSecurityNameText}}（`,
+                }},
+                {{
+                  step: accountMetrics.stockQuantityStep,
+                  afterStepUp: accountMetrics.stockQuantityAfterStepUp,
+                  restored: accountMetrics.stockQuantityRestored,
+                  namedReviewChange: accountMetrics.namedReviewChange,
+                }},
+              ));
+            }}
+            await chooseAccount('cb');
+            const cbQuantityInput = accountPage.getByLabel('持仓数量').first();
+            const cbQuantityBefore = Number(await cbQuantityInput.inputValue());
+            accountMetrics.cbQuantityStep = await cbQuantityInput.getAttribute('step');
+            await cbQuantityInput.press('ArrowUp');
+            accountMetrics.cbQuantityAfterStepUp = Number(await cbQuantityInput.inputValue());
+            await cbQuantityInput.press('ArrowDown');
+            accountMetrics.cbQuantityRestored = Number(await cbQuantityInput.inputValue());
+            if (accountMetrics.cbQuantityStep !== '10'
+                || accountMetrics.cbQuantityAfterStepUp !== cbQuantityBefore + 10
+                || accountMetrics.cbQuantityRestored !== cbQuantityBefore) {{
+              accountDifferences.push(difference(
+                'account.cbQuantityStep',
+                {{ step: '10', afterStepUp: cbQuantityBefore + 10, restored: cbQuantityBefore }},
+                {{
+                  step: accountMetrics.cbQuantityStep,
+                  afterStepUp: accountMetrics.cbQuantityAfterStepUp,
+                  restored: accountMetrics.cbQuantityRestored,
+                }},
+              ));
+            }}
+            await chooseAccount('stock');
             assertNoDifferences('account.behavior', '账户页没有按单账户当前数据组织', accountDifferences);
 
             const primaryAction = accountPage.locator('.account-current-primary');
@@ -1006,6 +1101,24 @@ def browser_check_code(
               await codeInput.fill('000001');
               await codeInput.dispatchEvent('change');
               await quantityInput.fill('100');
+              await narrowAccount.locator('.account-current-security-name').last()
+                .filter({{ hasText: '平安银行' }})
+                .waitFor({{ state: 'visible', timeout: 10000 }});
+              const rowCountBeforeContinue = await narrowAccount.locator('.account-current-holding-row').count();
+              await addSecurity.click();
+              const continuedCodeInput = narrowAccount.getByLabel('证券代码').last();
+              const rowCountAfterContinue = await narrowAccount.locator('.account-current-holding-row').count();
+              const addSecurityBox = await addSecurity.boundingBox();
+              const continuousAddMetrics = {{
+                rowCountBefore: rowCountBeforeContinue,
+                rowCountAfter: rowCountAfterContinue,
+                newCodeFocused: await continuedCodeInput.evaluate(element => document.activeElement === element),
+                actionInViewport: Boolean(
+                  addSecurityBox
+                  && addSecurityBox.y >= 0
+                  && addSecurityBox.y + addSecurityBox.height <= {VIEWPORTS['narrow']['height']} + 2
+                ),
+              }};
               await codeInput.focus();
               const [scrollMetrics, focusMetrics, targetMetrics] = await Promise.all([
                 narrowAccount.evaluate(element => ({{
@@ -1028,6 +1141,15 @@ def browser_check_code(
                 }})),
               ]);
               const narrowDifferences = [];
+              if (continuousAddMetrics.rowCountAfter !== continuousAddMetrics.rowCountBefore + 1
+                  || !continuousAddMetrics.newCodeFocused
+                  || !continuousAddMetrics.actionInViewport) {{
+                narrowDifferences.push(difference(
+                  'account.narrow.continuousAdd',
+                  {{ addedRows: 1, newCodeFocused: true, actionInViewport: true }},
+                  continuousAddMetrics,
+                ));
+              }}
               if (scrollMetrics.scrollWidth > scrollMetrics.clientWidth + 2
                   || scrollMetrics.documentScrollWidth > scrollMetrics.documentClientWidth + 2) {{
                 narrowDifferences.push(difference('account.narrow.scrollWidth', 'no overflow', scrollMetrics));
@@ -1043,7 +1165,12 @@ def browser_check_code(
                 ));
               }});
               assertNoDifferences('account.narrow', '390px 账户编辑存在裁切、焦点或触达尺寸问题', narrowDifferences);
-              accountMaintenanceNarrowChecks.push({{ scrollMetrics, focusMetrics, targetMetrics }});
+              accountMaintenanceNarrowChecks.push({{
+                scrollMetrics,
+                focusMetrics,
+                targetMetrics,
+                continuousAddMetrics,
+              }});
               await narrowAccountPage.close();
             }}
 
@@ -1844,9 +1971,9 @@ def browser_check_code(
                 generation: completeGeneration('scenario-action'),
                 plan: actionPlan,
                 expectedTitle: '无法确认账户数据',
-                executionDossierVisible: false,
-                fundingPlanVisible: false,
-                expectedAccountPlanCount: 0,
+                executionDossierVisible: true,
+                fundingPlanVisible: true,
+                expectedAccountPlanCount: 2,
                 generateDisabled: true,
                 retryReadiness: true,
               }},

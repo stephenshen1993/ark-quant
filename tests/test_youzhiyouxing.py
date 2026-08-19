@@ -176,8 +176,19 @@ class TestMarketTemperature(unittest.TestCase):
 
     @patch("datasource.youzhiyouxing._now_shanghai", return_value=NOW)
     @patch("datasource.youzhiyouxing.fetch_market_temperature")
-    def test_expired_cache_and_fetch_failure_fails_closed(self, fetch, _now):
+    def test_expired_cache_and_fetch_failure_uses_recent_official_snapshot(self, fetch, _now):
         self._seed(age=timedelta(hours=2))
+        fetch.side_effect = TemperatureFetchError("offline")
+
+        result = get_or_fetch_market_temperature()
+
+        fetch.assert_called_once_with(timeout=10.0)
+        self.assertEqual(result.temperature, 45.0)
+
+    @patch("datasource.youzhiyouxing._now_shanghai", return_value=NOW)
+    @patch("datasource.youzhiyouxing.fetch_market_temperature")
+    def test_expired_cache_beyond_fallback_window_still_fails_closed(self, fetch, _now):
+        self._seed(age=timedelta(days=3, seconds=1))
         fetch.side_effect = TemperatureFetchError("offline")
 
         with self.assertRaisesRegex(TemperatureFetchError, "offline"):
@@ -193,11 +204,11 @@ class TestMarketTemperature(unittest.TestCase):
             TemperatureFetchError("offline"),
             MarketTemperature(45.0, "正常", "2026-07-11T15:00"),
         ]
-        with self.assertRaises(TemperatureFetchError):
-            get_or_fetch_market_temperature()
+        cached = get_or_fetch_market_temperature()
 
         result = get_or_fetch_market_temperature(refresh=True)
 
+        self.assertEqual(cached.temperature, 45.0)
         self.assertEqual(result.temperature, 45.0)
         self.assertEqual(fetch.call_count, 2)
 
@@ -322,7 +333,7 @@ class TestMarketTemperature(unittest.TestCase):
         db._TEST_CONN = sqlite3.connect(":memory:", check_same_thread=False)
         db._TEST_CONN.row_factory = sqlite3.Row
 
-    def test_concurrent_failed_refresh_calls_source_once_across_processes(self):
+    def test_concurrent_failed_refresh_uses_cached_snapshot_across_processes(self):
         import multiprocessing
 
         global _PROCESS_FETCH_COUNT, _PROCESS_FETCH_FAILS
@@ -359,8 +370,8 @@ class TestMarketTemperature(unittest.TestCase):
             for process in processes:
                 process.join(timeout=5)
 
-        self.assertEqual([outcome[0] for outcome in outcomes], ["error", "error"])
-        self.assertTrue(all("TemperatureFetchError" in outcome[1] for outcome in outcomes))
+        self.assertEqual([outcome[0] for outcome in outcomes], ["ok", "ok"])
+        self.assertEqual(outcomes[0][1], outcomes[1][1])
         self.assertEqual(_PROCESS_FETCH_COUNT.value, 1)
         db._TEST_CONN = sqlite3.connect(":memory:", check_same_thread=False)
         db._TEST_CONN.row_factory = sqlite3.Row

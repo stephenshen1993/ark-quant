@@ -1010,6 +1010,56 @@
   }
   .plan-execution-guardrail strong { color: var(--ark-text); font-size: 12px; }
   .plan-trade-section { margin-top: 12px; }
+  .plan-trade-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    width: min(100%, 720px);
+    margin-bottom: 8px;
+  }
+  .plan-trade-summary-item {
+    --plan-trade-tone: var(--ark-muted);
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    min-height: 42px;
+    padding: 7px 9px 7px 11px;
+    border: 1px solid var(--ark-faint);
+    border-left: 3px solid var(--plan-trade-tone);
+    border-radius: 7px;
+    background: var(--ark-paper);
+  }
+  .plan-trade-summary-item.is-action-sell-all { --plan-trade-tone: var(--ark-problem); }
+  .plan-trade-summary-item.is-action-trim { --plan-trade-tone: var(--ark-warn); }
+  .plan-trade-summary-item.is-action-buy { --plan-trade-tone: var(--ark-accent); }
+  .plan-trade-summary-item.is-action-add { --plan-trade-tone: var(--ark-info); }
+  .plan-trade-summary-label {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px;
+    color: var(--plan-trade-tone);
+    font-size: 11px;
+    font-weight: 750;
+    line-height: 1.1;
+  }
+  .plan-trade-summary-count {
+    color: var(--ark-muted);
+    font-family: var(--ark-font-data);
+    font-size: 10px;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+  .plan-trade-summary-amount {
+    overflow: hidden;
+    color: var(--ark-text);
+    font-family: var(--ark-font-data);
+    font-size: 11px;
+    font-weight: 750;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .plan-trade-table-scroll {
     width: 100%;
     max-width: 100%;
@@ -1023,9 +1073,8 @@
     font-size: 13px;
   }
   .plan-trade-code-col { width: 82px; }
-  .plan-trade-name-col { width: 166px; }
-  .plan-trade-action-col { width: 56px; }
-  .plan-trade-side-col { width: 54px; }
+  .plan-trade-name-col { width: 184px; }
+  .plan-trade-action-col { width: 74px; }
   .plan-trade-quantity-col { width: 96px; }
   .plan-trade-price-col { width: 92px; }
   .plan-trade-amount-col { width: 136px; }
@@ -1039,11 +1088,9 @@
     white-space: nowrap;
   }
   .plan-trade-table th:nth-child(3),
-  .plan-trade-table td:nth-child(3),
-  .plan-trade-table th:nth-child(4),
-  .plan-trade-table td:nth-child(4) { text-align: center; }
-  .plan-trade-table th:nth-child(n + 5),
-  .plan-trade-table td:nth-child(n + 5) { text-align: right; }
+  .plan-trade-table td:nth-child(3) { text-align: center; }
+  .plan-trade-table th:nth-child(n + 4),
+  .plan-trade-table td:nth-child(n + 4) { text-align: right; }
   .plan-trade-row td {
     padding: 6px 10px;
     border-bottom: 1px solid var(--ark-faint);
@@ -1066,14 +1113,29 @@
     font-weight: 700;
     white-space: nowrap;
   }
-  .plan-trade-side {
-    color: var(--ark-text);
+  .plan-trade-action-badge {
+    --plan-trade-tone: var(--ark-text);
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 2px 6px;
+    border: 1px solid color-mix(in srgb, var(--plan-trade-tone) 26%, white);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--plan-trade-tone) 9%, white);
+    color: var(--plan-trade-tone);
+    font-size: 12px;
     font-weight: 800;
-    text-align: center;
-    white-space: nowrap;
+    line-height: 1;
   }
-  .plan-trade-side.is-sell { color: #7d5a14; }
-  .plan-trade-side.is-buy { color: var(--ark-accent-deep); }
+  .plan-trade-action-badge.is-action-sell-all { --plan-trade-tone: var(--ark-problem); }
+  .plan-trade-action-badge.is-action-trim { --plan-trade-tone: var(--ark-warn); }
+  .plan-trade-action-badge.is-action-buy { --plan-trade-tone: var(--ark-accent-deep); }
+  .plan-trade-action-badge.is-action-add { --plan-trade-tone: var(--ark-info); }
+  .plan-trade-row.is-action-group-start td { border-top: 2px solid var(--ark-line); }
+  .plan-trade-row.is-action-group-start.is-action-sell-all td { border-top-color: color-mix(in srgb, var(--ark-problem) 62%, white); }
+  .plan-trade-row.is-action-group-start.is-action-trim td { border-top-color: color-mix(in srgb, var(--ark-warn) 62%, white); }
+  .plan-trade-row.is-action-group-start.is-action-buy td { border-top-color: color-mix(in srgb, var(--ark-accent) 62%, white); }
+  .plan-trade-row.is-action-group-start.is-action-add td { border-top-color: color-mix(in srgb, var(--ark-info) 62%, white); }
   .plan-trade-position,
   .plan-trade-price,
   .plan-trade-amount {
@@ -1131,7 +1193,6 @@
     display: grid;
     grid-template-columns: var(--account-rail) minmax(0, 1fr) var(--account-review);
     align-items: start;
-    min-height: 560px;
     border: 1px solid var(--ark-line);
     border-radius: 14px;
     background: var(--ark-panel);
@@ -1416,10 +1477,10 @@
     font-size: 11px;
     line-height: 1.55;
   }
-  .account-current-section-heading button {
+  .account-current-add-more {
     flex: none;
     min-height: 36px;
-    padding: 7px 0;
+    padding: 7px 2px 7px 12px;
     color: var(--ark-accent-deep);
     font-size: 11px;
     font-weight: 650;
@@ -1428,7 +1489,7 @@
   .account-current-holding-head,
   .account-current-holding-row {
     display: grid;
-    grid-template-columns: minmax(150px, 1.55fr) minmax(84px, 0.68fr) minmax(76px, 0.6fr) minmax(94px, 0.75fr) 44px;
+    grid-template-columns: 76px minmax(104px, 1fr) minmax(84px, 0.68fr) minmax(76px, 0.6fr) minmax(94px, 0.75fr) 44px;
     gap: 10px;
     align-items: center;
   }
@@ -1438,15 +1499,16 @@
     font-size: 9px;
     font-weight: 650;
   }
-  .account-current-holding-head span:nth-child(n + 2) { text-align: right; }
+  .account-current-holding-head span:nth-child(n + 3) { text-align: right; }
   .account-current-holding-row {
     min-height: 58px;
     border-top: 1px solid var(--ark-faint);
   }
-  .account-current-security { min-width: 0; }
-  .account-current-security input {
+  .account-current-security-code,
+  .account-current-security-name { min-width: 0; }
+  .account-current-security-code input {
     display: block;
-    width: 86px;
+    width: 72px;
     border: 0;
     border-bottom: 1px solid transparent;
     background: transparent;
@@ -1457,18 +1519,24 @@
     outline: none;
     min-height: 36px;
   }
-  .account-current-security input:not([readonly]) { border-bottom-color: var(--ark-line); }
-  .account-current-security span {
+  .account-current-security-code input:not([readonly]) { border-bottom-color: var(--ark-line); }
+  .account-current-security-name {
     display: block;
-    margin-top: 2px;
     overflow: hidden;
-    color: var(--ark-muted);
-    font-size: 10px;
+    color: var(--ark-text);
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1.45;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .account-current-security span.is-warning,
-  .account-current-security span.is-error { color: var(--ark-warn); }
+  .account-current-security-name.is-placeholder {
+    color: var(--ark-muted);
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .account-current-security-name.is-warning,
+  .account-current-security-name.is-error { color: var(--ark-warn); }
   .account-current-holding-row label { text-align: right; }
   .account-current-holding-row label > span { display: none; }
   .account-current-holding-row label input {
@@ -1497,18 +1565,42 @@
   .account-current-remove:hover { color: var(--ark-problem); }
   .account-current-empty-holdings {
     padding: 22px 4px;
-    border-bottom: 1px solid var(--ark-faint);
     color: var(--ark-muted);
     font-size: 11px;
   }
+  .account-current-add-row {
+    display: flex;
+    justify-content: flex-end;
+    min-height: 50px;
+    padding-top: 7px;
+    border-top: 1px solid var(--ark-faint);
+  }
   .account-current-clear-link {
-    margin-top: 30px;
+    justify-self: start;
+    min-height: 36px;
     color: var(--ark-muted);
     font-size: 11px;
     text-decoration: underline;
     text-underline-offset: 3px;
   }
   .account-current-clear-link:hover { color: var(--ark-problem); }
+  .account-current-account-actions {
+    display: grid;
+    gap: 5px;
+    margin-top: 20px;
+    padding-top: 17px;
+    border-top: 1px solid var(--ark-line);
+  }
+  .account-current-account-actions > span {
+    color: var(--ark-muted);
+    font-size: 10px;
+    font-weight: 650;
+  }
+  .account-current-account-actions > p {
+    color: var(--ark-soft);
+    font-size: 9px;
+    line-height: 1.55;
+  }
   .account-current-review {
     align-self: stretch;
     min-width: 0;
@@ -1659,17 +1751,18 @@
     .account-current-timestamp { margin-top: 14px; text-align: left; }
     .account-current-cash-row { grid-template-columns: 1fr; }
     .account-current-field input,
-    .account-current-security input,
+    .account-current-security-code input,
     .account-current-holding-row label input { font-size: 16px; }
     .account-current-derived-total { padding: 12px 0 0; border-top: 1px solid var(--ark-faint); border-left: 0; }
     .account-current-holding-head { display: none; }
     .account-current-holding-row {
       grid-template-columns: minmax(0, 1fr) 90px 36px;
-      grid-template-areas: "security quantity remove" "security derived-value remove";
+      grid-template-areas: "code quantity remove" "name derived-value remove";
       gap: 5px 10px;
       padding: 12px 0;
     }
-    .account-current-security { grid-area: security; }
+    .account-current-security-code { grid-area: code; }
+    .account-current-security-name { grid-area: name; }
     .account-current-holding-row label { grid-area: quantity; min-height: 44px; }
     .account-current-holding-row label > span { display: block; margin-bottom: 2px; color: var(--ark-soft); font-size: 8px; }
     .account-current-derived:nth-of-type(1) { display: none; }
@@ -2056,6 +2149,8 @@
     .plan-account-folio-close { min-height: 40px; }
     .plan-execution-guardrails { padding: 11px 12px; }
     .plan-execution-guardrail { grid-template-columns: 1fr; gap: 2px; font-size: 13px; }
+    .plan-trade-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 10px; }
+    .plan-trade-summary-item { min-height: 40px; }
     .plan-trade-table-scroll { overflow: visible; }
     .plan-trade-table,
     .plan-trade-table tbody { display: block; width: 100%; }
@@ -2079,6 +2174,11 @@
       border-bottom: 1px solid var(--ark-line);
     }
     .plan-trade-row:last-child { border-bottom: 0; }
+    .plan-trade-row.is-action-group-start { border-top: 2px solid var(--ark-line); }
+    .plan-trade-row.is-action-group-start.is-action-sell-all { border-top-color: color-mix(in srgb, var(--ark-problem) 62%, white); }
+    .plan-trade-row.is-action-group-start.is-action-trim { border-top-color: color-mix(in srgb, var(--ark-warn) 62%, white); }
+    .plan-trade-row.is-action-group-start.is-action-buy { border-top-color: color-mix(in srgb, var(--ark-accent) 62%, white); }
+    .plan-trade-row.is-action-group-start.is-action-add { border-top-color: color-mix(in srgb, var(--ark-info) 62%, white); }
     .plan-trade-row td {
       display: block;
       min-width: 0;
@@ -2657,15 +2757,14 @@
                   <h3>当前持仓</h3>
                   <p>默认保留现有持仓；列表按持仓市值从高到低排列，行情暂缺的证券排在最后。</p>
                 </div>
-                <button type="button" @click="addPosition()">＋ 添加证券</button>
               </div>
-              <div class="account-current-holding-table" role="table" aria-label="持仓编辑表">
+              <div x-ref="holdingsTable" class="account-current-holding-table" role="table" aria-label="持仓编辑表">
                 <div class="account-current-holding-head" role="row">
-                  <span>代码 / 名称</span><span>数量</span><span>价格</span><span>市值</span><span></span>
+                  <span>代码</span><span>名称</span><span>数量</span><span>价格</span><span>市值</span><span></span>
                 </div>
                 <template x-for="row in draft.positions" :key="row._key">
-                  <div class="account-current-holding-row" role="row">
-                    <div class="account-current-security">
+                  <div class="account-current-holding-row" role="row" :data-position-key="row._key">
+                    <div class="account-current-security-code">
                       <input
                         type="text"
                         inputmode="numeric"
@@ -2676,9 +2775,12 @@
                         @change="lookupSecurity(row)"
                         aria-label="证券代码"
                         placeholder="6 位代码">
-                      <span :class="securityStatusClass(row)" x-text="securityHelperText(row)"></span>
                     </div>
-                    <label><span>数量</span><input type="number" min="0" step="1" x-model="row.quantity" @input="markEdited()" aria-label="持仓数量"></label>
+                    <span
+                      class="account-current-security-name"
+                      :class="`${securityStatusClass(row)}${!row.name ? ' is-placeholder' : ''}`.trim()"
+                      x-text="securityHelperText(row)"></span>
+                    <label><span>数量</span><input type="number" min="0" :step="holdingQuantityStep()" x-model="row.quantity" @input="markEdited()" aria-label="持仓数量"></label>
                     <span class="account-current-derived" x-text="fmtPrice(row.price)"></span>
                     <span class="account-current-derived" x-text="fmtMoney(rowMarketValue(row))"></span>
                     <button type="button" class="account-current-remove" @click="removePosition(row)" :aria-label="'移除 ' + (row.name || row.code || '证券')">移除</button>
@@ -2687,13 +2789,13 @@
                 <div x-show="draft.positions?.length === 0" class="account-current-empty-holdings">
                   当前没有持仓。保存后会明确记录为“已确认空仓”，而不是“缺少数据”。
                 </div>
+                <div class="account-current-add-row">
+                  <button x-ref="holdingsAddMore" type="button" class="account-current-add-more" @click="addPosition()">＋ 添加证券</button>
+                </div>
               </div>
             </section>
           </div>
 
-          <button x-show="selected?.record_state === 'recorded'" type="button" class="account-current-clear-link" @click="openClearDialog('account')">
-            清空这个账户的数据…
-          </button>
         </section>
 
         <aside x-show="selected" class="account-current-review" aria-label="保存检查">
@@ -2714,6 +2816,13 @@
           </button>
           <p x-show="!isValid()" class="account-current-validation" x-text="validationMessage()"></p>
           <p class="account-current-review-footnote">保存后留在当前账户，方便核对结果或继续处理同一账户。</p>
+          <section x-show="selected?.record_state === 'recorded'" class="account-current-account-actions" aria-label="账户操作">
+            <span>账户操作</span>
+            <p x-text="selected?.kind === 'securities' ? '余额归零，并把当前持仓记录为空仓。' : '把当前账户余额归零。'"></p>
+            <button type="button" class="account-current-clear-link" @click="openClearDialog('account')">
+              清空当前账户数据…
+            </button>
+          </section>
         </aside>
       </section>
 
@@ -2765,13 +2874,13 @@
           <span x-show="temperatureLabel()" x-text="temperatureLabel()"></span>
         </div>
         <div
-          x-show="hasCurrentGeneratedPlan()"
+          x-show="hasSavedGeneratedPlan()"
           x-cloak
           class="plan-masthead-revision"
           x-text="planRevisionText()">
         </div>
         <button
-          x-show="hasCurrentGeneratedPlan()"
+          x-show="hasSavedGeneratedPlan()"
           x-cloak
           type="button"
           class="plan-focus-toggle"
@@ -2807,6 +2916,44 @@
       <div class="plan-decision-mark" x-text="planRevisionText()"></div>
     </section>
 
+    <details class="ark-panel mb-4 px-4 py-3" aria-label="历史计划" @toggle="if ($event.currentTarget.open && !historyLoaded) loadPlanHistory()">
+      <summary class="cursor-pointer text-sm font-semibold text-gray-900">
+        历史计划
+        <span class="ml-2 text-xs font-normal text-gray-400" x-text="planHistorySummary()"></span>
+      </summary>
+      <div class="mt-3 space-y-2">
+        <p x-show="historyLoading" class="workspace-meta">正在读取历史计划…</p>
+        <p x-show="historyError" class="text-sm text-red-700" x-text="historyError"></p>
+        <p x-show="!historyLoading && !historyError && !planHistory.length" class="workspace-meta">尚无已完成的历史计划。</p>
+        <template x-for="item in planHistory" :key="item.plan_id">
+          <button
+            type="button"
+            @click="loadHistoricalPlan(item.plan_id)"
+            class="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 text-left text-sm hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900"
+            :class="selectedHistoricalPlanId === item.plan_id ? 'border-teal-700 bg-teal-50' : ''">
+            <span>
+              <span class="font-medium text-gray-900" x-text="historyPlanTitle(item)"></span>
+              <span class="ml-2 text-xs text-gray-400" x-text="historyPlanCreatedAt(item)"></span>
+            </span>
+            <span class="text-xs font-medium" :class="item.status === 'stale' ? 'text-amber-700' : 'text-teal-700'" x-text="historyPlanStatus(item)"></span>
+          </button>
+        </template>
+        <p class="workspace-meta">历史计划保留生成当时的输入与输出；查看后仅供追溯，不应据此执行交易。</p>
+        <button
+          x-show="isSelectedHistoricalPlan()"
+          type="button"
+          @click="returnToCurrentPlan()"
+          class="text-sm font-medium text-teal-700 underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">
+          返回当前计划
+        </button>
+      </div>
+    </details>
+
+    <details x-show="isHistoricalPlanSnapshot()" x-cloak class="ark-panel plan-snapshot-notice mb-4 px-4 py-3" :open="snapshotExpanded" @toggle="snapshotExpanded = $event.currentTarget.open" aria-label="已保存计划快照">
+      <summary class="cursor-pointer text-sm font-semibold text-gray-900">查看已保存计划快照</summary>
+      <p class="workspace-meta mt-1">计划输入或执行窗口已不再适用；下方内容仅供追溯，不应据此执行交易。</p>
+    </details>
+
     <section x-show="planReady && showStateChain()" x-cloak class="plan-state-chain" aria-label="计划状态链">
       <template x-for="item in workStateChainItems()" :key="item.label">
         <article class="plan-state-chain-item" :class="item.className">
@@ -2817,7 +2964,7 @@
     </section>
 
     <!-- 计划生成是计划页的明确动作，靠近系统判断但不抢状态链。 -->
-    <div x-show="planReady && (!hasCurrentGeneratedPlan() || planState() === 'expired')" x-cloak class="ark-panel plan-hero-panel flex flex-col xl:flex-row xl:items-center gap-4 mb-5 p-5">
+    <div x-show="planReady && !isSelectedHistoricalPlan() && (!hasCurrentGeneratedPlan() || planState() === 'expired')" x-cloak class="ark-panel plan-hero-panel flex flex-col xl:flex-row xl:items-center gap-4 mb-5 p-5">
       <div>
         <div class="text-sm font-semibold text-gray-900">计划生成</div>
         <div class="workspace-meta mt-2">按账户数据、计划条件和策略榜单生成当日可执行安排。</div>
@@ -2841,7 +2988,7 @@
     </div>
 
     <!-- 执行计划必须紧跟今日决策 -->
-    <template x-if="isReviewableExecutionPlan()">
+    <template x-if="isReviewableExecutionPlan() || (isHistoricalPlanSnapshot() && snapshotExpanded)">
     <div class="plan-execution-dossier" aria-label="计划执行卷宗">
       <template x-if="fundingPlan()">
         <section class="ark-panel plan-funding-plan p-5" aria-label="资金调拨计划">
@@ -2944,13 +3091,23 @@
                     </div>
                   </header>
 	                  <section class="plan-trade-section">
+	                    <div class="plan-trade-summary" aria-label="交易动作汇总">
+	                      <template x-for="summary in accountTradeActionOverview(plan)" :key="summary.action">
+	                        <div class="plan-trade-summary-item" :class="tradeActionToneClass(summary.action)">
+	                          <div class="plan-trade-summary-label">
+	                            <span x-text="summary.label"></span>
+	                            <span class="plan-trade-summary-count" x-text="summary.count + ' 笔'"></span>
+	                          </div>
+	                          <div class="plan-trade-summary-amount" x-text="summary.amount_label + ' ' + fmtMoney(summary.amount)"></div>
+	                        </div>
+	                      </template>
+	                    </div>
 	                    <div class="plan-trade-table-scroll">
 	                      <table class="plan-trade-table">
                         <colgroup>
                           <col class="plan-trade-code-col">
                           <col class="plan-trade-name-col">
                           <col class="plan-trade-action-col">
-                          <col class="plan-trade-side-col">
                           <col class="plan-trade-quantity-col">
                           <col class="plan-trade-price-col">
                           <col class="plan-trade-amount-col">
@@ -2959,32 +3116,25 @@
                           <tr>
                             <th>证券代码</th>
                             <th>证券名称</th>
-                            <th>仓位</th>
-                            <th>买卖</th>
-                            <th>交易数量</th>
+                            <th>调仓动作</th>
+                            <th>委托数量</th>
                             <th>参考价</th>
-                            <th>估算金额</th>
+                            <th>预计金额</th>
                           </tr>
                         </thead>
                         <tbody>
-                          <template x-for="order in accountTradeOrders(plan)" :key="plan.account_id + '-' + order.action + '-' + order.code">
-                            <tr class="plan-trade-row">
+                          <template x-for="(order, orderIndex) in accountTradeOrders(plan)" :key="plan.account_id + '-' + order.action + '-' + order.code">
+	                            <tr class="plan-trade-row" :class="tradeActionGroupStartClass(accountTradeOrders(plan)[orderIndex - 1]?.action, order.action)">
                               <td class="plan-trade-code" data-label="证券代码" x-text="order.code"></td>
                               <td class="plan-trade-name" data-label="证券名称" x-text="order.name"></td>
                               <td
                                 class="plan-trade-action"
-                                data-label="仓位"
-                                x-text="positionActionText(order.action)">
-                              </td>
-                              <td
-                                class="plan-trade-side"
-                                :class="tradeSideClass(order.action)"
-                                data-label="买卖"
-                                x-text="tradeSideText(order.action)">
+                                data-label="调仓动作">
+                                <span class="plan-trade-action-badge" :class="tradeActionToneClass(order.action)" x-text="positionActionText(order.action)"></span>
                               </td>
                               <td
                                 class="plan-trade-position"
-                                data-label="交易数量"
+                                data-label="委托数量"
                                 :title="positionRouteText(order)">
                                 <div
                                   class="plan-trade-quantity"
@@ -2994,7 +3144,7 @@
                               <td class="plan-trade-price" data-label="参考价">
                                 <span x-text="order.reference_price == null ? '-' : Number(order.reference_price).toFixed(3)"></span>
                               </td>
-                              <td class="plan-trade-amount" data-label="估算金额" x-text="fmtMoney(order.estimated_amount)"></td>
+                              <td class="plan-trade-amount" data-label="预计金额" x-text="fmtMoney(order.estimated_amount)"></td>
                             </tr>
                           </template>
                         </tbody>
@@ -3052,7 +3202,7 @@
     </template>
 
     <!-- 本次计划条件 -->
-    <details aria-label="计划条件" class="ark-panel plan-conditions-panel px-5 py-3 mb-4" :open="!plan">
+    <details x-show="!isSelectedHistoricalPlan()" aria-label="计划条件" class="ark-panel plan-conditions-panel px-5 py-3 mb-4" :open="!plan">
       <summary class="cursor-pointer select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">
         <div class="inline-flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span class="text-sm font-semibold">本次计划条件</span>
@@ -3112,7 +3262,7 @@
       </div>
     </section>
 
-    <details class="ark-panel plan-advanced-panel px-4 py-3 mb-4 text-sm">
+    <details x-show="!isSelectedHistoricalPlan()" class="ark-panel plan-advanced-panel px-4 py-3 mb-4 text-sm">
       <summary class="cursor-pointer text-xs text-gray-500 select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">高级操作</summary>
       <div class="flex flex-wrap items-center gap-2 mt-3">
         <button x-show="hasCurrentGeneratedPlan()" @click="generateCompletePlan()" :disabled="!canGenerateCompletePlan()" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">重新生成完整计划</button>
@@ -3240,12 +3390,9 @@
           </tbody>
         </table>
       </div>
-      <!-- 生成订单（有排名但无订单时） -->
+      <!-- 排名本身不能触发单策略即时定单。 -->
       <div x-show="cbItems.length && !plan?.cb?.orders?.length" class="flex items-center gap-2 mb-3 text-sm p-3 bg-gray-50 rounded-lg">
-        <span class="text-gray-400 text-xs">可用现金（含调拨） <span class="text-gray-600 font-medium" x-text="fmtMoney(adjustedCash('cb'))"></span>（卖出回款自动计入）</span>
-        <button @click="sizeOrders('cb')" :disabled="sizingCb"
-          class="ml-auto px-3 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900"
-          x-text="sizingCb ? '计算中…' : '生成订单'"></button>
+        <span class="text-gray-500 text-xs">排名已就绪；请通过“生成完整计划”一并冻结调拨、定价和订单。</span>
       </div>
       <!-- 订单卡片（有订单时） -->
       <template x-if="plan?.cb?.orders?.length">
@@ -3329,12 +3476,9 @@
           </tbody>
         </table>
       </div>
-      <!-- 生成订单（有排名但无订单时） -->
+      <!-- 排名本身不能触发单策略即时定单。 -->
       <div x-show="stockItems.length && !plan?.stock?.orders?.length" class="flex items-center gap-2 mb-3 text-sm p-3 bg-gray-50 rounded-lg">
-        <span class="text-gray-400 text-xs">可用现金（含调拨） <span class="text-gray-600 font-medium" x-text="fmtMoney(adjustedCash('stock'))"></span>（卖出回款自动计入）</span>
-        <button @click="sizeOrders('stock')" :disabled="sizingStock"
-          class="ml-auto px-3 py-1.5 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900"
-          x-text="sizingStock ? '计算中…' : '生成订单'"></button>
+        <span class="text-gray-500 text-xs">排名已就绪；请通过“生成完整计划”一并冻结调拨、定价和订单。</span>
       </div>
       <!-- 订单卡片（有订单时） -->
       <template x-if="plan?.stock?.orders?.length">
@@ -4230,6 +4374,11 @@
           return String(left.code || '').localeCompare(String(right.code || ''))
         })
       },
+      holdingQuantityStep() {
+        if (this.selectedId === 'stock') return 100
+        if (this.selectedId === 'cb') return 10
+        return 1
+      },
       markEdited() {
         this.saveError = ''
         this.saveSuccess = ''
@@ -4237,13 +4386,15 @@
         this.clearConfirmed = false
       },
       addPosition() {
+        const positionKey = ++this._uid
         this.draft.positions.push({
-          code: '', quantity: '', name: '', price: null, lookupStatus: '', lookupError: '', _key: ++this._uid, isNew: true,
+          code: '', quantity: '', name: '', price: null, lookupStatus: '', lookupError: '', _key: positionKey, isNew: true,
         })
         this.markEdited()
         this.$nextTick(() => {
-          const inputs = document.querySelectorAll('.account-current-security input:not([readonly])')
-          inputs[inputs.length - 1]?.focus()
+          this.$refs.holdingsAddMore?.scrollIntoView({ block: 'nearest' })
+          const row = this.$refs.holdingsTable?.querySelector(`[data-position-key="${positionKey}"]`)
+          row?.querySelector('.account-current-security-code input')?.focus({ preventScroll: true })
         })
       },
       handleSecurityCodeInput(row) {
@@ -4289,6 +4440,13 @@
       },
       securityStatusClass(row) {
         return ['warning', 'error'].includes(row.lookupStatus) ? `is-${row.lookupStatus}` : ''
+      },
+      securityDisplayLabel(code) {
+        const normalizedCode = String(code || '').trim().padStart(6, '0')
+        const draftPosition = (this.draft.positions || []).find(item => item.code === normalizedCode)
+        const valuationItem = (this.selected?.valuation?.items || []).find(item => item.code === normalizedCode)
+        const name = String(draftPosition?.name || valuationItem?.name || '').trim()
+        return name ? `${name}（${normalizedCode}）` : normalizedCode
       },
       numberOrNull(value) {
         if (value === '' || value === null || value === undefined) return null
@@ -4540,7 +4698,9 @@
           codes.forEach(code => {
             const oldValue = oldPositions[code] || 0
             const newValue = newPositions[code] || 0
-            if (oldValue !== newValue) changes.push(`${code}：${oldValue} → ${newValue}`)
+            if (oldValue !== newValue) {
+              changes.push(`${this.securityDisplayLabel(code)}：${oldValue} → ${newValue}`)
+            }
           })
         }
         if (!changes.length) return ['没有数值变化；只更新本账户的确认时间。']
@@ -4608,7 +4768,8 @@
       tDate: localDate(), marketTemperature: null,
       // 资金分配 + 订单
       plan: null, transferPlan: null, accountReadModel: null, readiness: null, latestGeneration: null,
-      planError: '', readinessError: '', lifecycleError: '', loadingPlan: false, generatingPlan: false, planReady: false,
+      planHistory: [], historyLoaded: false, historyLoading: false, historyError: '', selectedHistoricalPlanId: '',
+      planError: '', readinessError: '', lifecycleError: '', loadingPlan: false, generatingPlan: false, planReady: false, snapshotExpanded: false,
       generationStage: '', componentErrors: { cb: '', stock: '' },
       expandedAccountId: new URL(window.location.href).searchParams.get('planAccount') || '',
       focusMode: new URL(window.location.href).searchParams.get('planFocus') === '1',
@@ -4699,8 +4860,62 @@
           this.transferPlan = savedPlan
           this.accountReadModel = savedPlan.account_read_model || this.accountReadModel
           this.marketTemperature = savedPlan.market_temperature || this.marketTemperature
+          this.selectedHistoricalPlanId = ''
+          this.snapshotExpanded = Boolean(this.readinessError)
         } catch (error) {
           this.lifecycleError = error.message || '计划状态读取失败'
+        }
+      },
+
+      async loadPlanHistory() {
+        this.historyLoading = true
+        this.historyError = ''
+        try {
+          const response = await fetch('/api/plan/generated/history')
+          if (!response.ok) throw new Error(`HTTP ${response.status}`)
+          const body = await response.json()
+          this.planHistory = Array.isArray(body?.history) ? body.history : []
+          this.historyLoaded = true
+        } catch (error) {
+          this.historyError = error.message || '无法读取历史计划'
+        } finally {
+          this.historyLoading = false
+        }
+      },
+
+      async loadHistoricalPlan(planId) {
+        if (planId === this.latestGeneration?.plan_id) {
+          await this.loadSavedGeneratedPlan()
+          return
+        }
+        this.historyError = ''
+        try {
+          const response = await fetch(`/api/plan/generated/${planId}`)
+          if (!response.ok) throw new Error(`HTTP ${response.status}`)
+          const savedRecord = await response.json()
+          const savedPlan = savedRecord?.plan || savedRecord
+          const generation = savedPlan?.generation || {}
+          if (generation.plan_id !== planId) {
+            throw new Error('历史计划与保存快照不一致')
+          }
+          this.plan = savedPlan
+          this.transferPlan = savedPlan
+          this.accountReadModel = savedPlan.account_read_model || this.accountReadModel
+          this.marketTemperature = savedPlan.market_temperature || this.marketTemperature
+          this.selectedHistoricalPlanId = planId
+          this.snapshotExpanded = true
+        } catch (error) {
+          this.historyError = error.message || '无法读取历史计划'
+        }
+      },
+
+      async returnToCurrentPlan() {
+        this.selectedHistoricalPlanId = ''
+        this.snapshotExpanded = Boolean(this.readinessError)
+        if (this.latestGeneration?.status === 'complete') {
+          await this.loadSavedGeneratedPlan()
+        } else {
+          await this.refreshFullPlan(false)
         }
       },
 
@@ -4815,6 +5030,11 @@
         }
         return body.detail?.message || fallback
       },
+      failureStageStrategy(stage) {
+        if (stage === 'cb_orders') return 'cb'
+        if (stage === 'stock_orders') return 'stock'
+        return ''
+      },
 
       async generateCompletePlan() {
         if (!this.canGenerateCompletePlan()) return
@@ -4831,16 +5051,18 @@
           await this.saveFundingContext()
           this.generationStage = '生成完整计划'
           const response = await fetch('/api/plan/generate', { method: 'POST' })
-          if (response.status === 404) {
-            await this.generateCompletePlanLegacy()
-            await this.loadLatestGeneration()
-            return
-          }
           if (!response.ok) {
             const body = await response.json().catch(() => ({ detail: '完整计划生成失败' }))
             const detail = body.detail || {}
             const lines = (detail.errors || []).map(e => `${e.message}: 更新时间 ${e.date || '无'}，输入窗口 ${e.expected}`)
-            throw new Error([detail.message || String(detail || '完整计划生成失败'), ...lines].join('\n'))
+            const missing = Object.entries(detail.missing || {}).flatMap(([strategy, codes]) =>
+              codes.length ? [`${this.strategyLabel(strategy)}缺少计划日收盘价：${codes.join('、')}`] : []
+            )
+            const failedStrategy = this.failureStageStrategy(detail.stage)
+            if (failedStrategy) {
+              this.componentErrors[failedStrategy] = detail.message || '完整计划生成失败'
+            }
+            throw new Error([detail.message || String(detail || '完整计划生成失败'), ...lines, ...missing].join('\n'))
           }
           this.plan = await response.json()
           this.accountReadModel = this.plan?.account_read_model || this.accountReadModel
@@ -4864,23 +5086,6 @@
         }
       },
 
-      async generateCompletePlanLegacy() {
-        this.generationStage = '检查计划'
-        await this.loadPlan(false)
-        if (!this.plan) throw new Error(this.planError || '完整计划生成失败')
-        for (const strategy of ['cb', 'stock']) {
-          this.generationStage = '准备' + this.strategyLabel(strategy) + '榜单'
-          await this.ensureRanking(strategy)
-        }
-        for (const strategy of ['cb', 'stock']) {
-          if (this.plan?.[strategy]?.orders?.length) continue
-          this.generationStage = '生成' + this.strategyLabel(strategy) + '订单'
-          await this.generateOrders(strategy)
-        }
-        this.transferPlan = this.plan
-        await this.refreshRankingState()
-      },
-
       async loadPlan(refreshTemperature = false, suppressDateMismatch = false) {
         this.planError = ''
         const url = refreshTemperature ? '/api/plan?refresh_temperature=true' : '/api/plan'
@@ -4902,6 +5107,7 @@
           return
         }
         this.plan = await res.json()
+        this.selectedHistoricalPlanId = ''
         this.accountReadModel = this.plan?.account_read_model || this.accountReadModel
         this.marketTemperature = this.plan?.market_temperature || null
         if (this.plan?.plan_date) {
@@ -5026,11 +5232,32 @@
         if (!generation.plan_date || generation.plan_date !== this.latestGeneration.plan_date) return false
         return !this.readiness?.plan_date || generation.plan_date === this.readiness.plan_date
       },
+      hasSavedGeneratedPlan() {
+        const generation = this.plan?.generation
+        return this.latestGeneration?.status === 'complete'
+          && generation?.status === 'complete'
+          && generation.plan_id === this.latestGeneration.plan_id
+      },
+      isSelectedHistoricalPlan() {
+        return Boolean(
+          this.selectedHistoricalPlanId
+          && this.selectedHistoricalPlanId !== this.latestGeneration?.plan_id
+          && this.plan?.generation?.plan_id === this.selectedHistoricalPlanId
+        )
+      },
+      isHistoricalPlanSnapshot() {
+        return this.isSelectedHistoricalPlan()
+          || (this.hasSavedGeneratedPlan() && !this.hasCurrentGeneratedPlan())
+      },
+      isReadablePlanSnapshot() {
+        return this.hasCurrentGeneratedPlan() || this.snapshotExpanded
+      },
       planState() {
         if (this.generatingPlan || this.latestGeneration?.status === 'running') return 'running'
         if (this.readinessError) return 'problem'
         if (this.readiness?.status === 'needs_facts') return 'needs-facts'
         if (this.lifecycleError) return 'problem'
+        if (this.isSelectedHistoricalPlan()) return 'historical'
         if (['stale', 'failed'].includes(this.latestGeneration?.status)) return 'problem'
         if (this.planReady && this.planError && !this.plan) return 'problem'
         if (!this.hasCurrentGeneratedPlan()) return 'pending'
@@ -5056,11 +5283,19 @@
             copy: `${names.join('、') || '账户'}不在计划输入窗口内，补齐后再生成完整计划。`,
           }
         }
+        if (state === 'historical') {
+          return {
+            title: '历史计划快照',
+            copy: '这是生成当时固化的输入与输出，仅供追溯；不可据此执行交易。',
+          }
+        }
         if (state === 'problem' || state === 'pending') {
           if (this.readinessError) {
             return {
               title: '无法确认账户数据',
-              copy: `${this.readinessError}；为避免误导，暂不展示任何操作。`,
+              copy: this.hasSavedGeneratedPlan()
+                ? `${this.readinessError}；下方保留最近一次已保存计划快照，仅供追溯。`
+                : `${this.readinessError}；为避免误导，暂不展示任何操作。`,
             }
           }
           if (this.latestGeneration?.status === 'stale') {
@@ -5129,15 +5364,17 @@
           : '等待事实校验'
       },
       planTimelineText() {
-        const dataDate = this.tDate || this.readiness?.plan_date || ''
+        const dataDate = this.plan?.plan_date || this.tDate || this.readiness?.plan_date || ''
         const tradeDate = this.executionDate()
+          || (this.isSelectedHistoricalPlan() ? this.plan?.stock?.trade_date || this.plan?.cb?.trade_date : '')
         if (dataDate && tradeDate) return `${dataDate} 收盘数据 → ${tradeDate} 开盘执行`
         if (dataDate) return `${dataDate} 收盘数据 → 等待生成执行计划`
         return '等待计划基准日'
       },
       planRevisionText() {
-        const createdAt = this.latestGeneration?.created_at
-        const planId = this.latestGeneration?.plan_id || this.plan?.generation?.plan_id || ''
+        const historyItem = this.planHistory.find(item => item.plan_id === this.selectedHistoricalPlanId)
+        const createdAt = historyItem?.created_at || this.latestGeneration?.created_at
+        const planId = historyItem?.plan_id || this.latestGeneration?.plan_id || this.plan?.generation?.plan_id || ''
         const generated = createdAt
           ? String(createdAt).replace('T', ' ').slice(0, 16)
           : ''
@@ -5145,6 +5382,19 @@
         if (generated && revision) return `生成 ${generated} · 版本 ${revision}`
         if (generated) return `生成 ${generated}`
         return this.planDecisionMark()
+      },
+      planHistorySummary() {
+        if (!this.historyLoaded) return '展开查看已保存快照'
+        return this.planHistory.length ? `${this.planHistory.length} 份已保存快照` : '暂无已完成计划'
+      },
+      historyPlanTitle(item) {
+        return `${item.plan_date || '未知日期'} 计划`
+      },
+      historyPlanCreatedAt(item) {
+        return item.created_at ? `生成 ${String(item.created_at).replace('T', ' ').slice(0, 16)}` : ''
+      },
+      historyPlanStatus(item) {
+        return item.status === 'stale' ? '已失效 · 可追溯' : '已完成 · 可追溯'
       },
       workStateChainItems() {
         const accountReady = this.readiness?.status === 'ready'
@@ -5199,10 +5449,10 @@
         ]
       },
       showStateChain() {
-        return !['action', 'future-action', 'no-action'].includes(this.planState())
+        return !['action', 'future-action', 'no-action', 'historical'].includes(this.planState())
       },
       executionReadModel() {
-        if (!this.hasCurrentGeneratedPlan()) return null
+        if (!this.isReadablePlanSnapshot()) return null
         return this.plan?.execution_read_model || null
       },
       fundingPlan() {
@@ -5371,6 +5621,7 @@
       },
       accountTradeOrders(plan) {
         const actionRank = { SELL: 0, TRIM: 1, BUY: 2, ADD: 3 }
+        const sideRank = { SELL: 0, TRIM: 0, BUY: 1, ADD: 1 }
         const orders = []
         const phases = plan?.phases || []
         phases.forEach(phase => {
@@ -5381,13 +5632,19 @@
           })
         })
         return orders.sort((left, right) => {
+          const leftSide = sideRank[left?.action]
+          const rightSide = sideRank[right?.action]
+          if (leftSide !== rightSide) return leftSide - rightSide
+          const amountDelta = Math.abs(Number(right?.estimated_amount || 0)) - Math.abs(Number(left?.estimated_amount || 0))
+          if (amountDelta !== 0) return amountDelta
           const leftRank = Number.isFinite(Number(left?.execution_priority))
             ? Number(left.execution_priority)
             : actionRank[left?.action]
           const rightRank = Number.isFinite(Number(right?.execution_priority))
             ? Number(right.execution_priority)
             : actionRank[right?.action]
-          return leftRank - rightRank
+          if (leftRank !== rightRank) return leftRank - rightRank
+          return String(left?.code || '').localeCompare(String(right?.code || ''))
         })
       },
       accountTradeGroups(plan) {
@@ -5414,6 +5671,23 @@
           }))
           .filter(group => group.orders.length)
       },
+      accountTradeActionOverview(plan) {
+        const actions = [
+          { action: 'SELL', label: '清仓', amount_label: '预计回笼' },
+          { action: 'TRIM', label: '减仓', amount_label: '预计回笼' },
+          { action: 'BUY', label: '建仓', amount_label: '预计占用' },
+          { action: 'ADD', label: '加仓', amount_label: '预计占用' },
+        ]
+        const orders = this.accountTradeOrders(plan)
+        return actions.map(item => {
+          const matched = orders.filter(order => order?.action === item.action)
+          return {
+            ...item,
+            count: matched.length,
+            amount: matched.reduce((sum, order) => sum + Math.abs(Number(order?.estimated_amount || 0)), 0),
+          }
+        }).filter(item => item.count)
+      },
       positionRouteText(order) {
         const action = this.positionActionText(order?.action)
         const route = order?.current_quantity == null || order?.target_quantity == null
@@ -5421,18 +5695,20 @@
           : `持仓变化：${this.formatQuantity(order.current_quantity)} → ${this.formatQuantity(order.target_quantity)}`
         return [action ? `仓位语义：${action}` : '', route].filter(Boolean).join('；')
       },
-      tradeSideText(action) {
-        if (['SELL', 'TRIM'].includes(action)) return '卖出'
-        if (['BUY', 'ADD'].includes(action)) return '买入'
-        return action || ''
+      tradeActionToneClass(action) {
+        return {
+          SELL: 'is-action-sell-all',
+          TRIM: 'is-action-trim',
+          BUY: 'is-action-buy',
+          ADD: 'is-action-add',
+        }[action] || ''
       },
-      tradeSideClass(action) {
-        if (['SELL', 'TRIM'].includes(action)) return 'is-sell'
-        if (['BUY', 'ADD'].includes(action)) return 'is-buy'
-        return ''
+      tradeActionGroupStartClass(previousAction, action) {
+        if (!action || previousAction === action) return ''
+        return `is-action-group-start ${this.tradeActionToneClass(action)}`
       },
       showReadinessPanel() {
-        return !['action', 'future-action', 'no-action'].includes(this.planState())
+        return !['action', 'future-action', 'no-action', 'historical'].includes(this.planState())
       },
       positionActionText(action) {
         return {
@@ -5468,6 +5744,10 @@
       },
       strategyStatus(strategy) {
         if (this.componentErrors[strategy]) return { state: 'failed', text: '生成失败' }
+        const failedStrategy = this.latestGeneration?.status === 'failed'
+          ? this.failureStageStrategy(this.latestGeneration?.error?.stage)
+          : ''
+        if (failedStrategy === strategy) return { state: 'failed', text: '生成失败' }
         const section = this.plan?.[strategy]
         if (section?.orders?.length) return { state: 'ready', text: '订单已生成' }
         const items = strategy === 'cb' ? this.cbItems : this.stockItems
@@ -5760,27 +6040,6 @@
           order_delta: Math.round(orderDelta * 100) / 100,
           cash_left: Math.round(cashLeft * 100) / 100,
         }
-      },
-      async generateOrders(strategy) {
-        if (!this.plan?.account) throw new Error('请先在账户页补齐账户数据')
-        const response = await fetch(`/api/plan/${strategy}/size-orders`, { method: 'POST' })
-        if (!response.ok) {
-          const body = await response.json().catch(() => ({ detail: '订单生成失败' }))
-          const detail = body.detail || {}
-          throw new Error(typeof detail === 'string' ? detail : detail.message || `${this.strategyLabel(strategy)}订单生成失败`)
-        }
-        await this.loadPlan(false)
-        if (!this.plan) throw new Error(this.planError || `${this.strategyLabel(strategy)}订单生成后计划不可用`)
-      },
-      async sizeOrders(strategy) {
-        const key = strategy === 'cb' ? 'sizingCb' : 'sizingStock'
-        this.componentErrors[strategy] = ''
-        this[key] = true
-        try {
-          await this.generateOrders(strategy)
-        } catch (error) {
-          this.componentErrors[strategy] = error.message || `${this.strategyLabel(strategy)}订单生成失败`
-        } finally { this[key] = false }
       },
       cbGroups() {
         const orders = this.plan?.cb?.orders || []

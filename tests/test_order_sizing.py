@@ -18,15 +18,18 @@ class TestOrderSizing(unittest.TestCase):
         db.insert_account_context("2026-06-29", 45.0)
         db.insert_account_value_snapshot("cb", "2026-06-29", 227183, 110)
         self.cb_run_id = db.insert_strategy_run("cb", date(2026, 6, 29))
+        self.cb_codes = ["113062", *[f"{113100 + index:06d}" for index in range(19)]]
+        self.cb_prices = {code: 126.80 for code in self.cb_codes}
         db.insert_cb_rankings(self.cb_run_id, pd.DataFrame([
             {
-                "bond_code": "113062",
-                "bond_name": "常银转债",
+                "bond_code": code,
+                "bond_name": f"转债{rank}",
                 "cb_price": 126.80,
                 "premium_rate": 10.0,
                 "double_low": 136.8,
-                "score": 0.9,
+                "score": 1 - rank / 100,
             }
+            for rank, code in enumerate(self.cb_codes, start=1)
         ]))
         db.insert_positions("cb", "2026-06-29", [{
             "code": "113062",
@@ -41,14 +44,53 @@ class TestOrderSizing(unittest.TestCase):
     def test_sizes_cb_orders_without_http_route(self):
         with patch(
             "datasource.market.fetch_cb_prices_tencent",
-            return_value={"113062": 126.80},
+            return_value=self.cb_prices,
         ):
-            result = order_sizing.size_cb_orders(10000, plan_date="2026-06-29")
+            result = order_sizing.size_cb_orders(30_000, plan_date="2026-06-29")
 
         self.assertGreater(len(result["orders"]), 0)
         self.assertEqual(result["summary"]["starting_cash"], 110)
         persisted = db.get_orders("cb", "2026-06-29")
         self.assertGreater(len(persisted), 0)
+
+    def test_sizes_cb_orders_uses_the_supplied_frozen_prices(self):
+        with patch(
+            "datasource.market.fetch_cb_prices_tencent",
+            side_effect=AssertionError("complete plan must not refetch prices while sizing"),
+        ):
+            result = order_sizing.size_cb_orders(
+                30_000,
+                plan_date="2026-06-29",
+                prices=self.cb_prices,
+            )
+
+        self.assertGreater(len(result["orders"]), 0)
+
+    def test_stock_sizing_blocks_when_the_qualified_universe_has_fewer_than_twenty(self):
+        run_id = db.create_complete_strategy_run(
+            "stock",
+            date(2026, 6, 29),
+            date(2026, 6, 30),
+            pd.DataFrame([
+                {
+                    "rank": rank,
+                    "stock_code": f"600{rank:03d}",
+                    "stock_name": f"股票{rank}",
+                    "total_mv_yuan": 1_000_000_000,
+                    "pe_ttm": 10.0,
+                    "roe_pct": 12.0,
+                }
+                for rank in range(1, 20)
+            ]),
+        )
+        self.assertIsNotNone(run_id)
+
+        with self.assertRaises(PlanServiceError) as caught:
+            order_sizing.size_stock_orders(10000, plan_date="2026-06-29")
+
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertEqual(caught.exception.detail["code"], "INSUFFICIENT_STOCK_CANDIDATES")
+        self.assertEqual(caught.exception.detail["qualified_count"], 19)
 
     def test_invalid_strategy_uses_plan_service_error(self):
         with self.assertRaises(PlanServiceError) as caught:
