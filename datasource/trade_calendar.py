@@ -74,12 +74,18 @@ def load_exchange_trading_days(
     try:
         fetched = sorted(set(provider()))
     except Exception as exc:
-        if cached:
+        if cached and cached[-1] >= target:
             return cached
+        if cached:
+            raise RuntimeError(
+                f"交易日历缓存不覆盖 {target.isoformat()}，且刷新失败：{exc}"
+            ) from exc
         raise RuntimeError(f"无法获取交易日历：{exc}") from exc
     if not fetched:
-        if cached:
+        if cached and cached[-1] >= target:
             return cached
+        if cached:
+            raise RuntimeError(f"交易日历缓存不覆盖 {target.isoformat()}，且刷新结果为空")
         raise RuntimeError("交易日历为空，无法确定有效交易日")
     _write_calendar(path, fetched)
     return fetched

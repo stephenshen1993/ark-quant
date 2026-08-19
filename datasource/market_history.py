@@ -48,7 +48,7 @@ def prepare_market_history(
     effective_date: date,
     symbols: Sequence[str],
     trading_days: Iterable[date],
-    batch_fetcher: Callable[[Sequence[date]], pd.DataFrame],
+    batch_fetcher: Callable[[Sequence[date]], pd.DataFrame] | None,
     *,
     fallback_fetcher: Callable[[str, date, date], pd.DataFrame] | None = None,
     store_path: Path,
@@ -89,7 +89,7 @@ def prepare_market_history(
         fallback_symbols = 0
         external_calls = 0
 
-        if missing_dates:
+        if missing_dates and batch_fetcher is not None:
             batch_requests = 1
             external_calls += 1
             try:

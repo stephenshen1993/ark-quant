@@ -32,6 +32,8 @@ class DataRequirements:
     config_fingerprint: str = ""
     lookback_trading_days: int = 1
     market_fields: tuple[str, ...] = ()
+    expected_symbols_dataset: str | None = None
+    coverage_datasets: tuple[str, ...] = ()
 
     @property
     def fingerprint(self) -> str:
@@ -47,6 +49,8 @@ class DataRequirements:
             "config_fingerprint": self.config_fingerprint,
             "lookback_trading_days": self.lookback_trading_days,
             "market_fields": list(self.market_fields),
+            "expected_symbols_dataset": self.expected_symbols_dataset,
+            "coverage_datasets": list(self.coverage_datasets),
         }
         return stable_fingerprint(payload)
 
@@ -249,8 +253,6 @@ def _load_complete_bundle(
     if manifest.get("actual_data_dates") != [expected_date]:
         return None, "data_date_mismatch"
     normalized_expected = sorted({str(symbol) for symbol in expected_symbols})
-    if normalized_expected and manifest.get("expected_symbols") != normalized_expected:
-        return None, "symbol_coverage_mismatch"
 
     frames: dict[str, pd.DataFrame] = {}
     files = manifest.get("files") or {}
@@ -275,8 +277,23 @@ def _load_complete_bundle(
     actual_symbols = _symbols(frames, requirements.symbol_field)
     if manifest.get("actual_symbols") != actual_symbols:
         return None, "symbol_coverage_mismatch"
+    dataset_symbols = {
+        name: _frame_symbols(frame, requirements.symbol_field)
+        for name, frame in sorted(frames.items())
+    }
+    if requirements.expected_symbols_dataset and not normalized_expected:
+        normalized_expected = dataset_symbols.get(requirements.expected_symbols_dataset, [])
+    if not normalized_expected:
+        normalized_expected = actual_symbols
+    if manifest.get("expected_symbols") != normalized_expected:
+        return None, "symbol_coverage_mismatch"
+    if manifest.get("dataset_actual_symbols", {}) != dataset_symbols:
+        return None, "symbol_coverage_mismatch"
     if normalized_expected and not set(normalized_expected).issubset(actual_symbols):
         return None, "symbol_coverage_mismatch"
+    for dataset in requirements.coverage_datasets:
+        if not set(normalized_expected).issubset(dataset_symbols.get(dataset, [])):
+            return None, "symbol_coverage_mismatch"
     return (frames, manifest), None
 
 
@@ -321,10 +338,22 @@ def _publish_complete_bundle(
         }
 
     actual_symbols = _symbols(frames, requirements.symbol_field)
-    normalized_expected = sorted({str(symbol) for symbol in expected_symbols}) or actual_symbols
+    dataset_symbols = {
+        name: _frame_symbols(frame, requirements.symbol_field)
+        for name, frame in sorted(frames.items())
+    }
+    normalized_expected = sorted({str(symbol) for symbol in expected_symbols})
+    if requirements.expected_symbols_dataset and not normalized_expected:
+        normalized_expected = dataset_symbols.get(requirements.expected_symbols_dataset, [])
+    if not normalized_expected:
+        normalized_expected = actual_symbols
     if not set(normalized_expected).issubset(actual_symbols):
         missing = sorted(set(normalized_expected) - set(actual_symbols))
         raise RuntimeError(f"策略输入缺少证券覆盖: {', '.join(missing)}")
+    for dataset in requirements.coverage_datasets:
+        missing = sorted(set(normalized_expected) - set(dataset_symbols.get(dataset, [])))
+        if missing:
+            raise RuntimeError(f"策略输入 {dataset} 缺少证券覆盖: {', '.join(missing)}")
     input_fingerprint = stable_fingerprint(
         {name: meta["sha256"] for name, meta in sorted(files.items())}
     )
@@ -336,6 +365,7 @@ def _publish_complete_bundle(
         "actual_data_dates": [effective_date.isoformat()],
         "expected_symbols": normalized_expected,
         "actual_symbols": actual_symbols,
+        "dataset_actual_symbols": dataset_symbols,
         "required_fields": {
             name: list(fields) for name, fields in sorted(requirements.dataset_fields.items())
         },
@@ -367,6 +397,12 @@ def _symbols(frames: Mapping[str, pd.DataFrame], symbol_field: str) -> list[str]
         if symbol_field in frame.columns:
             symbols.update(str(value) for value in frame[symbol_field].dropna())
     return sorted(symbols)
+
+
+def _frame_symbols(frame: pd.DataFrame, symbol_field: str) -> list[str]:
+    if symbol_field not in frame.columns:
+        return []
+    return sorted({str(value) for value in frame[symbol_field].dropna()})
 
 
 def stable_fingerprint(value: object) -> str:

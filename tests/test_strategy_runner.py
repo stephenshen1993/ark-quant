@@ -39,6 +39,11 @@ class TestStrategyRunner(unittest.TestCase):
         self.assertEqual(result.trade_date, "2026-06-30")
         self.assertEqual(result.run_id, run_id)
         self.assertEqual(result.item_count, 1)
+        self.assertEqual(result.preparation["ranking"]["mode"], "cache_hit")
+        self.assertEqual(result.preparation["ranking"]["mode_label"], "完整缓存命中")
+        self.assertEqual(result.preparation["ranking"]["external_calls"], 0)
+        self.assertEqual(result.preparation["ranking"]["reused_records"], 1)
+        self.assertIn("total", result.preparation["ranking"]["stage_timings_ms"])
 
     def test_ensure_rankings_generates_missing_rankings(self):
         from app import strategy_runner

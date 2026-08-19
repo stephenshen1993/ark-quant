@@ -3,8 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 import threading
+from time import perf_counter
 
 from datasource import db
+from datasource.market_data_bundle import PreparationMetadata
 from datasource.trade_calendar import resolve_effective_trading_date
 
 Strategy = str
@@ -79,11 +81,28 @@ def ensure_rankings(
     task: StrategyRunTask | None = None,
 ) -> StrategyRunResult:
     """Ensure rankings for one strategy and plan date exist."""
+    started = perf_counter()
     _validate_strategy(strategy)
     existing = db.get_strategy_run_meta(strategy, plan_date)
     if existing:
         items = db.get_rankings_by_run_id(strategy, existing["id"])
-        return _result_from_run(strategy, existing, items, generated=False)
+        elapsed = int((perf_counter() - started) * 1000)
+        preparation = {
+            "ranking": PreparationMetadata(
+                effective_date=plan_date,
+                mode="cache_hit",
+                last_coverage_watermark=plan_date,
+                reused_records=len(items),
+                stage_timings_ms={"total": elapsed},
+            ).to_dict()
+        }
+        return _result_from_run(
+            strategy,
+            existing,
+            items,
+            generated=False,
+            preparation=preparation,
+        )
 
     task = task or freeze_strategy_run_task(effective_date=plan_date)
     if task.effective_date_iso != plan_date:

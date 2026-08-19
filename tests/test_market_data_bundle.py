@@ -122,6 +122,35 @@ class MarketDataBundlePersistenceTests(unittest.TestCase):
 
         self.assertEqual(list(self.cache_root.rglob("manifest.json")), [])
 
+    def test_declared_dataset_coverage_cannot_hide_symbols_lost_by_inner_merge(self) -> None:
+        requirements = DataRequirements(
+            strategy="stock",
+            dataset_fields={
+                "universe": ("stock_code",),
+                "merged": ("stock_code", "price"),
+            },
+            symbol_field="stock_code",
+            source="tencent",
+            source_version="v1",
+            algorithm_version="raw-v1",
+            expected_symbols_dataset="universe",
+            coverage_datasets=("merged",),
+        )
+        frames = {
+            "universe": pd.DataFrame({"stock_code": ["600001", "600002"]}),
+            "merged": pd.DataFrame({"stock_code": ["600001"], "price": [8.0]}),
+        }
+
+        with self.assertRaisesRegex(RuntimeError, "merged.*600002"):
+            prepare_market_data_bundle(
+                requirements,
+                date(2026, 8, 18),
+                lambda: frames,
+                cache_root=self.cache_root,
+            )
+
+        self.assertEqual(list(self.cache_root.rglob("manifest.json")), [])
+
     def test_corrupt_frame_is_rejected_and_rebuilt(self) -> None:
         first = prepare_market_data_bundle(
             self.requirements,

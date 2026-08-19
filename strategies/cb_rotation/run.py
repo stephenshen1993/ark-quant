@@ -23,14 +23,19 @@ from datasource.market import (
     normalize_stock_code,
     stock_symbol_with_exchange,
 )
-from datasource.derived_store import prepare_strategy_ranking
+from datasource.derived_store import (
+    DEFAULT_DERIVED_STORE,
+    prepare_derived_factors,
+    prepare_strategy_ranking,
+)
 from datasource.market_data_bundle import (
     DataRequirements,
     preparation_mode_label,
     prepare_market_data_bundle,
     stable_fingerprint,
 )
-from datasource.trade_calendar import is_market_hours
+from datasource.market_history import prepare_market_history, reconcile_corporate_actions
+from datasource.trade_calendar import is_market_hours, load_exchange_trading_days
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -40,6 +45,7 @@ OUTPUT_DIR = ROOT / "outputs"
 LOG_DIR = ROOT / "logs"
 CACHE_DIR = ROOT / "data" / "cache"
 RAW_DIR = ROOT / "data" / "raw"
+CB_MARKET_HISTORY_STORE = CACHE_DIR / "cb_market_history.sqlite3"
 
 
 @dataclass(frozen=True)
@@ -51,6 +57,13 @@ class RunArtifacts:
     run_id: int | None = None
     data_date: date | None = None
     preparation: dict | None = None
+
+
+@dataclass(frozen=True)
+class CbHistoryInputs:
+    turnover: pd.DataFrame
+    stock_factors: pd.DataFrame
+    preparation: dict
 
 
 def setup_logging() -> Path:
@@ -1253,6 +1266,270 @@ def market_data_requirements(config: dict, max_universe: int | None = None) -> D
         }),
         lookback_trading_days=21,
         market_fields=("raw_close", "volume", "amount", "adjustment_factor"),
+        expected_symbols_dataset="cb_universe",
+        coverage_datasets=("enriched_universe",),
+    )
+
+
+def _cb_history_requirements(*, symbol_field: str, lookback: int, source: str) -> DataRequirements:
+    return DataRequirements(
+        strategy="cb",
+        dataset_fields={},
+        symbol_field=symbol_field,
+        source=source,
+        source_version="cb-history-v1",
+        algorithm_version="raw-history-v1",
+        lookback_trading_days=lookback,
+        market_fields=("raw_close", "volume", "amount", "adjustment_factor"),
+    )
+
+
+def _normalize_daily_history(
+    frame: pd.DataFrame,
+    *,
+    symbol_field: str,
+    symbol: str,
+) -> pd.DataFrame:
+    if frame is None or frame.empty:
+        return pd.DataFrame(
+            columns=[symbol_field, "trade_date", "raw_close", "volume", "amount"]
+        )
+    normalized = frame.reset_index().copy()
+    date_col = first_existing_col(normalized, ["日期", "date", "trade_date", "index"])
+    close_col = first_existing_col(normalized, ["收盘", "close"])
+    volume_col = first_existing_col(normalized, ["成交量", "volume"])
+    amount_col = first_existing_col(normalized, ["成交额", "amount"])
+    if date_col is None or close_col is None or volume_col is None:
+        raise RuntimeError(f"{symbol} 历史行情缺少日期、收盘价或成交量")
+    result = pd.DataFrame({
+        symbol_field: symbol,
+        "trade_date": pd.to_datetime(normalized[date_col], errors="coerce").dt.date,
+        "raw_close": pd.to_numeric(normalized[close_col], errors="coerce"),
+        "volume": pd.to_numeric(normalized[volume_col], errors="coerce"),
+    })
+    if amount_col is not None:
+        result["amount"] = pd.to_numeric(normalized[amount_col], errors="coerce")
+    else:
+        result["amount"] = result["raw_close"] * result["volume"]
+    return result.dropna(subset=["trade_date", "raw_close", "volume", "amount"])
+
+
+def _fetch_stock_history_with_adjustment(
+    ak,
+    stock_code: str,
+    start: date,
+    end: date,
+) -> pd.DataFrame:
+    symbol = stock_symbol_with_exchange(stock_code)
+
+    def _fetch(adjust: str) -> pd.DataFrame:
+        try:
+            return ak.stock_zh_a_daily(
+                symbol=symbol,
+                start_date=start.strftime("%Y%m%d"),
+                end_date=end.strftime("%Y%m%d"),
+                adjust=adjust,
+            )
+        except Exception:
+            return ak.stock_zh_a_hist_tx(
+                symbol=symbol,
+                start_date=start.strftime("%Y%m%d"),
+                end_date=end.strftime("%Y%m%d"),
+                adjust=adjust,
+            )
+
+    raw = _normalize_daily_history(
+        _fetch(""),
+        symbol_field="stock_code",
+        symbol=stock_code,
+    )
+    adjusted = _normalize_daily_history(
+        _fetch("qfq"),
+        symbol_field="stock_code",
+        symbol=stock_code,
+    )[["stock_code", "trade_date", "raw_close"]].rename(
+        columns={"raw_close": "adjusted_close"}
+    )
+    result = raw.merge(adjusted, on=["stock_code", "trade_date"], how="left")
+    result["adjustment_factor"] = result["adjusted_close"] / result["raw_close"]
+    return result.drop(columns=["adjusted_close"])
+
+
+def _compute_history_factor(
+    inputs: pd.DataFrame,
+    *,
+    factor_name: str,
+) -> pd.DataFrame:
+    rows: list[dict] = []
+    for stock_code, group in inputs.groupby("stock_code"):
+        ordered = group.sort_values("trade_date")
+        close = (
+            pd.to_numeric(ordered["raw_close"], errors="coerce")
+            * pd.to_numeric(ordered["adjustment_factor"], errors="coerce")
+        ).dropna()
+        if len(close) < 21:
+            continue
+        if factor_name == "stock_momentum_20d":
+            value = close.iloc[-1] / close.iloc[-21] - 1
+        else:
+            value = close.pct_change().dropna().tail(20).std() * np.sqrt(252)
+        rows.append({"stock_code": str(stock_code), factor_name: value})
+    return pd.DataFrame(rows, columns=["stock_code", factor_name])
+
+
+def prepare_cb_history_inputs(
+    ak,
+    universe: pd.DataFrame,
+    config: dict,
+    effective_date: date,
+    *,
+    history_store_path: Path = CB_MARKET_HISTORY_STORE,
+    derived_store_path: Path = DEFAULT_DERIVED_STORE,
+) -> CbHistoryInputs:
+    """Prepare reusable CB turnover and underlying-stock factors from raw history."""
+    trading_days = load_exchange_trading_days(as_of=effective_date)
+    bond_codes = sorted({str(value).zfill(6) for value in universe["bond_code"].dropna()})
+    stock_codes = sorted({normalize_stock_code(value) for value in universe["stock_code"].dropna()})
+    stock_codes = [value for value in stock_codes if value]
+
+    bond_requirements = _cb_history_requirements(
+        symbol_field="bond_code",
+        lookback=1,
+        source="akshare-cb-daily",
+    )
+
+    def _fetch_bond_batch(missing_dates: Iterable[date]) -> pd.DataFrame:
+        target = max(missing_dates)
+        rows = fetch_cb_daily_turnover(ak, bond_codes, config, target)
+        if rows.empty:
+            return pd.DataFrame()
+        result = rows.rename(columns={
+            "cb_close_daily": "raw_close",
+            "turnover_yuan_daily": "amount",
+            "turnover_trade_date": "trade_date",
+        }).copy()
+        result["volume"] = result["amount"] / result["raw_close"]
+        result["adjustment_factor"] = 1.0
+        return result
+
+    def _fetch_bond_one(symbol: str, start: date, end: date) -> pd.DataFrame:
+        history = ak.bond_zh_hs_cov_daily(symbol=bond_symbol_with_exchange(symbol))
+        result = _normalize_daily_history(
+            history,
+            symbol_field="bond_code",
+            symbol=symbol,
+        )
+        result["adjustment_factor"] = 1.0
+        return result
+
+    bond_history = prepare_market_history(
+        bond_requirements,
+        effective_date,
+        bond_codes,
+        trading_days,
+        _fetch_bond_batch,
+        fallback_fetcher=_fetch_bond_one,
+        store_path=history_store_path,
+    )
+    turnover = bond_history.frame.rename(columns={
+        "raw_close": "cb_close_daily",
+        "amount": "turnover_yuan_daily",
+        "trade_date": "turnover_trade_date",
+    })[["bond_code", "cb_close_daily", "turnover_yuan_daily", "turnover_trade_date"]]
+
+    stock_requirements = _cb_history_requirements(
+        symbol_field="stock_code",
+        lookback=21,
+        source="akshare-stock-daily",
+    )
+    action_snapshots: list[pd.DataFrame] = []
+
+    def _fetch_stock_one(symbol: str, _start: date, end: date) -> pd.DataFrame:
+        frame = _fetch_stock_history_with_adjustment(
+            ak,
+            symbol,
+            end - timedelta(days=90),
+            end,
+        )
+        action_snapshots.append(
+            frame[["stock_code", "trade_date", "adjustment_factor"]].copy()
+        )
+        return frame
+
+    stock_history = prepare_market_history(
+        stock_requirements,
+        effective_date,
+        stock_codes,
+        trading_days,
+        None,
+        fallback_fetcher=_fetch_stock_one,
+        store_path=history_store_path,
+        fallback_workers=int(config.get("data", {}).get("per_symbol_fetch_workers", 4)),
+    )
+    invalidation = None
+    if action_snapshots:
+        invalidation = reconcile_corporate_actions(
+            stock_requirements,
+            pd.concat(action_snapshots, ignore_index=True),
+            store_path=history_store_path,
+            derived_store_path=derived_store_path,
+        )
+        if invalidation.changed_symbols:
+            stock_history = prepare_market_history(
+                stock_requirements,
+                effective_date,
+                stock_codes,
+                trading_days,
+                None,
+                fallback_fetcher=_fetch_stock_one,
+                store_path=history_store_path,
+            )
+
+    momentum = prepare_derived_factors(
+        stock_history.frame,
+        symbol_field="stock_code",
+        effective_date=effective_date,
+        factor_name="stock_momentum_20d",
+        algorithm_version="momentum-20d-v1",
+        input_fingerprint=stock_history.input_fingerprint,
+        compute=lambda frame: _compute_history_factor(
+            frame,
+            factor_name="stock_momentum_20d",
+        ),
+        store_path=derived_store_path,
+    )
+    volatility = prepare_derived_factors(
+        stock_history.frame,
+        symbol_field="stock_code",
+        effective_date=effective_date,
+        factor_name="stock_volatility_20d",
+        algorithm_version="volatility-20d-v1",
+        input_fingerprint=stock_history.input_fingerprint,
+        compute=lambda frame: _compute_history_factor(
+            frame,
+            factor_name="stock_volatility_20d",
+        ),
+        store_path=derived_store_path,
+    )
+    stock_factors = momentum.frame.merge(volatility.frame, on="stock_code", how="inner")
+    stock_factors["stock_factor_trade_date"] = effective_date.isoformat()
+    stock_factors["market_cap_estimate"] = np.nan
+    corporate_action_status = {
+        "changed_symbols": list(invalidation.changed_symbols) if invalidation else [],
+        "changed_dates": list(invalidation.changed_dates) if invalidation else [],
+        "invalidated_factors": invalidation.invalidated_factors if invalidation else 0,
+        "invalidated_rankings": invalidation.invalidated_rankings if invalidation else 0,
+    }
+    return CbHistoryInputs(
+        turnover=turnover,
+        stock_factors=stock_factors,
+        preparation={
+            "bond_history": bond_history.metadata.to_dict(),
+            "stock_history": stock_history.metadata.to_dict(),
+            "momentum": momentum.metadata.to_dict(),
+            "volatility": volatility.metadata.to_dict(),
+            "corporate_actions": corporate_action_status,
+        },
     )
 
 
@@ -1269,8 +1546,10 @@ def run(
     enforce_snapshot_run_window(config, now=started_at)
     data_date = effective_date or latest_completed_market_data_date(now=started_at)
     requirements = market_data_requirements(config, max_universe)
+    history_preparation: dict = {}
 
     def _fetch_remote_inputs() -> dict[str, pd.DataFrame]:
+        nonlocal history_preparation
         ak = require_akshare()
         raw = fetch_cb_universe(ak, config)
         universe = normalize_cb_data(raw)
@@ -1278,13 +1557,21 @@ def run(
             universe = universe.head(max_universe).copy()
             logging.info("Limited universe to first %s bonds for test run.", max_universe)
         universe = enrich_cb_with_redeem_data(ak, universe, config)
-        with_turnover = enrich_cb_with_daily_market_data(ak, universe, config, data_date)
-        stock_factors = fetch_stock_factors_with_cache(
-            ak,
-            with_turnover["stock_code"].dropna(),
-            data_date,
-            config,
+        history_inputs = prepare_cb_history_inputs(ak, universe, config, data_date)
+        history_preparation = history_inputs.preparation
+        with_turnover = universe.merge(history_inputs.turnover, on="bond_code", how="left")
+        with_turnover["cb_price"] = with_turnover["cb_close_daily"].where(
+            with_turnover["cb_close_daily"].notna(),
+            with_turnover["cb_price"],
         )
+        with_turnover["turnover_yuan"] = with_turnover["turnover_yuan_daily"].where(
+            with_turnover["turnover_yuan_daily"].notna(),
+            with_turnover["turnover_yuan"],
+        )
+        with_turnover = with_turnover.drop(
+            columns=["cb_close_daily", "turnover_yuan_daily"]
+        )
+        stock_factors = history_inputs.stock_factors
         enriched = with_turnover.merge(stock_factors, on="stock_code", how="left")
         stock_caps = fetch_stock_market_caps(
             ak,
@@ -1404,6 +1691,7 @@ def run(
         data_date=data_date,
         preparation={
             "market": bundle.metadata.to_dict(),
+            **({"history": history_preparation} if history_preparation else {}),
             "ranking": ranking.metadata.to_dict(),
         },
     )

@@ -1,4 +1,5 @@
 import copy
+import inspect
 import unittest
 
 from datasource.market_data_bundle import DataRequirements
@@ -22,6 +23,10 @@ class StrategyMarketDataContractTests(unittest.TestCase):
         self.assertGreaterEqual(cb_requirements.lookback_trading_days, 20)
         self.assertIn("enriched_universe", cb_requirements.dataset_fields)
         self.assertIn("merged", stock_requirements.dataset_fields)
+        self.assertEqual(cb_requirements.expected_symbols_dataset, "cb_universe")
+        self.assertEqual(cb_requirements.coverage_datasets, ("enriched_universe",))
+        self.assertEqual(stock_requirements.expected_symbols_dataset, "universe")
+        self.assertEqual(stock_requirements.coverage_datasets, ("merged",))
 
     def test_local_strategy_parameter_changes_do_not_invalidate_raw_inputs(self) -> None:
         stock_config = stock_run.load_config(stock_run.DEFAULT_CONFIG)
@@ -42,6 +47,25 @@ class StrategyMarketDataContractTests(unittest.TestCase):
             cb_run.market_data_requirements(cb_config).fingerprint,
             cb_run.market_data_requirements(changed_cb).fingerprint,
         )
+
+    def test_stock_test_universe_uses_an_isolated_raw_bundle(self) -> None:
+        config = stock_run.load_config(stock_run.DEFAULT_CONFIG)
+
+        full = stock_run.market_data_requirements(config)
+        limited = stock_run.market_data_requirements(config, max_universe=25)
+
+        self.assertNotEqual(full.fingerprint, limited.fingerprint)
+
+    def test_cb_production_run_uses_history_and_versioned_factor_adapter(self) -> None:
+        run_source = inspect.getsource(cb_run.run)
+        adapter_source = inspect.getsource(cb_run.prepare_cb_history_inputs)
+
+        self.assertIn("prepare_cb_history_inputs(", run_source)
+        self.assertNotIn("enrich_cb_with_daily_market_data(", run_source)
+        self.assertNotIn("fetch_stock_factors_with_cache(", run_source)
+        self.assertIn("prepare_market_history(", adapter_source)
+        self.assertIn("reconcile_corporate_actions(", adapter_source)
+        self.assertIn("prepare_derived_factors(", adapter_source)
 
 
 if __name__ == "__main__":

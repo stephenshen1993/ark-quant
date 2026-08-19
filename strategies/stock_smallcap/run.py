@@ -485,11 +485,15 @@ def save_outputs(ranked: pd.DataFrame, rebalance: pd.DataFrame, config: dict, lo
     return RunArtifacts(candidates_csv, rebalance_csv, report_md)
 
 
-def market_data_requirements(config: dict) -> DataRequirements:
+def market_data_requirements(
+    config: dict,
+    max_universe: int | None = None,
+) -> DataRequirements:
     """Declare remote stock inputs independently from local filter and ranking parameters."""
     return DataRequirements(
         strategy="stock",
         dataset_fields={
+            "universe": ("stock_code",),
             "merged": (
                 "stock_code",
                 "price",
@@ -505,7 +509,10 @@ def market_data_requirements(config: dict) -> DataRequirements:
         config_fingerprint=stable_fingerprint({
             "universe": config.get("universe", {}),
             "exclude_st": config.get("filters", {}).get("exclude_st", True),
+            "max_universe": max_universe,
         }),
+        expected_symbols_dataset="universe",
+        coverage_datasets=("merged",),
     )
 
 
@@ -522,7 +529,7 @@ def run(
     config = load_config(config_path)
 
     data_date = effective_date or latest_completed_data_date(now=started_at)
-    requirements = market_data_requirements(config)
+    requirements = market_data_requirements(config, max_universe=max_universe)
 
     def _fetch_raw_inputs() -> dict[str, pd.DataFrame]:
         ak = require_akshare()
@@ -580,7 +587,7 @@ def run(
             if col in merged.columns:
                 merged[col] = pd.to_numeric(merged[col], errors="coerce")
 
-        return {"merged": merged}
+        return {"universe": universe[["stock_code"]].copy(), "merged": merged}
 
     bundle = prepare_market_data_bundle(
         requirements,

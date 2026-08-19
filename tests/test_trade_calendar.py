@@ -1,7 +1,9 @@
 import unittest
 from datetime import date, datetime
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from datasource.trade_calendar import resolve_effective_trading_date
+from datasource.trade_calendar import load_exchange_trading_days, resolve_effective_trading_date
 
 
 class EffectiveTradingDateTests(unittest.TestCase):
@@ -29,6 +31,18 @@ class EffectiveTradingDateTests(unittest.TestCase):
         )
 
         self.assertEqual(resolved, date(2026, 2, 13))
+
+    def test_stale_calendar_is_not_used_when_refresh_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            cache_path = Path(tmp) / "calendar.csv"
+            cache_path.write_text("trade_date\n2026-02-13\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(RuntimeError, "不覆盖 2026-02-18"):
+                load_exchange_trading_days(
+                    as_of=date(2026, 2, 18),
+                    cache_path=cache_path,
+                    fetcher=lambda: (_ for _ in ()).throw(RuntimeError("offline")),
+                )
 
 
 if __name__ == "__main__":
