@@ -19,6 +19,7 @@ from datasource.market_data_bundle import (
     PreparationMetadata,
     stable_fingerprint,
 )
+from datasource.derived_store import invalidate_corporate_action_dependencies
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,14 @@ class MarketHistoryResult:
     frame: pd.DataFrame
     metadata: PreparationMetadata
     input_fingerprint: str
+
+
+@dataclass(frozen=True)
+class CorporateActionInvalidation:
+    changed_symbols: tuple[str, ...]
+    changed_dates: tuple[str, ...]
+    invalidated_factors: int
+    invalidated_rankings: int
 
 
 def prepare_market_history(
@@ -145,6 +154,82 @@ def prepare_market_history(
         return MarketHistoryResult(frame=frame, metadata=metadata, input_fingerprint=fingerprint)
     finally:
         conn.close()
+
+
+def reconcile_corporate_actions(
+    requirements: DataRequirements,
+    actions: pd.DataFrame,
+    *,
+    store_path: Path,
+    derived_store_path: Path,
+) -> CorporateActionInvalidation:
+    """Update adjustment facts without rewriting raw prices and invalidate exact dependencies."""
+    required = {requirements.symbol_field, "trade_date", "adjustment_factor"}
+    missing = sorted(required - set(actions.columns))
+    if missing:
+        raise RuntimeError(f"公司行为数据缺少字段: {', '.join(missing)}")
+    conn = _connect(store_path)
+    affected: list[tuple[str, date]] = []
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            for action in actions.to_dict("records"):
+                symbol = str(action[requirements.symbol_field])
+                action_date = _as_date(action["trade_date"])
+                row = conn.execute(
+                    """
+                    SELECT data_json FROM market_history
+                    WHERE source=? AND source_version=? AND symbol=? AND trade_date=?
+                    """,
+                    (
+                        requirements.source,
+                        requirements.source_version,
+                        symbol,
+                        action_date.isoformat(),
+                    ),
+                ).fetchone()
+                if row is None:
+                    continue
+                try:
+                    payload = json.loads(row["data_json"])
+                except json.JSONDecodeError:
+                    continue
+                new_factor = _json_value(action["adjustment_factor"])
+                if payload.get("adjustment_factor") == new_factor:
+                    continue
+                payload["adjustment_factor"] = new_factor
+                conn.execute(
+                    """
+                    UPDATE market_history SET data_json=?
+                    WHERE source=? AND source_version=? AND symbol=? AND trade_date=?
+                    """,
+                    (
+                        json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                        requirements.source,
+                        requirements.source_version,
+                        symbol,
+                        action_date.isoformat(),
+                    ),
+                )
+                affected.append((symbol, action_date))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+    finally:
+        conn.close()
+
+    factor_count, ranking_count = invalidate_corporate_action_dependencies(
+        strategy=requirements.strategy,
+        affected=affected,
+        store_path=derived_store_path,
+    )
+    return CorporateActionInvalidation(
+        changed_symbols=tuple(sorted({symbol for symbol, _ in affected})),
+        changed_dates=tuple(sorted({action_date.isoformat() for _, action_date in affected})),
+        invalidated_factors=factor_count,
+        invalidated_rankings=ranking_count,
+    )
 
 
 def _connect(path: Path) -> sqlite3.Connection:

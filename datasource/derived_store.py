@@ -191,6 +191,41 @@ def prepare_strategy_ranking(
         conn.close()
 
 
+def invalidate_corporate_action_dependencies(
+    *,
+    strategy: str,
+    affected: list[tuple[str, date]],
+    store_path: Path = DEFAULT_DERIVED_STORE,
+) -> tuple[int, int]:
+    """Invalidate only affected symbols' future factors and dependent strategy rankings."""
+    if not affected:
+        return 0, 0
+    conn = _connect(store_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            factor_count = 0
+            for symbol, action_date in affected:
+                cursor = conn.execute(
+                    "DELETE FROM derived_factors WHERE symbol=? AND data_date>=?",
+                    (symbol, action_date.isoformat()),
+                )
+                factor_count += cursor.rowcount
+            earliest = min(action_date for _, action_date in affected)
+            ranking_cursor = conn.execute(
+                "DELETE FROM strategy_rankings WHERE strategy=? AND data_date>=?",
+                (strategy, earliest.isoformat()),
+            )
+            ranking_count = ranking_cursor.rowcount
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        return factor_count, ranking_count
+    finally:
+        conn.close()
+
+
 def _connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, timeout=30)
