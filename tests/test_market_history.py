@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from datasource.market_data_bundle import DataRequirements
-from datasource.market_history import prepare_market_history
+from datasource.market_history import DataPreparationError, prepare_market_history
 
 
 class IncrementalMarketHistoryTests(unittest.TestCase):
@@ -136,6 +136,79 @@ class IncrementalMarketHistoryTests(unittest.TestCase):
         self.assertEqual(len(result.frame), 6)
         self.assertNotIn(date(2026, 8, 15), batches[0])
         self.assertNotIn(date(2026, 8, 16), batches[0])
+
+    def test_partial_failure_keeps_verified_rows_and_resumes_only_remaining_gaps(self) -> None:
+        first_requests: list[list[date]] = []
+
+        def partial_batch(days) -> pd.DataFrame:
+            requested = list(days)
+            first_requests.append(requested)
+            return self._rows(requested[:1])
+
+        with self.assertRaises(DataPreparationError) as caught:
+            prepare_market_history(
+                self.requirements,
+                date(2026, 8, 12),
+                ("600001", "600002"),
+                self.calendar,
+                partial_batch,
+                store_path=self.store_path,
+            )
+
+        resumed_requests: list[list[date]] = []
+
+        def resume_batch(days) -> pd.DataFrame:
+            requested = list(days)
+            resumed_requests.append(requested)
+            return self._rows(requested)
+
+        result = prepare_market_history(
+            self.requirements,
+            date(2026, 8, 12),
+            ("600001", "600002"),
+            self.calendar,
+            resume_batch,
+            store_path=self.store_path,
+        )
+
+        self.assertEqual(first_requests, [[date(2026, 8, 10), date(2026, 8, 11), date(2026, 8, 12)]])
+        self.assertEqual(resumed_requests, [[date(2026, 8, 11), date(2026, 8, 12)]])
+        self.assertEqual(result.metadata.mode, "incremental")
+        self.assertEqual(caught.exception.detail["effective_date"], "2026-08-12")
+        self.assertEqual(caught.exception.detail["stage"], "market_history")
+        self.assertTrue(caught.exception.detail["missing"])
+
+    def test_source_failure_is_structured_but_complete_cache_still_runs_offline(self) -> None:
+        prepare_market_history(
+            self.requirements,
+            date(2026, 8, 12),
+            ("600001", "600002"),
+            self.calendar,
+            lambda days: self._rows(days),
+            store_path=self.store_path,
+        )
+        cached = prepare_market_history(
+            self.requirements,
+            date(2026, 8, 12),
+            ("600001", "600002"),
+            self.calendar,
+            lambda _days: self.fail("完整缓存离线运行不应请求数据源"),
+            store_path=self.store_path,
+        )
+        self.assertEqual(cached.metadata.mode, "cache_hit")
+
+        with self.assertRaises(DataPreparationError) as caught:
+            prepare_market_history(
+                self.requirements,
+                date(2026, 8, 13),
+                ("600001", "600002"),
+                self.calendar,
+                lambda _days: (_ for _ in ()).throw(RuntimeError("source down")),
+                store_path=self.store_path,
+            )
+
+        self.assertEqual(caught.exception.detail["source"], "full-market-daily")
+        self.assertEqual(caught.exception.detail["stage"], "market_history_batch")
 
 
 if __name__ == "__main__":

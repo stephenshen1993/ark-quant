@@ -5,11 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import fcntl
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 from time import perf_counter
 from typing import Callable, Mapping, Sequence
+from uuid import uuid4
 
 import pandas as pd
 
@@ -90,6 +93,26 @@ def prepare_market_data_bundle(
     started = perf_counter()
     root = cache_root or DEFAULT_CACHE_ROOT
     bundle_dir = _bundle_dir(root, requirements, effective_date)
+    lock_path = bundle_dir.parent / f"{bundle_dir.name}.lock"
+    with _exclusive_file_lock(lock_path):
+        return _prepare_market_data_bundle_locked(
+            requirements,
+            effective_date,
+            fetcher,
+            expected_symbols,
+            bundle_dir,
+            started,
+        )
+
+
+def _prepare_market_data_bundle_locked(
+    requirements: DataRequirements,
+    effective_date: date,
+    fetcher: Callable[[], Mapping[str, pd.DataFrame]],
+    expected_symbols: Sequence[str],
+    bundle_dir: Path,
+    started: float,
+) -> MarketDataBundle:
     cached, invalidation_reason = _load_complete_bundle(
         bundle_dir,
         requirements,
@@ -107,6 +130,7 @@ def prepare_market_data_bundle(
         )
         return _bundle(requirements, effective_date, frames, manifest, metadata, bundle_dir)
 
+    _mark_incomplete(bundle_dir, requirements, effective_date, invalidation_reason)
     fetch_started = perf_counter()
     fetched = {name: frame.copy() for name, frame in fetcher().items()}
     fetch_elapsed = int((perf_counter() - fetch_started) * 1000)
@@ -128,6 +152,42 @@ def prepare_market_data_bundle(
         stage_timings_ms={"fetch": fetch_elapsed, "total": elapsed},
     )
     return _bundle(requirements, effective_date, frames, manifest, metadata, bundle_dir)
+
+
+@contextmanager
+def _exclusive_file_lock(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _mark_incomplete(
+    bundle_dir: Path,
+    requirements: DataRequirements,
+    effective_date: date,
+    invalidation_reason: str | None,
+) -> None:
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": 1,
+        "status": "incomplete",
+        "strategy": requirements.strategy,
+        "expected_data_date": effective_date.isoformat(),
+        "requirements_fingerprint": requirements.fingerprint,
+        "invalidation_reason": invalidation_reason,
+        "started_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    path = bundle_dir / "incomplete.json"
+    temporary = path.with_suffix(f"{path.suffix}.{uuid4().hex}.tmp")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    os.replace(temporary, path)
 
 
 def _bundle(
@@ -238,7 +298,7 @@ def _publish_complete_bundle(
     files: dict[str, dict] = {}
     for name, frame in frames.items():
         path = bundle_dir / f"{name}.json"
-        temporary = path.with_suffix(f"{path.suffix}.{os.getpid()}.tmp")
+        temporary = path.with_suffix(f"{path.suffix}.{uuid4().hex}.tmp")
         frame.to_json(temporary, orient="table", date_format="iso", force_ascii=False)
         os.replace(temporary, path)
         files[name] = {
@@ -277,12 +337,15 @@ def _publish_complete_bundle(
         "files": files,
     }
     manifest_path = bundle_dir / "manifest.json"
-    temporary = manifest_path.with_suffix(f"{manifest_path.suffix}.{os.getpid()}.tmp")
+    temporary = manifest_path.with_suffix(f"{manifest_path.suffix}.{uuid4().hex}.tmp")
     temporary.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
         encoding="utf-8",
     )
     os.replace(temporary, manifest_path)
+    incomplete_path = bundle_dir / "incomplete.json"
+    if incomplete_path.exists():
+        incomplete_path.unlink()
     return manifest
 
 

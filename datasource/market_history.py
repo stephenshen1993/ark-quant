@@ -37,6 +37,12 @@ class CorporateActionInvalidation:
     invalidated_rankings: int
 
 
+class DataPreparationError(RuntimeError):
+    def __init__(self, detail: dict):
+        self.detail = detail
+        super().__init__(str(detail.get("message") or detail))
+
+
 def prepare_market_history(
     requirements: DataRequirements,
     effective_date: date,
@@ -80,7 +86,16 @@ def prepare_market_history(
         if missing_dates:
             batch_requests = 1
             external_calls += 1
-            batch = batch_fetcher(missing_dates)
+            try:
+                batch = batch_fetcher(missing_dates)
+            except Exception as exc:
+                raise _source_error(
+                    requirements,
+                    effective_date,
+                    "market_history_batch",
+                    missing_before,
+                    exc,
+                ) from exc
             batch_rows = _normalize_rows(
                 batch,
                 requirements,
@@ -112,14 +127,23 @@ def prepare_market_history(
             with ThreadPoolExecutor(
                 max_workers=max(1, min(fallback_workers, len(items)))
             ) as executor:
-                for (symbol, days), frame in zip(items, executor.map(_fetch_symbol, items)):
-                    normalized = _normalize_rows(
-                        frame,
+                try:
+                    for (symbol, days), frame in zip(items, executor.map(_fetch_symbol, items)):
+                        normalized = _normalize_rows(
+                            frame,
+                            requirements,
+                            [symbol],
+                            days,
+                        )
+                        refreshed_keys.update(_upsert_rows(conn, requirements, normalized))
+                except Exception as exc:
+                    raise _source_error(
                         requirements,
-                        [symbol],
-                        days,
-                    )
-                    refreshed_keys.update(_upsert_rows(conn, requirements, normalized))
+                        effective_date,
+                        "market_history_fallback",
+                        remaining,
+                        exc,
+                    ) from exc
 
         complete = _load_rows(conn, requirements, required_symbols, required_dates)
         missing_after = _missing_pairs(
@@ -132,7 +156,17 @@ def prepare_market_history(
             sample = ", ".join(
                 f"{symbol}@{day.isoformat()}" for symbol, day in missing_after[:10]
             )
-            raise RuntimeError(f"历史行情关键缺口未补齐: {sample}")
+            raise DataPreparationError({
+                "code": "MARKET_HISTORY_INCOMPLETE",
+                "message": f"历史行情关键缺口未补齐: {sample}",
+                "stage": "market_history",
+                "effective_date": effective_date.isoformat(),
+                "source": requirements.source,
+                "missing": [
+                    {"symbol": symbol, "trade_date": day.isoformat()}
+                    for symbol, day in missing_after
+                ],
+            })
 
         mode = "cache_hit"
         if missing_before:
@@ -251,6 +285,26 @@ def _connect(path: Path) -> sqlite3.Connection:
     )
     conn.commit()
     return conn
+
+
+def _source_error(
+    requirements: DataRequirements,
+    effective_date: date,
+    stage: str,
+    missing: Sequence[tuple[str, date]],
+    exc: Exception,
+) -> DataPreparationError:
+    return DataPreparationError({
+        "code": "DATA_SOURCE_UNAVAILABLE",
+        "message": f"历史行情数据源失败：{exc}",
+        "stage": stage,
+        "effective_date": effective_date.isoformat(),
+        "source": requirements.source,
+        "missing": [
+            {"symbol": symbol, "trade_date": day.isoformat()}
+            for symbol, day in missing
+        ],
+    })
 
 
 def _required_dates(

@@ -1,6 +1,8 @@
 import json
 import tempfile
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 
@@ -117,6 +119,80 @@ class MarketDataBundlePersistenceTests(unittest.TestCase):
             )
 
         self.assertEqual(list(self.cache_root.rglob("manifest.json")), [])
+
+    def test_corrupt_frame_is_rejected_and_rebuilt(self) -> None:
+        first = prepare_market_data_bundle(
+            self.requirements,
+            date(2026, 8, 18),
+            self._frames,
+            cache_root=self.cache_root,
+        )
+        manifest = first.manifest
+        frame_path = Path(manifest["manifest_path"]).parent / manifest["files"]["merged"]["name"]
+        frame_path.write_text("broken", encoding="utf-8")
+        calls = 0
+
+        def rebuild() -> dict[str, pd.DataFrame]:
+            nonlocal calls
+            calls += 1
+            return self._frames()
+
+        result = prepare_market_data_bundle(
+            self.requirements,
+            date(2026, 8, 18),
+            rebuild,
+            cache_root=self.cache_root,
+        )
+
+        self.assertEqual(calls, 1)
+        self.assertIn("dataset_corrupt", result.metadata.invalidation_reasons)
+
+    def test_concurrent_same_identity_fetches_once_and_publishes_one_complete_bundle(self) -> None:
+        calls = 0
+
+        def fetch() -> dict[str, pd.DataFrame]:
+            nonlocal calls
+            calls += 1
+            time.sleep(0.05)
+            return self._frames()
+
+        def prepare():
+            return prepare_market_data_bundle(
+                self.requirements,
+                date(2026, 8, 18),
+                fetch,
+                cache_root=self.cache_root,
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(lambda _index: prepare(), range(2)))
+
+        self.assertEqual(calls, 1)
+        self.assertEqual(sorted(result.metadata.mode for result in results), ["cache_hit", "cold_build"])
+        self.assertEqual(len(list(self.cache_root.rglob("manifest.json"))), 1)
+        self.assertEqual(len(list(self.cache_root.rglob("incomplete.json"))), 0)
+
+    def test_failed_build_remains_incomplete_and_next_run_can_publish(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "source down"):
+            prepare_market_data_bundle(
+                self.requirements,
+                date(2026, 8, 18),
+                lambda: (_ for _ in ()).throw(RuntimeError("source down")),
+                cache_root=self.cache_root,
+            )
+
+        self.assertEqual(len(list(self.cache_root.rglob("incomplete.json"))), 1)
+        self.assertEqual(len(list(self.cache_root.rglob("manifest.json"))), 0)
+
+        result = prepare_market_data_bundle(
+            self.requirements,
+            date(2026, 8, 18),
+            self._frames,
+            cache_root=self.cache_root,
+        )
+
+        self.assertEqual(result.manifest["status"], "complete")
+        self.assertEqual(len(list(self.cache_root.rglob("incomplete.json"))), 0)
 
 
 if __name__ == "__main__":
