@@ -1344,7 +1344,7 @@ def _fetch_stock_history_with_adjustment(
         symbol=stock_code,
     )
     adjusted = _normalize_daily_history(
-        _fetch("qfq"),
+        _fetch("hfq"),
         symbol_field="stock_code",
         symbol=stock_code,
     )[["stock_code", "trade_date", "raw_close"]].rename(
@@ -1444,11 +1444,11 @@ def prepare_cb_history_inputs(
     )
     action_snapshots: list[pd.DataFrame] = []
 
-    def _fetch_stock_one(symbol: str, _start: date, end: date) -> pd.DataFrame:
+    def _fetch_stock_one(symbol: str, start: date, end: date) -> pd.DataFrame:
         frame = _fetch_stock_history_with_adjustment(
             ak,
             symbol,
-            end - timedelta(days=90),
+            start,
             end,
         )
         action_snapshots.append(
@@ -1456,12 +1456,36 @@ def prepare_cb_history_inputs(
         )
         return frame
 
+    def _fetch_stock_batch(missing_dates: Iterable[date]) -> pd.DataFrame:
+        days = sorted(set(missing_dates))
+        start, end = days[0], days[-1]
+        max_workers = max(
+            1,
+            min(
+                8,
+                int(config.get("data", {}).get("per_symbol_fetch_workers", 4)),
+            ),
+        )
+
+        def _safe_fetch(symbol: str) -> pd.DataFrame:
+            try:
+                return _fetch_stock_one(symbol, start, end)
+            except Exception as exc:
+                logging.warning("批量准备正股历史失败，等待逐证券回退 %s: %s", symbol, exc)
+                return pd.DataFrame()
+
+        with ThreadPoolExecutor(max_workers=min(max_workers, len(stock_codes) or 1)) as executor:
+            frames = [frame for frame in executor.map(_safe_fetch, stock_codes) if not frame.empty]
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True)
+
     stock_history = prepare_market_history(
         stock_requirements,
         effective_date,
         stock_codes,
         trading_days,
-        None,
+        _fetch_stock_batch,
         fallback_fetcher=_fetch_stock_one,
         store_path=history_store_path,
         fallback_workers=int(config.get("data", {}).get("per_symbol_fetch_workers", 4)),
@@ -1480,7 +1504,7 @@ def prepare_cb_history_inputs(
                 effective_date,
                 stock_codes,
                 trading_days,
-                None,
+                _fetch_stock_batch,
                 fallback_fetcher=_fetch_stock_one,
                 store_path=history_store_path,
             )

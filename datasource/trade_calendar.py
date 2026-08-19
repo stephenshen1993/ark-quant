@@ -67,14 +67,14 @@ def load_exchange_trading_days(
     target = as_of or date.today()
     path = cache_path or DEFAULT_CALENDAR_CACHE
     cached = _read_calendar(path)
-    if cached and cached[-1] >= target:
+    if _calendar_covers(cached, target):
         return cached
 
     provider = fetcher or _fetch_exchange_trading_days
     try:
         fetched = sorted(set(provider()))
     except Exception as exc:
-        if cached and cached[-1] >= target:
+        if _calendar_covers(cached, target):
             return cached
         if cached:
             raise RuntimeError(
@@ -82,13 +82,27 @@ def load_exchange_trading_days(
             ) from exc
         raise RuntimeError(f"无法获取交易日历：{exc}") from exc
     if not fetched:
-        if cached and cached[-1] >= target:
+        if _calendar_covers(cached, target):
             return cached
         if cached:
             raise RuntimeError(f"交易日历缓存不覆盖 {target.isoformat()}，且刷新结果为空")
         raise RuntimeError("交易日历为空，无法确定有效交易日")
+    if not _calendar_covers(fetched, target):
+        raise RuntimeError(f"交易日历刷新结果不覆盖 {target.isoformat()}")
     _write_calendar(path, fetched)
     return fetched
+
+
+def _calendar_covers(trading_days: Iterable[date], target: date) -> bool:
+    days = sorted(set(trading_days))
+    if not days:
+        return False
+    required_horizon = target
+    if target.weekday() == 5:
+        required_horizon -= timedelta(days=1)
+    elif target.weekday() == 6:
+        required_horizon -= timedelta(days=2)
+    return days[-1] >= required_horizon
 
 
 def _fetch_exchange_trading_days() -> list[date]:

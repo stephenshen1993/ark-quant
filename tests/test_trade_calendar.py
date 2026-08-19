@@ -44,6 +44,32 @@ class EffectiveTradingDateTests(unittest.TestCase):
                     fetcher=lambda: (_ for _ in ()).throw(RuntimeError("offline")),
                 )
 
+    def test_nonempty_refresh_must_still_cover_the_target_date(self) -> None:
+        with TemporaryDirectory() as tmp:
+            cache_path = Path(tmp) / "calendar.csv"
+
+            with self.assertRaisesRegex(RuntimeError, "刷新结果不覆盖 2026-02-18"):
+                load_exchange_trading_days(
+                    as_of=date(2026, 2, 18),
+                    cache_path=cache_path,
+                    fetcher=lambda: [date(2026, 2, 13)],
+                )
+
+            self.assertFalse(cache_path.exists())
+
+    def test_friday_cache_covers_an_offline_weekend(self) -> None:
+        with TemporaryDirectory() as tmp:
+            cache_path = Path(tmp) / "calendar.csv"
+            cache_path.write_text("trade_date\n2026-02-13\n", encoding="utf-8")
+
+            days = load_exchange_trading_days(
+                as_of=date(2026, 2, 15),
+                cache_path=cache_path,
+                fetcher=lambda: self.fail("周末不应刷新已覆盖到周五的日历"),
+            )
+
+            self.assertEqual(days, [date(2026, 2, 13)])
+
 
 if __name__ == "__main__":
     unittest.main()
