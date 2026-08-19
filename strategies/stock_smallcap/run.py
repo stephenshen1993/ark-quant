@@ -29,7 +29,11 @@ except ImportError as exc:
 from datasource.market import (
     fetch_sina_snapshot,
     fetch_tencent_snapshot,
-    load_or_fetch,
+)
+from datasource.market_data_bundle import (
+    DataRequirements,
+    prepare_market_data_bundle,
+    stable_fingerprint,
 )
 from datasource.trade_calendar import enforce_snapshot_run_window
 from strategies.cb_rotation.run import snapshot_raw_data
@@ -48,6 +52,7 @@ class RunArtifacts:
     report_md: Path
     run_id: int | None = None
     data_date: date | None = None
+    preparation: dict | None = None
 
 
 def setup_logging() -> Path:
@@ -435,12 +440,38 @@ def run(
     enforce_snapshot_run_window(now=started_at)
     log_file = setup_logging()
     config = load_config(config_path)
-    ak = require_akshare()
 
     data_date = effective_date or latest_completed_data_date(now=started_at)
-    cache_date = data_date.strftime("%Y%m%d")
+    requirements = DataRequirements(
+        strategy="stock",
+        dataset_fields={
+            "merged": (
+                "stock_code",
+                "price",
+                "total_mv_yuan",
+                "amount_yuan",
+                "pe_ttm",
+            ),
+            "ranked": (
+                "stock_code",
+                "price",
+                "total_mv_yuan",
+                "amount_yuan",
+                "pe_ttm",
+                "roe_pct",
+                "rank",
+            ),
+            "filtered": ("stock_code", "price", "total_mv_yuan"),
+        },
+        symbol_field="stock_code",
+        source="sina+tencent+ths",
+        source_version="smallcap-sources-v1",
+        algorithm_version="smallcap-input-v1",
+        config_fingerprint=stable_fingerprint(config),
+    )
 
-    def _fetch_merged():
+    def _fetch_complete_inputs() -> dict[str, pd.DataFrame]:
+        ak = require_akshare()
         universe = fetch_universe(ak)
         universe = filter_board_and_st(universe, config)
         if max_universe:
@@ -481,24 +512,35 @@ def run(
 
         merged = universe.merge(snap, on="stock_code", how="inner")
         logging.info("Snapshot coverage: %s/%s", len(merged), len(universe))
-        return merged
+        merged["stock_code"] = merged["stock_code"].astype(str).str.zfill(6)
+        for col in (
+            "total_mv_yuan",
+            "amount_yuan",
+            "pe_ttm",
+            "price",
+            "volume_hand",
+            "prev_close",
+            "limit_up",
+            "limit_down",
+        ):
+            if col in merged.columns:
+                merged[col] = pd.to_numeric(merged[col], errors="coerce")
 
-    merged = load_or_fetch("merged", _fetch_merged, cache_date, "stock_smallcap")
-    merged["stock_code"] = merged["stock_code"].astype(str).str.zfill(6)
-    for col in ("total_mv_yuan", "amount_yuan", "pe_ttm", "price",
-                "volume_hand", "prev_close", "limit_up", "limit_down"):
-        if col in merged.columns:
-            merged[col] = pd.to_numeric(merged[col], errors="coerce")
-
-    filtered = apply_filters(merged, config)
-
-    def _fetch_ranked():
-        r = select_smallcap(ak, filtered, config)
-        if r.empty:
+        filtered = apply_filters(merged, config)
+        ranked = select_smallcap(ak, filtered, config)
+        if ranked.empty:
             raise RuntimeError("没有股票通过全部过滤，无法生成榜单。请检查数据源或放宽配置。")
-        return r
+        return {"merged": merged, "filtered": filtered, "ranked": ranked}
 
-    ranked = load_or_fetch("ranked", _fetch_ranked, cache_date, "stock_smallcap")
+    bundle = prepare_market_data_bundle(
+        requirements,
+        data_date,
+        _fetch_complete_inputs,
+    )
+    logging.info("数据准备: %s", json.dumps(bundle.metadata.to_dict(), ensure_ascii=False))
+    merged = bundle.frames["merged"].copy()
+    filtered = bundle.frames["filtered"].copy()
+    ranked = bundle.frames["ranked"].copy()
     # Restore dtypes after CSV round-trip
     ranked["stock_code"] = ranked["stock_code"].astype(str).str.zfill(6)
     for col in ("total_mv_yuan", "amount_yuan", "pe_ttm", "roe_pct", "price",
@@ -514,7 +556,12 @@ def run(
     artifacts = save_outputs(ranked, rebalance, config, log_file, notes, data_date=data_date)
     logging.info("Saved report to %s", artifacts.report_md)
     run_id = persist_rankings(data_date, rankings_for_order_sizing(ranked, target_df, config))
-    artifacts = replace(artifacts, run_id=run_id, data_date=data_date)
+    artifacts = replace(
+        artifacts,
+        run_id=run_id,
+        data_date=data_date,
+        preparation=bundle.metadata.to_dict(),
+    )
     logging.info("DB write OK: stock rankings run_id=%s data_date=%s", run_id, data_date)
     try:
         snapshot_raw_data(
