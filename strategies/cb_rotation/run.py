@@ -23,6 +23,12 @@ from datasource.market import (
     normalize_stock_code,
     stock_symbol_with_exchange,
 )
+from datasource.derived_store import prepare_strategy_ranking
+from datasource.market_data_bundle import (
+    DataRequirements,
+    prepare_market_data_bundle,
+    stable_fingerprint,
+)
 from datasource.trade_calendar import is_market_hours
 
 
@@ -43,6 +49,7 @@ class RunArtifacts:
     report_md: Path
     run_id: int | None = None
     data_date: date | None = None
+    preparation: dict | None = None
 
 
 def setup_logging() -> Path:
@@ -1216,6 +1223,38 @@ def snapshot_raw_data(
     return day_dir
 
 
+def market_data_requirements(config: dict, max_universe: int | None = None) -> DataRequirements:
+    """Declare the remote CB inputs independently from local ranking parameters."""
+    return DataRequirements(
+        strategy="cb",
+        dataset_fields={
+            "cb_universe": ("bond_code", "stock_code", "cb_price"),
+            "enriched_universe": (
+                "bond_code",
+                "stock_code",
+                "cb_price",
+                "turnover_yuan",
+                "turnover_trade_date",
+                "stock_momentum_20d",
+                "stock_volatility_20d",
+                "stock_factor_trade_date",
+                "market_cap",
+                "market_cap_as_of_date",
+            ),
+        },
+        symbol_field="bond_code",
+        source="akshare+tencent",
+        source_version="cb-market-sources-v1",
+        algorithm_version="cb-raw-input-v1",
+        config_fingerprint=stable_fingerprint({
+            "data": config.get("data", {}),
+            "max_universe": max_universe,
+        }),
+        lookback_trading_days=21,
+        market_fields=("raw_close", "volume", "amount", "adjustment_factor"),
+    )
+
+
 def run(
     config_path: Path,
     positions_path: Path,
@@ -1227,18 +1266,44 @@ def run(
     log_file = setup_logging()
     config = load_config(config_path)
     enforce_snapshot_run_window(config, now=started_at)
-    ak = require_akshare()
+    data_date = effective_date or latest_completed_market_data_date(now=started_at)
+    requirements = market_data_requirements(config, max_universe)
 
-    raw_cb = fetch_cb_universe(ak, config)
-    cb = normalize_cb_data(raw_cb)
-    if max_universe:
-        cb = cb.head(max_universe).copy()
-        logging.info("Limited universe to first %s bonds for test run.", max_universe)
+    def _fetch_remote_inputs() -> dict[str, pd.DataFrame]:
+        ak = require_akshare()
+        raw = fetch_cb_universe(ak, config)
+        universe = normalize_cb_data(raw)
+        if max_universe:
+            universe = universe.head(max_universe).copy()
+            logging.info("Limited universe to first %s bonds for test run.", max_universe)
+        universe = enrich_cb_with_redeem_data(ak, universe, config)
+        with_turnover = enrich_cb_with_daily_market_data(ak, universe, config, data_date)
+        stock_factors = fetch_stock_factors_with_cache(
+            ak,
+            with_turnover["stock_code"].dropna(),
+            data_date,
+            config,
+        )
+        enriched = with_turnover.merge(stock_factors, on="stock_code", how="left")
+        stock_caps = fetch_stock_market_caps(
+            ak,
+            enriched["stock_code"].dropna(),
+            config,
+            data_date,
+        )
+        enriched = enriched.merge(stock_caps, on="stock_code", how="left")
+        return {"cb_universe": universe, "enriched_universe": enriched}
 
-    cb = enrich_cb_with_redeem_data(ak, cb, config)
+    bundle = prepare_market_data_bundle(
+        requirements,
+        data_date,
+        _fetch_remote_inputs,
+    )
+    logging.info("数据准备: %s", json.dumps(bundle.metadata.to_dict(), ensure_ascii=False))
+    raw_cb = bundle.frames["cb_universe"].copy()
+    cb = bundle.frames["enriched_universe"].copy()
     enforce_cb_filter_coverage(cb, config)
     cb = apply_cb_prefilters(cb, config)
-    cb = enrich_cb_with_daily_market_data(ak, cb, config, effective_date)
     if config.get("data", {}).get("strict_original_rules", True):
         cb = drop_uncovered_cb_market_data(cb)
         assert_required_fields(cb, ["turnover_yuan"], "可转债成交额过滤", require_all_rows=True)
@@ -1264,9 +1329,7 @@ def run(
         require_single_trade_date(cb, "turnover_trade_date", "可转债收盘行情")
     assert_required_fields(cb, ["turnover_yuan"], "可转债成交额过滤")
     enforce_original_rule_fields(cb, config)
-    factor_date = effective_date or date.today()
-    stock_factors = fetch_stock_factors_with_cache(ak, cb["stock_code"].dropna(), factor_date, config)
-    merged = cb.merge(stock_factors, on="stock_code", how="left")
+    merged = cb
     logging.info(
         "Stock factor coverage after merge: momentum=%s/%s, volatility=%s/%s",
         int(merged["stock_momentum_20d"].notna().sum()) if "stock_momentum_20d" in merged.columns else 0,
@@ -1274,8 +1337,6 @@ def run(
         int(merged["stock_volatility_20d"].notna().sum()) if "stock_volatility_20d" in merged.columns else 0,
         len(merged),
     )
-    stock_caps = fetch_stock_market_caps(ak, merged["stock_code"].dropna(), config, effective_date)
-    merged = merged.merge(stock_caps, on="stock_code", how="left")
     logging.info(
         "Stock market cap coverage after merge: market_cap=%s/%s",
         int(merged["market_cap"].notna().sum()) if "market_cap" in merged.columns else 0,
@@ -1308,19 +1369,35 @@ def run(
     enforce_factor_fields(filtered, config)
     data_notes = build_data_notes(filtered, config)
     scored = score_candidates(filtered, config)
-    target = assign_equal_weight(scored, config)
+    ranking = prepare_strategy_ranking(
+        strategy="cb",
+        effective_date=data_date,
+        strategy_version="cb-rotation-v1",
+        config_fingerprint=stable_fingerprint(config),
+        input_fingerprint=bundle.input_fingerprint,
+        compute=lambda: assign_equal_weight(scored, config),
+    )
+    logging.info("榜单准备: %s", json.dumps(ranking.metadata.to_dict(), ensure_ascii=False))
+    target = ranking.frame.copy()
     current = load_current_positions(positions_path)
     rebalance = build_rebalance_plan(current, target)
     artifacts = save_outputs(target, rebalance, config, log_file, data_notes)
     logging.info("Saved report to %s", artifacts.report_md)
     observed_data_date = resolve_trade_date(scored)
-    if effective_date is not None and observed_data_date != effective_date:
+    if observed_data_date != data_date:
         raise RuntimeError(
-            f"策略输入数据日 {observed_data_date} 与任务冻结日期 {effective_date} 不一致"
+            f"策略输入数据日 {observed_data_date} 与任务冻结日期 {data_date} 不一致"
         )
-    data_date = effective_date or observed_data_date
     run_id = persist_rankings(data_date, target)
-    artifacts = replace(artifacts, run_id=run_id, data_date=data_date)
+    artifacts = replace(
+        artifacts,
+        run_id=run_id,
+        data_date=data_date,
+        preparation={
+            "market": bundle.metadata.to_dict(),
+            "ranking": ranking.metadata.to_dict(),
+        },
+    )
     logging.info("DB write OK: cb rankings run_id=%s data_date=%s", run_id, data_date)
     try:
         snapshot_raw_data(

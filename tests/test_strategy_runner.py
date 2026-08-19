@@ -101,6 +101,27 @@ class TestStrategyRunner(unittest.TestCase):
             started_at=datetime(2026, 6, 30, 9, 24, 59),
         )
 
+    def test_cb_adapter_forwards_the_same_market_data_task_contract(self):
+        from app import strategy_runner
+        from strategies.cb_rotation.run import DEFAULT_CONFIG, DEFAULT_POSITIONS
+
+        task = strategy_runner.StrategyRunTask(
+            started_at=datetime(2026, 6, 30, 15, 11),
+            effective_date=date(2026, 6, 30),
+        )
+        artifacts = SimpleNamespace(run_id=8)
+
+        with patch("strategies.cb_rotation.run.run", return_value=artifacts) as run_impl:
+            result = strategy_runner._run_strategy_impl("cb", task)
+
+        self.assertIs(result, artifacts)
+        run_impl.assert_called_once_with(
+            DEFAULT_CONFIG,
+            DEFAULT_POSITIONS,
+            effective_date=date(2026, 6, 30),
+            started_at=datetime(2026, 6, 30, 15, 11),
+        )
+
     def test_ensure_rankings_rejects_generated_date_mismatch(self):
         from app import strategy_runner
 

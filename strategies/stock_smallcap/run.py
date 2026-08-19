@@ -483,20 +483,9 @@ def save_outputs(ranked: pd.DataFrame, rebalance: pd.DataFrame, config: dict, lo
     return RunArtifacts(candidates_csv, rebalance_csv, report_md)
 
 
-def run(
-    config_path: Path,
-    positions_path: Path,
-    max_universe: int | None = None,
-    *,
-    effective_date: date | None = None,
-    started_at: datetime | None = None,
-) -> RunArtifacts:
-    enforce_snapshot_run_window(now=started_at)
-    log_file = setup_logging()
-    config = load_config(config_path)
-
-    data_date = effective_date or latest_completed_data_date(now=started_at)
-    requirements = DataRequirements(
+def market_data_requirements(config: dict) -> DataRequirements:
+    """Declare remote stock inputs independently from local filter and ranking parameters."""
+    return DataRequirements(
         strategy="stock",
         dataset_fields={
             "merged": (
@@ -516,6 +505,22 @@ def run(
             "exclude_st": config.get("filters", {}).get("exclude_st", True),
         }),
     )
+
+
+def run(
+    config_path: Path,
+    positions_path: Path,
+    max_universe: int | None = None,
+    *,
+    effective_date: date | None = None,
+    started_at: datetime | None = None,
+) -> RunArtifacts:
+    enforce_snapshot_run_window(now=started_at)
+    log_file = setup_logging()
+    config = load_config(config_path)
+
+    data_date = effective_date or latest_completed_data_date(now=started_at)
+    requirements = market_data_requirements(config)
 
     def _fetch_raw_inputs() -> dict[str, pd.DataFrame]:
         ak = require_akshare()
