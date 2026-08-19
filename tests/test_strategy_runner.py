@@ -122,6 +122,37 @@ class TestStrategyRunner(unittest.TestCase):
             started_at=datetime(2026, 6, 30, 15, 11),
         )
 
+    def test_generated_ranking_response_exposes_preparation_status(self):
+        from app import strategy_runner
+
+        run_id = db.create_complete_strategy_run(
+            "stock",
+            date(2026, 6, 29),
+            date(2026, 6, 30),
+            pd.DataFrame([{
+                "rank": 1,
+                "stock_code": "600051",
+                "stock_name": "宁波联合",
+                "total_mv_yuan": 1000000000,
+            }]),
+        )
+        preparation = {
+            "market": {
+                "effective_date": "2026-06-29",
+                "mode": "cache_hit",
+                "mode_label": "完整缓存命中",
+                "external_calls": 0,
+            }
+        }
+
+        with patch(
+            "app.strategy_runner._run_strategy_impl",
+            return_value=SimpleNamespace(run_id=run_id, preparation=preparation),
+        ):
+            result = strategy_runner.run_strategy("stock")
+
+        self.assertEqual(result.to_ranking_response()["preparation"], preparation)
+
     def test_ensure_rankings_rejects_generated_date_mismatch(self):
         from app import strategy_runner
 

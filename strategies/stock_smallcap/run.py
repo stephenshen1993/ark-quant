@@ -39,6 +39,7 @@ from datasource.market import (
 )
 from datasource.market_data_bundle import (
     DataRequirements,
+    preparation_mode_label,
     prepare_market_data_bundle,
     stable_fingerprint,
 )
@@ -312,7 +313,8 @@ def select_smallcap(
                     store_path=fundamental_store_path or DEFAULT_FUNDAMENTAL_STORE,
                 )
                 logging.info(
-                    "基本面准备: %s",
+                    "基本面准备[%s]: %s",
+                    preparation_mode_label(fundamentals.metadata.mode),
                     json.dumps(fundamentals.metadata.to_dict(), ensure_ascii=False),
                 )
                 values = fundamentals.frame.set_index("stock_code")["roe_pct"].to_dict()
@@ -585,7 +587,11 @@ def run(
         data_date,
         _fetch_raw_inputs,
     )
-    logging.info("数据准备: %s", json.dumps(bundle.metadata.to_dict(), ensure_ascii=False))
+    logging.info(
+        "数据准备[%s]: %s",
+        preparation_mode_label(bundle.metadata.mode),
+        json.dumps(bundle.metadata.to_dict(), ensure_ascii=False),
+    )
     merged = bundle.frames["merged"].copy()
     merged["stock_code"] = merged["stock_code"].astype(str).str.zfill(6)
     for col in ("total_mv_yuan", "amount_yuan", "pe_ttm", "roe_pct", "price",
@@ -618,7 +624,11 @@ def run(
         input_fingerprint=ranking_input_fingerprint,
         compute=_compute_ranking,
     )
-    logging.info("榜单准备: %s", json.dumps(ranking.metadata.to_dict(), ensure_ascii=False))
+    logging.info(
+        "榜单准备[%s]: %s",
+        preparation_mode_label(ranking.metadata.mode),
+        json.dumps(ranking.metadata.to_dict(), ensure_ascii=False),
+    )
     ranked = ranking.frame.copy()
     ranked["stock_code"] = ranked["stock_code"].astype(str).str.zfill(6)
     if "rank" not in ranked.columns or ranked["rank"].isna().any():

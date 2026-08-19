@@ -76,6 +76,12 @@ def prepare_market_history(
             required_symbols,
             required_dates,
         )
+        covered_dates = [
+            day
+            for day in required_dates
+            if all((symbol, day) not in missing_before for symbol in required_symbols)
+        ]
+        previous_watermark = covered_dates[-1].isoformat() if covered_dates else None
         missing_dates = sorted({day for _, day in missing_before})
         reused_records = len(required_symbols) * len(required_dates) - len(missing_before)
         refreshed_keys: set[tuple[str, date]] = set()
@@ -175,6 +181,7 @@ def prepare_market_history(
         metadata = PreparationMetadata(
             effective_date=effective_date.isoformat(),
             mode=mode,
+            last_coverage_watermark=previous_watermark,
             reused_records=reused_records,
             refreshed_records=len(refreshed_keys),
             external_calls=external_calls,

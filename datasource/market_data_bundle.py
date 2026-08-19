@@ -55,6 +55,7 @@ class DataRequirements:
 class PreparationMetadata:
     effective_date: str
     mode: str
+    last_coverage_watermark: str | None = None
     reused_records: int = 0
     refreshed_records: int = 0
     external_calls: int = 0
@@ -68,7 +69,17 @@ class PreparationMetadata:
     stage_timings_ms: Mapping[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        result = asdict(self)
+        result["mode_label"] = preparation_mode_label(self.mode)
+        return result
+
+
+def preparation_mode_label(mode: str) -> str:
+    return {
+        "cold_build": "首次冷构建",
+        "incremental": "增量补齐",
+        "cache_hit": "完整缓存命中",
+    }.get(mode, mode)
 
 
 @dataclass(frozen=True)
@@ -125,6 +136,7 @@ def _prepare_market_data_bundle_locked(
         metadata = PreparationMetadata(
             effective_date=effective_date.isoformat(),
             mode="cache_hit",
+            last_coverage_watermark=effective_date.isoformat(),
             reused_records=sum(len(frame) for frame in frames.values()),
             stage_timings_ms={"total": elapsed},
         )

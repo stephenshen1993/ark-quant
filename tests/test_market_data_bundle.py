@@ -71,6 +71,8 @@ class MarketDataBundlePersistenceTests(unittest.TestCase):
         self.assertEqual(first.metadata.mode, "cold_build")
         self.assertEqual(second.metadata.mode, "cache_hit")
         self.assertEqual(second.metadata.external_calls, 0)
+        self.assertEqual(second.metadata.to_dict()["mode_label"], "完整缓存命中")
+        self.assertIn("total", second.metadata.stage_timings_ms)
         self.assertEqual(second.manifest["status"], "complete")
         self.assertEqual(second.manifest["expected_data_date"], "2026-08-18")
         self.assertEqual(second.manifest["actual_data_dates"], ["2026-08-18"])

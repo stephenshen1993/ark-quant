@@ -26,6 +26,7 @@ from datasource.market import (
 from datasource.derived_store import prepare_strategy_ranking
 from datasource.market_data_bundle import (
     DataRequirements,
+    preparation_mode_label,
     prepare_market_data_bundle,
     stable_fingerprint,
 )
@@ -1299,7 +1300,11 @@ def run(
         data_date,
         _fetch_remote_inputs,
     )
-    logging.info("数据准备: %s", json.dumps(bundle.metadata.to_dict(), ensure_ascii=False))
+    logging.info(
+        "数据准备[%s]: %s",
+        preparation_mode_label(bundle.metadata.mode),
+        json.dumps(bundle.metadata.to_dict(), ensure_ascii=False),
+    )
     raw_cb = bundle.frames["cb_universe"].copy()
     cb = bundle.frames["enriched_universe"].copy()
     enforce_cb_filter_coverage(cb, config)
@@ -1377,7 +1382,11 @@ def run(
         input_fingerprint=bundle.input_fingerprint,
         compute=lambda: assign_equal_weight(scored, config),
     )
-    logging.info("榜单准备: %s", json.dumps(ranking.metadata.to_dict(), ensure_ascii=False))
+    logging.info(
+        "榜单准备[%s]: %s",
+        preparation_mode_label(ranking.metadata.mode),
+        json.dumps(ranking.metadata.to_dict(), ensure_ascii=False),
+    )
     target = ranking.frame.copy()
     current = load_current_positions(positions_path)
     rebalance = build_rebalance_plan(current, target)

@@ -98,6 +98,7 @@ def prepare_fundamentals(
         metadata = PreparationMetadata(
             effective_date=effective_date.isoformat(),
             mode=mode,
+            last_coverage_watermark=report_period if reused else None,
             reused_records=reused,
             refreshed_records=refreshed,
             external_calls=external_calls,

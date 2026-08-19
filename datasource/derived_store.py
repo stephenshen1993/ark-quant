@@ -137,6 +137,7 @@ def prepare_strategy_ranking(
                 metadata = PreparationMetadata(
                     effective_date=effective_date.isoformat(),
                     mode="cache_hit",
+                    last_coverage_watermark=effective_date.isoformat(),
                     reused_records=len(frame),
                     stage_timings_ms={"ranking": elapsed, "total": elapsed},
                 )

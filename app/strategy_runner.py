@@ -26,6 +26,7 @@ class StrategyRunResult:
     item_count: int
     generated: bool
     items: list[dict] = field(repr=False, default_factory=list)
+    preparation: dict | None = field(repr=False, default=None)
 
     def to_ranking_response(self) -> dict:
         response = {
@@ -35,6 +36,8 @@ class StrategyRunResult:
         }
         if self.run_id is not None:
             response["run_id"] = self.run_id
+        if self.preparation is not None:
+            response["preparation"] = self.preparation
         return response
 
 
@@ -131,7 +134,13 @@ def run_strategy(
         items = db.get_rankings_by_run_id(strategy, run_id)
         if not items:
             raise _persistence_error(f"策略运行 {run_id} 没有有效榜单")
-        return _result_from_run(strategy, strategy_run, items, generated=True)
+        return _result_from_run(
+            strategy,
+            strategy_run,
+            items,
+            generated=True,
+            preparation=getattr(artifacts, "preparation", None),
+        )
     except StrategyRunnerError:
         raise
     except (Exception, SystemExit) as exc:
@@ -174,6 +183,7 @@ def _result_from_run(
     items: list[dict],
     *,
     generated: bool,
+    preparation: dict | None = None,
 ) -> StrategyRunResult:
     return StrategyRunResult(
         strategy=strategy,
@@ -183,6 +193,7 @@ def _result_from_run(
         item_count=len(items),
         generated=generated,
         items=items,
+        preparation=preparation,
     )
 
 
