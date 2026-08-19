@@ -26,6 +26,12 @@ try:
 except ImportError as exc:
     raise SystemExit("缺少基础依赖。请先运行: python3 -m pip install -r requirements.txt") from exc
 
+from datasource.fundamental_store import (
+    DEFAULT_FUNDAMENTAL_STORE,
+    FundamentalRequirements,
+    expected_report_period,
+    prepare_fundamentals,
+)
 from datasource.market import (
     fetch_sina_snapshot,
     fetch_tencent_snapshot,
@@ -246,7 +252,14 @@ def fetch_deducted_roe_ttm(ak, code: str) -> float | None:
     return None
 
 
-def select_smallcap(ak, df: pd.DataFrame, config: dict) -> pd.DataFrame:
+def select_smallcap(
+    ak,
+    df: pd.DataFrame,
+    config: dict,
+    *,
+    effective_date: date | None = None,
+    fundamental_store_path: Path | None = None,
+) -> pd.DataFrame:
     """Walk smallest-cap first, applying the 扣非ROE filter, until the candidate pool is filled."""
     sel = config["selection"]
     min_roe = config["filters"]["min_roe_pct"]
@@ -262,7 +275,47 @@ def select_smallcap(ak, df: pd.DataFrame, config: dict) -> pd.DataFrame:
     with ThreadPoolExecutor(max_workers=min(max_workers, len(candidates) or 1)) as executor:
         for start in range(0, len(candidates), max_workers):
             batch = candidates[start : start + max_workers]
-            results = list(executor.map(_fetch_one, batch))
+            if effective_date is None:
+                results = list(executor.map(_fetch_one, batch))
+            else:
+                report_period = expected_report_period(effective_date)
+                requirements = FundamentalRequirements(
+                    symbol_field="stock_code",
+                    metrics=("roe_pct",),
+                    caliber="deducted-profit-ttm/annual-net-assets",
+                    source="ths-financial-abstract",
+                    source_version="v1",
+                )
+
+                def _fetch_missing(symbols, period, _metrics) -> pd.DataFrame:
+                    values = list(
+                        executor.map(
+                            lambda code: fetch_deducted_roe_ttm(ak, code),
+                            symbols,
+                        )
+                    )
+                    return pd.DataFrame(
+                        {
+                            "stock_code": list(symbols),
+                            "report_period": period,
+                            "roe_pct": values,
+                        }
+                    )
+
+                fundamentals = prepare_fundamentals(
+                    requirements,
+                    [row["stock_code"] for row in batch],
+                    report_period,
+                    _fetch_missing,
+                    effective_date=effective_date,
+                    store_path=fundamental_store_path or DEFAULT_FUNDAMENTAL_STORE,
+                )
+                logging.info(
+                    "基本面准备: %s",
+                    json.dumps(fundamentals.metadata.to_dict(), ensure_ascii=False),
+                )
+                values = fundamentals.frame.set_index("stock_code")["roe_pct"].to_dict()
+                results = [(row, values.get(row["stock_code"])) for row in batch]
             previous_fetched = fetched
             fetched += len(batch)
             for row, roe in results:
@@ -527,7 +580,7 @@ def run(
                 merged[col] = pd.to_numeric(merged[col], errors="coerce")
 
         filtered = apply_filters(merged, config)
-        ranked = select_smallcap(ak, filtered, config)
+        ranked = select_smallcap(ak, filtered, config, effective_date=data_date)
         if ranked.empty:
             raise RuntimeError("没有股票通过全部过滤，无法生成榜单。请检查数据源或放宽配置。")
         return {"merged": merged, "filtered": filtered, "ranked": ranked}

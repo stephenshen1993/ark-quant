@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
 from datetime import date
+from pathlib import Path
 from threading import Barrier, BrokenBarrierError
 from unittest.mock import patch
 
@@ -80,6 +82,50 @@ class StockSmallCapTests(unittest.TestCase):
 
         self.assertEqual(result["stock_code"].tolist(), ["600001", "600002"])
         self.assertEqual(overlapped, [True, True])
+
+    def test_roe_screen_reuses_same_report_period_across_effective_dates(self) -> None:
+        candidates = pd.DataFrame({
+            "stock_code": ["600001", "600002"],
+            "total_mv_yuan": [1.0, 2.0],
+        })
+        config = {
+            "filters": {"min_roe_pct": -1.0},
+            "selection": {
+                "candidate_pool": 2,
+                "max_roe_fetch": 2,
+                "roe_fetch_workers": 2,
+            },
+        }
+        calls = 0
+
+        def fetch_roe(_ak, _code: str) -> float:
+            nonlocal calls
+            calls += 1
+            return 5.0
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch.object(
+            run,
+            "fetch_deducted_roe_ttm",
+            side_effect=fetch_roe,
+        ):
+            store_path = Path(temp_dir) / "fundamentals.sqlite3"
+            first = run.select_smallcap(
+                object(),
+                candidates,
+                config,
+                effective_date=date(2026, 8, 18),
+                fundamental_store_path=store_path,
+            )
+            second = run.select_smallcap(
+                object(),
+                candidates,
+                config,
+                effective_date=date(2026, 8, 25),
+                fundamental_store_path=store_path,
+            )
+
+        self.assertEqual(calls, 2)
+        self.assertEqual(first["stock_code"].tolist(), second["stock_code"].tolist())
 
     def test_persist_rankings_propagates_database_failure(self) -> None:
         with patch("datasource.db.init_db"), patch(

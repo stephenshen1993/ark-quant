@@ -59,6 +59,9 @@ class PreparationMetadata:
     fallback_symbols: int = 0
     missing_trading_days: tuple[str, ...] = ()
     invalidation_reasons: tuple[str, ...] = ()
+    reused_fundamentals: int = 0
+    refreshed_fundamentals: int = 0
+    missing_fundamentals: int = 0
     stage_timings_ms: Mapping[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
