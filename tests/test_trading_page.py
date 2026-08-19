@@ -157,6 +157,31 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("if (rightValue === null) return -1", body)
         self.assertIn("localeCompare", body)
 
+    def test_account_holdings_split_code_and_name_and_keep_one_add_action_at_the_end(self):
+        self.assertIn(
+            "<span>代码</span><span>名称</span><span>数量</span><span>价格</span><span>市值</span>",
+            self.html,
+        )
+        self.assertIn('class="account-current-security-code"', self.html)
+        self.assertIn('class="account-current-security-name"', self.html)
+        self.assertIn('class="account-current-add-row"', self.html)
+        self.assertEqual(self.html.count("＋ 添加证券"), 1)
+        self.assertNotIn("继续添加证券", self.html)
+        heading_start = self.html.index('<div class="account-current-section-heading">')
+        table_start = self.html.index('<div x-ref="holdingsTable"', heading_start)
+        self.assertNotIn("添加证券", self.html[heading_start:table_start])
+        self.assertIn("this.draft.positions.push({", self.html)
+        self.assertIn("this.$refs.holdingsAddMore?.scrollIntoView({ block: 'nearest' })", self.html)
+        self.assertIn("focus({ preventScroll: true })", self.html)
+
+    def test_account_review_changes_identify_securities_by_name_first(self):
+        self.assertIn("securityDisplayLabel(code)", self.html)
+        self.assertIn("return name ? `${name}（${normalizedCode}）` : normalizedCode", self.html)
+        self.assertIn(
+            "changes.push(`${this.securityDisplayLabel(code)}：${oldValue} → ${newValue}`)",
+            self.html,
+        )
+
     def test_account_holding_quantity_uses_the_security_trading_unit(self):
         self.assertIn(':step="holdingQuantityStep()"', self.html)
         self.assertIn("holdingQuantityStep()", self.html)
@@ -206,6 +231,18 @@ class TestTradingPageInteraction(unittest.TestCase):
         holdings_end = self.html.index("this.closeClearDialog(false)", holdings_branch)
         self.assertIn("this.draft.positions = []", self.html[holdings_branch:holdings_end])
         self.assertNotIn("this.draft.available_cash = 0", self.html[holdings_branch:holdings_end])
+
+    def test_account_clear_action_lives_with_save_actions_without_forced_editor_space(self):
+        self.assertNotIn("min-height: 560px", self.html)
+        editor_start = self.html.index('class="account-current-editor"')
+        review_start = self.html.index('class="account-current-review"', editor_start)
+        self.assertNotIn("清空当前账户数据", self.html[editor_start:review_start])
+        review_end = self.html.index("</aside>", review_start)
+        review_body = self.html[review_start:review_end]
+        self.assertIn('class="account-current-account-actions"', review_body)
+        self.assertIn("清空当前账户数据…", review_body)
+        self.assertIn("余额归零，并把当前持仓记录为空仓。", review_body)
+        self.assertLess(review_body.index("account-current-primary"), review_body.index("account-current-account-actions"))
 
     def test_global_status_uses_lightweight_shared_status_without_full_plan_fetch(self):
         self.assertIn("Alpine.store('workStatus', createWorkStatusStore())", self.html)

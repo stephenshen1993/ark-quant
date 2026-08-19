@@ -1193,7 +1193,6 @@
     display: grid;
     grid-template-columns: var(--account-rail) minmax(0, 1fr) var(--account-review);
     align-items: start;
-    min-height: 560px;
     border: 1px solid var(--ark-line);
     border-radius: 14px;
     background: var(--ark-panel);
@@ -1478,10 +1477,10 @@
     font-size: 11px;
     line-height: 1.55;
   }
-  .account-current-section-heading button {
+  .account-current-add-more {
     flex: none;
     min-height: 36px;
-    padding: 7px 0;
+    padding: 7px 2px 7px 12px;
     color: var(--ark-accent-deep);
     font-size: 11px;
     font-weight: 650;
@@ -1490,7 +1489,7 @@
   .account-current-holding-head,
   .account-current-holding-row {
     display: grid;
-    grid-template-columns: minmax(150px, 1.55fr) minmax(84px, 0.68fr) minmax(76px, 0.6fr) minmax(94px, 0.75fr) 44px;
+    grid-template-columns: 76px minmax(104px, 1fr) minmax(84px, 0.68fr) minmax(76px, 0.6fr) minmax(94px, 0.75fr) 44px;
     gap: 10px;
     align-items: center;
   }
@@ -1500,15 +1499,16 @@
     font-size: 9px;
     font-weight: 650;
   }
-  .account-current-holding-head span:nth-child(n + 2) { text-align: right; }
+  .account-current-holding-head span:nth-child(n + 3) { text-align: right; }
   .account-current-holding-row {
     min-height: 58px;
     border-top: 1px solid var(--ark-faint);
   }
-  .account-current-security { min-width: 0; }
-  .account-current-security input {
+  .account-current-security-code,
+  .account-current-security-name { min-width: 0; }
+  .account-current-security-code input {
     display: block;
-    width: 86px;
+    width: 72px;
     border: 0;
     border-bottom: 1px solid transparent;
     background: transparent;
@@ -1519,18 +1519,24 @@
     outline: none;
     min-height: 36px;
   }
-  .account-current-security input:not([readonly]) { border-bottom-color: var(--ark-line); }
-  .account-current-security span {
+  .account-current-security-code input:not([readonly]) { border-bottom-color: var(--ark-line); }
+  .account-current-security-name {
     display: block;
-    margin-top: 2px;
     overflow: hidden;
-    color: var(--ark-muted);
-    font-size: 10px;
+    color: var(--ark-text);
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1.45;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .account-current-security span.is-warning,
-  .account-current-security span.is-error { color: var(--ark-warn); }
+  .account-current-security-name.is-placeholder {
+    color: var(--ark-muted);
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .account-current-security-name.is-warning,
+  .account-current-security-name.is-error { color: var(--ark-warn); }
   .account-current-holding-row label { text-align: right; }
   .account-current-holding-row label > span { display: none; }
   .account-current-holding-row label input {
@@ -1559,18 +1565,42 @@
   .account-current-remove:hover { color: var(--ark-problem); }
   .account-current-empty-holdings {
     padding: 22px 4px;
-    border-bottom: 1px solid var(--ark-faint);
     color: var(--ark-muted);
     font-size: 11px;
   }
+  .account-current-add-row {
+    display: flex;
+    justify-content: flex-end;
+    min-height: 50px;
+    padding-top: 7px;
+    border-top: 1px solid var(--ark-faint);
+  }
   .account-current-clear-link {
-    margin-top: 30px;
+    justify-self: start;
+    min-height: 36px;
     color: var(--ark-muted);
     font-size: 11px;
     text-decoration: underline;
     text-underline-offset: 3px;
   }
   .account-current-clear-link:hover { color: var(--ark-problem); }
+  .account-current-account-actions {
+    display: grid;
+    gap: 5px;
+    margin-top: 20px;
+    padding-top: 17px;
+    border-top: 1px solid var(--ark-line);
+  }
+  .account-current-account-actions > span {
+    color: var(--ark-muted);
+    font-size: 10px;
+    font-weight: 650;
+  }
+  .account-current-account-actions > p {
+    color: var(--ark-soft);
+    font-size: 9px;
+    line-height: 1.55;
+  }
   .account-current-review {
     align-self: stretch;
     min-width: 0;
@@ -1721,17 +1751,18 @@
     .account-current-timestamp { margin-top: 14px; text-align: left; }
     .account-current-cash-row { grid-template-columns: 1fr; }
     .account-current-field input,
-    .account-current-security input,
+    .account-current-security-code input,
     .account-current-holding-row label input { font-size: 16px; }
     .account-current-derived-total { padding: 12px 0 0; border-top: 1px solid var(--ark-faint); border-left: 0; }
     .account-current-holding-head { display: none; }
     .account-current-holding-row {
       grid-template-columns: minmax(0, 1fr) 90px 36px;
-      grid-template-areas: "security quantity remove" "security derived-value remove";
+      grid-template-areas: "code quantity remove" "name derived-value remove";
       gap: 5px 10px;
       padding: 12px 0;
     }
-    .account-current-security { grid-area: security; }
+    .account-current-security-code { grid-area: code; }
+    .account-current-security-name { grid-area: name; }
     .account-current-holding-row label { grid-area: quantity; min-height: 44px; }
     .account-current-holding-row label > span { display: block; margin-bottom: 2px; color: var(--ark-soft); font-size: 8px; }
     .account-current-derived:nth-of-type(1) { display: none; }
@@ -2726,15 +2757,14 @@
                   <h3>当前持仓</h3>
                   <p>默认保留现有持仓；列表按持仓市值从高到低排列，行情暂缺的证券排在最后。</p>
                 </div>
-                <button type="button" @click="addPosition()">＋ 添加证券</button>
               </div>
-              <div class="account-current-holding-table" role="table" aria-label="持仓编辑表">
+              <div x-ref="holdingsTable" class="account-current-holding-table" role="table" aria-label="持仓编辑表">
                 <div class="account-current-holding-head" role="row">
-                  <span>代码 / 名称</span><span>数量</span><span>价格</span><span>市值</span><span></span>
+                  <span>代码</span><span>名称</span><span>数量</span><span>价格</span><span>市值</span><span></span>
                 </div>
                 <template x-for="row in draft.positions" :key="row._key">
-                  <div class="account-current-holding-row" role="row">
-                    <div class="account-current-security">
+                  <div class="account-current-holding-row" role="row" :data-position-key="row._key">
+                    <div class="account-current-security-code">
                       <input
                         type="text"
                         inputmode="numeric"
@@ -2745,8 +2775,11 @@
                         @change="lookupSecurity(row)"
                         aria-label="证券代码"
                         placeholder="6 位代码">
-                      <span :class="securityStatusClass(row)" x-text="securityHelperText(row)"></span>
                     </div>
+                    <span
+                      class="account-current-security-name"
+                      :class="[securityStatusClass(row), { 'is-placeholder': !row.name }]"
+                      x-text="securityHelperText(row)"></span>
                     <label><span>数量</span><input type="number" min="0" :step="holdingQuantityStep()" x-model="row.quantity" @input="markEdited()" aria-label="持仓数量"></label>
                     <span class="account-current-derived" x-text="fmtPrice(row.price)"></span>
                     <span class="account-current-derived" x-text="fmtMoney(rowMarketValue(row))"></span>
@@ -2756,13 +2789,13 @@
                 <div x-show="draft.positions?.length === 0" class="account-current-empty-holdings">
                   当前没有持仓。保存后会明确记录为“已确认空仓”，而不是“缺少数据”。
                 </div>
+                <div class="account-current-add-row">
+                  <button x-ref="holdingsAddMore" type="button" class="account-current-add-more" @click="addPosition()">＋ 添加证券</button>
+                </div>
               </div>
             </section>
           </div>
 
-          <button x-show="selected?.record_state === 'recorded'" type="button" class="account-current-clear-link" @click="openClearDialog('account')">
-            清空这个账户的数据…
-          </button>
         </section>
 
         <aside x-show="selected" class="account-current-review" aria-label="保存检查">
@@ -2783,6 +2816,13 @@
           </button>
           <p x-show="!isValid()" class="account-current-validation" x-text="validationMessage()"></p>
           <p class="account-current-review-footnote">保存后留在当前账户，方便核对结果或继续处理同一账户。</p>
+          <section x-show="selected?.record_state === 'recorded'" class="account-current-account-actions" aria-label="账户操作">
+            <span>账户操作</span>
+            <p x-text="selected?.kind === 'securities' ? '余额归零，并把当前持仓记录为空仓。' : '把当前账户余额归零。'"></p>
+            <button type="button" class="account-current-clear-link" @click="openClearDialog('account')">
+              清空当前账户数据…
+            </button>
+          </section>
         </aside>
       </section>
 
@@ -4346,13 +4386,15 @@
         this.clearConfirmed = false
       },
       addPosition() {
+        const positionKey = ++this._uid
         this.draft.positions.push({
-          code: '', quantity: '', name: '', price: null, lookupStatus: '', lookupError: '', _key: ++this._uid, isNew: true,
+          code: '', quantity: '', name: '', price: null, lookupStatus: '', lookupError: '', _key: positionKey, isNew: true,
         })
         this.markEdited()
         this.$nextTick(() => {
-          const inputs = document.querySelectorAll('.account-current-security input:not([readonly])')
-          inputs[inputs.length - 1]?.focus()
+          this.$refs.holdingsAddMore?.scrollIntoView({ block: 'nearest' })
+          const row = this.$refs.holdingsTable?.querySelector(`[data-position-key="${positionKey}"]`)
+          row?.querySelector('.account-current-security-code input')?.focus({ preventScroll: true })
         })
       },
       handleSecurityCodeInput(row) {
@@ -4398,6 +4440,13 @@
       },
       securityStatusClass(row) {
         return ['warning', 'error'].includes(row.lookupStatus) ? `is-${row.lookupStatus}` : ''
+      },
+      securityDisplayLabel(code) {
+        const normalizedCode = String(code || '').trim().padStart(6, '0')
+        const draftPosition = (this.draft.positions || []).find(item => item.code === normalizedCode)
+        const valuationItem = (this.selected?.valuation?.items || []).find(item => item.code === normalizedCode)
+        const name = String(draftPosition?.name || valuationItem?.name || '').trim()
+        return name ? `${name}（${normalizedCode}）` : normalizedCode
       },
       numberOrNull(value) {
         if (value === '' || value === null || value === undefined) return null
@@ -4649,7 +4698,9 @@
           codes.forEach(code => {
             const oldValue = oldPositions[code] || 0
             const newValue = newPositions[code] || 0
-            if (oldValue !== newValue) changes.push(`${code}：${oldValue} → ${newValue}`)
+            if (oldValue !== newValue) {
+              changes.push(`${this.securityDisplayLabel(code)}：${oldValue} → ${newValue}`)
+            }
           })
         }
         if (!changes.length) return ['没有数值变化；只更新本账户的确认时间。']

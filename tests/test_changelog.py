@@ -44,7 +44,7 @@ class TestChangelogData(unittest.TestCase):
             moments.append(moment)
 
         self.assertEqual(moments, sorted(moments, reverse=True))
-        self.assertEqual(self.entries[0]["date"], "2026-08-10")
+        self.assertEqual(self.entries[0]["date"], "2026-08-18")
         self.assertLessEqual(self.entries[-1]["date"], "2026-06-29")
 
     def test_changelog_does_not_leak_engineering_tracker_metadata(self):
