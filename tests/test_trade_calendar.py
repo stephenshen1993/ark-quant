@@ -2,6 +2,7 @@ import unittest
 from datetime import date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from datasource.trade_calendar import load_exchange_trading_days, resolve_effective_trading_date
 
@@ -69,6 +70,18 @@ class EffectiveTradingDateTests(unittest.TestCase):
             )
 
             self.assertEqual(days, [date(2026, 2, 13)])
+
+    def test_monday_preopen_loads_calendar_for_the_completed_weekend_bound(self) -> None:
+        with patch(
+            "datasource.trade_calendar.load_exchange_trading_days",
+            return_value=[date(2026, 2, 13)],
+        ) as load_days:
+            resolved = resolve_effective_trading_date(
+                now=datetime(2026, 2, 16, 8, 30),
+            )
+
+        self.assertEqual(resolved, date(2026, 2, 13))
+        load_days.assert_called_once_with(as_of=date(2026, 2, 15))
 
 
 if __name__ == "__main__":

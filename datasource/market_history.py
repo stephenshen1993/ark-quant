@@ -30,6 +30,12 @@ class MarketHistoryResult:
 
 
 @dataclass(frozen=True)
+class MarketFetchResult:
+    frame: pd.DataFrame
+    external_calls: int
+
+
+@dataclass(frozen=True)
 class CorporateActionInvalidation:
     changed_symbols: tuple[str, ...]
     changed_dates: tuple[str, ...]
@@ -48,9 +54,12 @@ def prepare_market_history(
     effective_date: date,
     symbols: Sequence[str],
     trading_days: Iterable[date],
-    batch_fetcher: Callable[[Sequence[date]], pd.DataFrame] | None,
+    batch_fetcher: Callable[[Sequence[date]], pd.DataFrame | MarketFetchResult] | None,
     *,
-    fallback_fetcher: Callable[[str, date, date], pd.DataFrame] | None = None,
+    fallback_fetcher: Callable[
+        [str, date, date],
+        pd.DataFrame | MarketFetchResult,
+    ] | None = None,
     store_path: Path,
     fallback_workers: int = 4,
 ) -> MarketHistoryResult:
@@ -91,9 +100,8 @@ def prepare_market_history(
 
         if missing_dates and batch_fetcher is not None:
             batch_requests = 1
-            external_calls += 1
             try:
-                batch = batch_fetcher(missing_dates)
+                fetched_batch = batch_fetcher(missing_dates)
             except Exception as exc:
                 raise _source_error(
                     requirements,
@@ -102,6 +110,8 @@ def prepare_market_history(
                     missing_before,
                     exc,
                 ) from exc
+            batch, physical_calls = _unwrap_fetch_result(fetched_batch)
+            external_calls += physical_calls
             batch_rows = _normalize_rows(
                 batch,
                 requirements,
@@ -123,9 +133,10 @@ def prepare_market_history(
 
         if missing_by_symbol and fallback_fetcher is not None:
             fallback_symbols = len(missing_by_symbol)
-            external_calls += fallback_symbols
 
-            def _fetch_symbol(item: tuple[str, list[date]]) -> pd.DataFrame:
+            def _fetch_symbol(
+                item: tuple[str, list[date]],
+            ) -> pd.DataFrame | MarketFetchResult:
                 symbol, days = item
                 return fallback_fetcher(symbol, min(days), max(days))
 
@@ -134,7 +145,12 @@ def prepare_market_history(
                 max_workers=max(1, min(fallback_workers, len(items)))
             ) as executor:
                 try:
-                    for (symbol, days), frame in zip(items, executor.map(_fetch_symbol, items)):
+                    for (symbol, days), fetched_symbol in zip(
+                        items,
+                        executor.map(_fetch_symbol, items),
+                    ):
+                        frame, physical_calls = _unwrap_fetch_result(fetched_symbol)
+                        external_calls += physical_calls
                         normalized = _normalize_rows(
                             frame,
                             requirements,
@@ -476,3 +492,13 @@ def _json_value(value: object) -> object:
     if hasattr(value, "item"):
         return value.item()
     return value
+
+
+def _unwrap_fetch_result(
+    result: pd.DataFrame | MarketFetchResult,
+) -> tuple[pd.DataFrame, int]:
+    if isinstance(result, MarketFetchResult):
+        if result.external_calls < 0:
+            raise RuntimeError("外部调用计数不能为负数")
+        return result.frame, result.external_calls
+    return result, 1

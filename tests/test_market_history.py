@@ -6,7 +6,11 @@ from pathlib import Path
 import pandas as pd
 
 from datasource.market_data_bundle import DataRequirements
-from datasource.market_history import DataPreparationError, prepare_market_history
+from datasource.market_history import (
+    DataPreparationError,
+    MarketFetchResult,
+    prepare_market_history,
+)
 
 
 class IncrementalMarketHistoryTests(unittest.TestCase):
@@ -85,14 +89,20 @@ class IncrementalMarketHistoryTests(unittest.TestCase):
     def test_batch_gap_uses_fallback_only_for_missing_symbol(self) -> None:
         fallback_calls: list[tuple[str, date, date]] = []
 
-        def batch_fetch(days) -> pd.DataFrame:
+        def batch_fetch(days) -> MarketFetchResult:
             requested = list(days)
-            return self._rows(requested, symbols=("600001",))
+            return MarketFetchResult(
+                self._rows(requested, symbols=("600001",)),
+                external_calls=2,
+            )
 
-        def fallback_fetch(symbol: str, start: date, end: date) -> pd.DataFrame:
+        def fallback_fetch(symbol: str, start: date, end: date) -> MarketFetchResult:
             fallback_calls.append((symbol, start, end))
             days = [day for day in self.calendar if start <= day <= end]
-            return self._rows(days, symbols=(symbol,))
+            return MarketFetchResult(
+                self._rows(days, symbols=(symbol,)),
+                external_calls=3,
+            )
 
         result = prepare_market_history(
             self.requirements,
@@ -112,6 +122,7 @@ class IncrementalMarketHistoryTests(unittest.TestCase):
             ],
         )
         self.assertEqual(result.metadata.fallback_symbols, 1)
+        self.assertEqual(result.metadata.external_calls, 5)
         self.assertEqual(len(result.frame), 6)
 
     def test_duplicate_batch_rows_are_idempotent_and_weekends_are_never_requested(self) -> None:

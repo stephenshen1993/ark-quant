@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from datetime import date, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pandas as pd
@@ -28,6 +29,48 @@ class _FakeAkshare:
 
 
 class ConvertibleBondHistoryAdapterTests(unittest.TestCase):
+    def test_tushare_batch_source_uses_two_physical_calls_per_missing_date(self) -> None:
+        requested: list[tuple[str, str]] = []
+
+        class FakePro:
+            def daily(self, *, trade_date):
+                requested.append(("daily", trade_date))
+                return pd.DataFrame([{
+                    "ts_code": "600001.SH",
+                    "trade_date": trade_date,
+                    "close": 10.0,
+                    "vol": 1000.0,
+                    "amount": 10_000.0,
+                }])
+
+            def adj_factor(self, *, trade_date):
+                requested.append(("adj_factor", trade_date))
+                return pd.DataFrame([{
+                    "ts_code": "600001.SH",
+                    "trade_date": trade_date,
+                    "adj_factor": 1.2,
+                }])
+
+        fake_module = SimpleNamespace(pro_api=lambda _token: FakePro())
+        missing_dates = [date(2026, 8, 20), date(2026, 8, 21)]
+        with (
+            patch.dict("os.environ", {"TUSHARE_TOKEN": "test-token"}),
+            patch.object(cb_run.importlib, "import_module", return_value=fake_module),
+        ):
+            result = cb_run.fetch_stock_history_batch(["600001"], missing_dates)
+
+        self.assertEqual(result.external_calls, 4)
+        self.assertEqual(len(result.frame), 2)
+        self.assertEqual(
+            requested,
+            [
+                ("daily", "20260820"),
+                ("adj_factor", "20260820"),
+                ("daily", "20260821"),
+                ("adj_factor", "20260821"),
+            ],
+        )
+
     def test_same_day_reuses_cache_and_next_day_fetches_only_the_gap(self) -> None:
         effective_date = date(2026, 8, 21)
         next_date = effective_date + timedelta(days=1)
@@ -98,6 +141,9 @@ class ConvertibleBondHistoryAdapterTests(unittest.TestCase):
             ],
         )
         self.assertEqual(first.preparation["stock_history"]["mode"], "cold_build")
+        self.assertEqual(first.preparation["stock_history"]["batch_requests"], 1)
+        self.assertEqual(first.preparation["stock_history"]["fallback_symbols"], 1)
+        self.assertEqual(first.preparation["stock_history"]["external_calls"], 2)
         self.assertEqual(first.preparation["momentum"]["mode"], "cold_build")
         self.assertEqual(second.preparation["bond_history"]["mode"], "cache_hit")
         self.assertEqual(second.preparation["stock_history"]["mode"], "cache_hit")
@@ -107,6 +153,7 @@ class ConvertibleBondHistoryAdapterTests(unittest.TestCase):
         self.assertEqual(second.stock_factors["stock_code"].tolist(), ["600001"])
         self.assertEqual(third.preparation["stock_history"]["mode"], "incremental")
         self.assertEqual(third.preparation["stock_history"]["refreshed_records"], 1)
+        self.assertEqual(third.preparation["stock_history"]["external_calls"], 2)
 
 
 if __name__ == "__main__":

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import logging
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
@@ -34,7 +36,11 @@ from datasource.market_data_bundle import (
     prepare_market_data_bundle,
     stable_fingerprint,
 )
-from datasource.market_history import prepare_market_history, reconcile_corporate_actions
+from datasource.market_history import (
+    MarketFetchResult,
+    prepare_market_history,
+    reconcile_corporate_actions,
+)
 from datasource.trade_calendar import is_market_hours, load_exchange_trading_days
 
 
@@ -1319,11 +1325,14 @@ def _fetch_stock_history_with_adjustment(
     stock_code: str,
     start: date,
     end: date,
-) -> pd.DataFrame:
+) -> MarketFetchResult:
     symbol = stock_symbol_with_exchange(stock_code)
+    external_calls = 0
 
     def _fetch(adjust: str) -> pd.DataFrame:
+        nonlocal external_calls
         try:
+            external_calls += 1
             return ak.stock_zh_a_daily(
                 symbol=symbol,
                 start_date=start.strftime("%Y%m%d"),
@@ -1331,6 +1340,7 @@ def _fetch_stock_history_with_adjustment(
                 adjust=adjust,
             )
         except Exception:
+            external_calls += 1
             return ak.stock_zh_a_hist_tx(
                 symbol=symbol,
                 start_date=start.strftime("%Y%m%d"),
@@ -1352,7 +1362,79 @@ def _fetch_stock_history_with_adjustment(
     )
     result = raw.merge(adjusted, on=["stock_code", "trade_date"], how="left")
     result["adjustment_factor"] = result["adjusted_close"] / result["raw_close"]
-    return result.drop(columns=["adjusted_close"])
+    return MarketFetchResult(
+        frame=result.drop(columns=["adjusted_close"]),
+        external_calls=external_calls,
+    )
+
+
+def fetch_stock_history_batch(
+    stock_codes: Iterable[str],
+    missing_dates: Iterable[date],
+) -> MarketFetchResult:
+    """Fetch full-market daily rows by date through Tushare when configured."""
+    token = os.getenv("TUSHARE_TOKEN", "").strip()
+    if not token:
+        return MarketFetchResult(pd.DataFrame(), external_calls=0)
+    try:
+        tushare = importlib.import_module("tushare")
+        pro = tushare.pro_api(token)
+    except Exception as exc:
+        logging.warning("Tushare 全市场批量源不可用，转为逐证券回退: %s", exc)
+        return MarketFetchResult(pd.DataFrame(), external_calls=0)
+
+    expected_codes = {normalize_stock_code(value) for value in stock_codes}
+    expected_codes.discard("")
+    frames: list[pd.DataFrame] = []
+    external_calls = 0
+    for trading_day in sorted(set(missing_dates)):
+        stamp = trading_day.strftime("%Y%m%d")
+        try:
+            external_calls += 1
+            daily = pro.daily(trade_date=stamp)
+            external_calls += 1
+            factors = pro.adj_factor(trade_date=stamp)
+        except Exception as exc:
+            logging.warning("Tushare 批量历史行情 %s 失败，保留逐证券回退: %s", stamp, exc)
+            continue
+        if daily is None or daily.empty or factors is None or factors.empty:
+            continue
+        daily_required = {"ts_code", "trade_date", "close", "vol", "amount"}
+        factor_required = {"ts_code", "trade_date", "adj_factor"}
+        if not daily_required.issubset(daily.columns) or not factor_required.issubset(
+            factors.columns
+        ):
+            logging.warning("Tushare 批量历史行情 %s 字段不完整，保留逐证券回退", stamp)
+            continue
+        daily = daily.copy()
+        factors = factors.copy()
+        daily["stock_code"] = daily["ts_code"].astype(str).str[:6]
+        factors["stock_code"] = factors["ts_code"].astype(str).str[:6]
+        merged = daily.merge(
+            factors[["stock_code", "trade_date", "adj_factor"]],
+            on=["stock_code", "trade_date"],
+            how="left",
+        )
+        merged = merged[merged["stock_code"].isin(expected_codes)].copy()
+        if merged.empty:
+            continue
+        frames.append(pd.DataFrame({
+            "stock_code": merged["stock_code"],
+            "trade_date": pd.to_datetime(
+                merged["trade_date"],
+                format="%Y%m%d",
+                errors="coerce",
+            ).dt.date,
+            "raw_close": pd.to_numeric(merged["close"], errors="coerce"),
+            "volume": pd.to_numeric(merged["vol"], errors="coerce"),
+            "amount": pd.to_numeric(merged["amount"], errors="coerce") * 1000,
+            "adjustment_factor": pd.to_numeric(
+                merged["adj_factor"],
+                errors="coerce",
+            ),
+        }))
+    frame = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    return MarketFetchResult(frame=frame, external_calls=external_calls)
 
 
 def _compute_history_factor(
@@ -1440,45 +1522,30 @@ def prepare_cb_history_inputs(
     stock_requirements = _cb_history_requirements(
         symbol_field="stock_code",
         lookback=21,
-        source="akshare-stock-daily",
+        source="tushare+akshare-stock-daily",
     )
     action_snapshots: list[pd.DataFrame] = []
 
-    def _fetch_stock_one(symbol: str, start: date, end: date) -> pd.DataFrame:
-        frame = _fetch_stock_history_with_adjustment(
+    def _record_action_snapshot(result: MarketFetchResult) -> MarketFetchResult:
+        if not result.frame.empty:
+            action_snapshots.append(
+                result.frame[["stock_code", "trade_date", "adjustment_factor"]].copy()
+            )
+        return result
+
+    def _fetch_stock_one(symbol: str, start: date, end: date) -> MarketFetchResult:
+        result = _fetch_stock_history_with_adjustment(
             ak,
             symbol,
             start,
             end,
         )
-        action_snapshots.append(
-            frame[["stock_code", "trade_date", "adjustment_factor"]].copy()
+        return _record_action_snapshot(result)
+
+    def _fetch_stock_batch(missing_dates: Iterable[date]) -> MarketFetchResult:
+        return _record_action_snapshot(
+            fetch_stock_history_batch(stock_codes, missing_dates)
         )
-        return frame
-
-    def _fetch_stock_batch(missing_dates: Iterable[date]) -> pd.DataFrame:
-        days = sorted(set(missing_dates))
-        start, end = days[0], days[-1]
-        max_workers = max(
-            1,
-            min(
-                8,
-                int(config.get("data", {}).get("per_symbol_fetch_workers", 4)),
-            ),
-        )
-
-        def _safe_fetch(symbol: str) -> pd.DataFrame:
-            try:
-                return _fetch_stock_one(symbol, start, end)
-            except Exception as exc:
-                logging.warning("批量准备正股历史失败，等待逐证券回退 %s: %s", symbol, exc)
-                return pd.DataFrame()
-
-        with ThreadPoolExecutor(max_workers=min(max_workers, len(stock_codes) or 1)) as executor:
-            frames = [frame for frame in executor.map(_safe_fetch, stock_codes) if not frame.empty]
-        if not frames:
-            return pd.DataFrame()
-        return pd.concat(frames, ignore_index=True)
 
     stock_history = prepare_market_history(
         stock_requirements,

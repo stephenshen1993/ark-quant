@@ -47,10 +47,10 @@ def resolve_effective_trading_date(
 ) -> date:
     """Freeze the last completed exchange trading date for one generation task."""
     current = now or datetime.now()
-    days = sorted(set(trading_days or load_exchange_trading_days(as_of=current.date())))
     upper_bound = current.date()
     if current.time() < market_close:
         upper_bound -= timedelta(days=1)
+    days = sorted(set(trading_days or load_exchange_trading_days(as_of=upper_bound)))
     completed = [day for day in days if day <= upper_bound]
     if not completed:
         raise RuntimeError(f"交易日历不覆盖 {upper_bound.isoformat()} 之前的有效交易日")
