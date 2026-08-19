@@ -28,6 +28,7 @@ class DataRequirements:
     algorithm_version: str
     config_fingerprint: str = ""
     lookback_trading_days: int = 1
+    market_fields: tuple[str, ...] = ()
 
     @property
     def fingerprint(self) -> str:
@@ -42,6 +43,7 @@ class DataRequirements:
             "algorithm_version": self.algorithm_version,
             "config_fingerprint": self.config_fingerprint,
             "lookback_trading_days": self.lookback_trading_days,
+            "market_fields": list(self.market_fields),
         }
         return stable_fingerprint(payload)
 
