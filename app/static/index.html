@@ -2778,7 +2778,7 @@
                     </div>
                     <span
                       class="account-current-security-name"
-                      :class="[securityStatusClass(row), { 'is-placeholder': !row.name }]"
+                      :class="`${securityStatusClass(row)}${!row.name ? ' is-placeholder' : ''}`.trim()"
                       x-text="securityHelperText(row)"></span>
                     <label><span>数量</span><input type="number" min="0" :step="holdingQuantityStep()" x-model="row.quantity" @input="markEdited()" aria-label="持仓数量"></label>
                     <span class="account-current-derived" x-text="fmtPrice(row.price)"></span>

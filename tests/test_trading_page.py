@@ -164,6 +164,14 @@ class TestTradingPageInteraction(unittest.TestCase):
         )
         self.assertIn('class="account-current-security-code"', self.html)
         self.assertIn('class="account-current-security-name"', self.html)
+        self.assertIn(
+            ':class="`${securityStatusClass(row)}${!row.name ? \' is-placeholder\' : \'\'}`.trim()"',
+            self.html,
+        )
+        self.assertNotIn(
+            ':class="[securityStatusClass(row), { \'is-placeholder\': !row.name }]"',
+            self.html,
+        )
         self.assertIn('class="account-current-add-row"', self.html)
         self.assertEqual(self.html.count("＋ 添加证券"), 1)
         self.assertNotIn("继续添加证券", self.html)
