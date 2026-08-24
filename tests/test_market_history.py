@@ -189,6 +189,33 @@ class IncrementalMarketHistoryTests(unittest.TestCase):
         self.assertEqual(caught.exception.detail["stage"], "market_history")
         self.assertTrue(caught.exception.detail["missing"])
 
+    def test_partial_mode_keeps_available_rows_when_a_symbol_has_no_trade(self) -> None:
+        def partial_batch(days) -> pd.DataFrame:
+            rows = self._rows(days)
+            missing_day = min(days).isoformat()
+            return rows.loc[
+                ~(
+                    rows["stock_code"].eq("600002")
+                    & rows["trade_date"].eq(missing_day)
+                )
+            ]
+
+        result = prepare_market_history(
+            self.requirements,
+            date(2026, 8, 12),
+            ("600001", "600002"),
+            self.calendar,
+            partial_batch,
+            store_path=self.store_path,
+            allow_partial=True,
+        )
+
+        self.assertEqual(len(result.frame), 5)
+        self.assertEqual(
+            result.frame.groupby("stock_code").size().to_dict(),
+            {"600001": 3, "600002": 2},
+        )
+
     def test_source_failure_is_structured_but_complete_cache_still_runs_offline(self) -> None:
         prepare_market_history(
             self.requirements,

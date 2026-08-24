@@ -68,6 +68,7 @@ class RunArtifacts:
 
 @dataclass(frozen=True)
 class CbHistoryInputs:
+    market_universe: pd.DataFrame
     turnover: pd.DataFrame
     stock_factors: pd.DataFrame
     preparation: dict
@@ -1042,6 +1043,18 @@ def apply_cb_prefilters(
     return filtered
 
 
+def select_cb_market_data_universe(
+    df: pd.DataFrame,
+    *,
+    as_of: date,
+) -> pd.DataFrame:
+    """Select listed, active securities for data acquisition without strategy rules."""
+    listed_at = pd.to_datetime(df["listing_date"], errors="coerce")
+    mask = df["active_reference"].eq(True)
+    mask &= listed_at <= pd.Timestamp(as_of)
+    return df.loc[mask].copy()
+
+
 def apply_filters(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     filters = config["filters"]
     mask = pd.Series(True, index=df.index)
@@ -1272,12 +1285,11 @@ def snapshot_raw_data(
 
 def market_data_requirements(config: dict, max_universe: int | None = None) -> DataRequirements:
     """Declare the remote CB inputs independently from local ranking parameters."""
-    filters = config.get("filters", {})
     return DataRequirements(
         strategy="cb",
         dataset_fields={
             "cb_universe": ("bond_code", "stock_code", "cb_price"),
-            "eligible_universe": ("bond_code", "stock_code", "cb_price"),
+            "market_universe": ("bond_code", "stock_code", "cb_price"),
             "enriched_universe": (
                 "bond_code",
                 "stock_code",
@@ -1294,24 +1306,14 @@ def market_data_requirements(config: dict, max_universe: int | None = None) -> D
         symbol_field="bond_code",
         source="akshare+tencent",
         source_version="cb-market-sources-v1",
-        algorithm_version="cb-raw-input-v2",
+        algorithm_version="cb-raw-input-v3",
         config_fingerprint=stable_fingerprint({
             "data": config.get("data", {}),
-            "history_scope_filters": {
-                name: filters.get(name)
-                for name in (
-                    "max_cb_price",
-                    "min_remaining_size_100m",
-                    "min_years_to_maturity",
-                    "exclude_call_risk",
-                    "exclude_st_stock",
-                )
-            },
             "max_universe": max_universe,
         }),
         lookback_trading_days=21,
         market_fields=("raw_close", "volume", "amount", "adjustment_factor"),
-        expected_symbols_dataset="eligible_universe",
+        expected_symbols_dataset="market_universe",
         coverage_datasets=("enriched_universe",),
     )
 
@@ -1472,7 +1474,7 @@ def prepare_cb_history_inputs(
 ) -> CbHistoryInputs:
     """Prepare reusable CB turnover and underlying-stock factors from raw history."""
     trading_days = load_exchange_trading_days(as_of=effective_date)
-    history_universe = apply_cb_prefilters(universe, config, as_of=effective_date)
+    history_universe = select_cb_market_data_universe(universe, as_of=effective_date)
     bond_codes = sorted({
         str(value).zfill(6) for value in history_universe["bond_code"].dropna()
     })
@@ -1576,6 +1578,7 @@ def prepare_cb_history_inputs(
         fallback_fetcher=_fetch_stock_one,
         store_path=history_store_path,
         fallback_workers=stock_history_workers,
+        allow_partial=True,
     )
     invalidation = None
     if action_snapshots:
@@ -1609,6 +1612,7 @@ def prepare_cb_history_inputs(
             factor_name="stock_momentum_20d",
         ),
         store_path=derived_store_path,
+        allow_partial=True,
     )
     volatility = prepare_derived_factors(
         stock_history.frame,
@@ -1622,6 +1626,7 @@ def prepare_cb_history_inputs(
             factor_name="stock_volatility_20d",
         ),
         store_path=derived_store_path,
+        allow_partial=True,
     )
     stock_factors = momentum.frame.merge(volatility.frame, on="stock_code", how="inner")
     stock_factors["stock_factor_trade_date"] = effective_date.isoformat()
@@ -1633,6 +1638,7 @@ def prepare_cb_history_inputs(
         "invalidated_rankings": invalidation.invalidated_rankings if invalidation else 0,
     }
     return CbHistoryInputs(
+        market_universe=history_universe,
         turnover=turnover,
         stock_factors=stock_factors,
         preparation={
@@ -1670,15 +1676,14 @@ def run(
             logging.info("Limited universe to first %s bonds for test run.", max_universe)
         universe = enrich_cb_with_redeem_data(ak, universe, config)
         enforce_cb_filter_coverage(universe, config, as_of=data_date)
-        eligible_universe = apply_cb_prefilters(universe, config, as_of=data_date)
         history_inputs = prepare_cb_history_inputs(
             ak,
-            eligible_universe,
+            universe,
             config,
             data_date,
         )
         history_preparation = history_inputs.preparation
-        with_turnover = eligible_universe.merge(
+        with_turnover = history_inputs.market_universe.merge(
             history_inputs.turnover,
             on="bond_code",
             how="left",
@@ -1705,7 +1710,7 @@ def run(
         enriched = enriched.merge(stock_caps, on="stock_code", how="left")
         return {
             "cb_universe": universe,
-            "eligible_universe": eligible_universe,
+            "market_universe": history_inputs.market_universe,
             "enriched_universe": enriched,
         }
 
@@ -1721,6 +1726,9 @@ def run(
     )
     raw_cb = bundle.frames["cb_universe"].copy()
     cb = bundle.frames["enriched_universe"].copy()
+    plan_price_universe = cb[
+        ["bond_code", "bond_name", "cb_price", "turnover_trade_date"]
+    ].copy()
     enforce_cb_filter_coverage(cb, config, as_of=data_date)
     cb = apply_cb_prefilters(cb, config, as_of=data_date)
     if config.get("data", {}).get("strict_original_rules", True):
@@ -1828,6 +1836,7 @@ def run(
             data_date,
             {
                 "cb_universe_raw": raw_cb,
+                "plan_price_universe": plan_price_universe,
                 "enriched_universe": merged,
                 "scored_universe": scored,
                 "target_topn": target,

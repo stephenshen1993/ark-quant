@@ -130,7 +130,7 @@ class ConvertibleBondHistoryAdapterTests(unittest.TestCase):
         )
         self.assertAlmostEqual(result.frame.iloc[0]["adjustment_factor"], 1.2)
 
-    def test_history_adapter_excludes_bonds_not_listed_by_effective_date(self) -> None:
+    def test_history_adapter_uses_listed_active_scope_independent_of_strategy_filters(self) -> None:
         effective_date = date(2026, 8, 19)
         trading_days = [effective_date - timedelta(days=20 - index) for index in range(21)]
         universe = pd.DataFrame([
@@ -145,6 +145,18 @@ class ConvertibleBondHistoryAdapterTests(unittest.TestCase):
                 "remaining_years": 2.0,
                 "maturity_date": date(2028, 1, 1),
                 "call_status": "",
+            },
+            {
+                "bond_code": "113659",
+                "stock_code": "603355",
+                "stock_name": "莱克电气",
+                "active_reference": True,
+                "listing_date": date(2022, 11, 15),
+                "cb_price": 160.0,
+                "remaining_size_100m": 12.0,
+                "remaining_years": 2.0,
+                "maturity_date": date(2028, 10, 14),
+                "call_status": "公告要强赎",
             },
             {
                 "bond_code": "111026",
@@ -186,14 +198,22 @@ class ConvertibleBondHistoryAdapterTests(unittest.TestCase):
 
         def bond_turnover(_ak, codes, _config, target, *, include_metadata=False):
             requested_bonds.extend(codes)
-            if list(codes) != ["113001"]:
+            if list(codes) != ["113001", "113659"]:
                 raise AssertionError(f"unexpected history scope: {list(codes)}")
-            frame = pd.DataFrame([{
-                "bond_code": "113001",
-                "cb_close_daily": 110.0,
-                "turnover_yuan_daily": 11_000_000.0,
-                "turnover_trade_date": target.isoformat(),
-            }])
+            frame = pd.DataFrame([
+                {
+                    "bond_code": "113001",
+                    "cb_close_daily": 110.0,
+                    "turnover_yuan_daily": 11_000_000.0,
+                    "turnover_trade_date": target.isoformat(),
+                },
+                {
+                    "bond_code": "113659",
+                    "cb_close_daily": 132.474,
+                    "turnover_yuan_daily": 88_313_792.1,
+                    "turnover_trade_date": target.isoformat(),
+                },
+            ])
             if include_metadata:
                 return cb_run.MarketFetchResult(frame=frame, external_calls=1)
             return frame
@@ -218,9 +238,9 @@ class ConvertibleBondHistoryAdapterTests(unittest.TestCase):
                     derived_store_path=root / "derived.sqlite3",
                 )
 
-        self.assertEqual(requested_bonds, ["113001"])
-        self.assertEqual(result.turnover["bond_code"].tolist(), ["113001"])
-        self.assertEqual(result.stock_factors["stock_code"].tolist(), ["600001"])
+        self.assertEqual(requested_bonds, ["113001", "113659"])
+        self.assertEqual(result.turnover["bond_code"].tolist(), ["113001", "113659"])
+        self.assertEqual(result.stock_factors["stock_code"].tolist(), ["600001", "603355"])
 
     def test_tushare_batch_source_uses_two_physical_calls_per_missing_date(self) -> None:
         requested: list[tuple[str, str]] = []

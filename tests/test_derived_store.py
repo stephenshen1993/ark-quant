@@ -92,6 +92,26 @@ class DerivedStoreTests(unittest.TestCase):
 
         self.assertEqual(raw_fetches, 1)
 
+    def test_partial_factor_mode_keeps_symbols_with_sufficient_history(self) -> None:
+        result = prepare_derived_factors(
+            self.inputs,
+            symbol_field="stock_code",
+            effective_date=date(2026, 8, 18),
+            factor_name="momentum_20d",
+            algorithm_version="v1",
+            input_fingerprint="raw-partial",
+            compute=lambda _frame: pd.DataFrame([
+                {"stock_code": "600001", "momentum_20d": 1.0},
+            ]),
+            store_path=self.store_path,
+            allow_partial=True,
+        )
+
+        self.assertEqual(result.frame.to_dict("records"), [
+            {"stock_code": "600001", "momentum_20d": 1.0},
+        ])
+        self.assertEqual(result.metadata.refreshed_records, 1)
+
     def test_config_change_recomputes_ranking_locally(self) -> None:
         computes = 0
         remote_calls = 0

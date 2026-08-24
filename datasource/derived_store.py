@@ -45,6 +45,7 @@ def prepare_derived_factors(
     input_fingerprint: str,
     compute: Callable[[pd.DataFrame], pd.DataFrame],
     store_path: Path = DEFAULT_DERIVED_STORE,
+    allow_partial: bool = False,
 ) -> DerivedFactorResult:
     """Compute only factor identities absent for the exact input and algorithm version."""
     started = perf_counter()
@@ -76,18 +77,22 @@ def prepare_derived_factors(
             )
             values.update(fresh)
         unresolved = [symbol for symbol in symbols if symbol not in values]
-        if unresolved:
+        if unresolved and not allow_partial:
             raise RuntimeError(f"派生因子 {factor_name} 缺少证券: {', '.join(unresolved[:10])}")
         mode = "cache_hit" if not missing else ("cold_build" if len(missing) == len(symbols) else "incremental")
         elapsed = int((perf_counter() - started) * 1000)
         frame = pd.DataFrame(
-            [{symbol_field: symbol, factor_name: values[symbol]} for symbol in symbols]
+            [
+                {symbol_field: symbol, factor_name: values[symbol]}
+                for symbol in symbols
+                if symbol in values
+            ]
         )
         metadata = PreparationMetadata(
             effective_date=effective_date.isoformat(),
             mode=mode,
             reused_records=len(symbols) - len(missing),
-            refreshed_records=len(missing),
+            refreshed_records=sum(1 for symbol in missing if symbol in values),
             stage_timings_ms={"derived_factors": elapsed, "total": elapsed},
         )
         return DerivedFactorResult(

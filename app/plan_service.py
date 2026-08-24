@@ -518,13 +518,21 @@ def _raw_snapshot_prices(plan_date: str, strategy: str, codes: list[str]) -> dic
     root = RAW_DATA_DIR / plan_date.replace("-", "")
     if strategy == "cb":
         sources = (
-            (root / "enriched_universe.csv", "bond_code", "cb_price"),
-            (root / "cb_universe_raw.csv", "债券代码", "债现价"),
+            (
+                root / "plan_price_universe.csv",
+                "bond_code",
+                "cb_price",
+                "turnover_trade_date",
+            ),
+            (root / "enriched_universe.csv", "bond_code", "cb_price", None),
+            (root / "cb_universe_raw.csv", "债券代码", "债现价", None),
         )
     else:
-        sources = ((root / "stock_smallcap" / "merged.csv", "stock_code", "price"),)
+        sources = (
+            (root / "stock_smallcap" / "merged.csv", "stock_code", "price", None),
+        )
     resolved = {}
-    for path, code_key, price_key in sources:
+    for path, code_key, price_key, date_key in sources:
         if not path.exists():
             continue
         try:
@@ -533,6 +541,13 @@ def _raw_snapshot_prices(plan_date: str, strategy: str, codes: list[str]) -> dic
             continue
         if code_key not in frame or price_key not in frame:
             continue
+        if date_key is not None:
+            if date_key not in frame:
+                continue
+            trade_dates = pd.to_datetime(frame[date_key], errors="coerce").dt.strftime(
+                "%Y-%m-%d"
+            )
+            frame = frame.loc[trade_dates.eq(plan_date)]
         raw = {
             str(row[code_key]).zfill(6): float(row[price_key])
             for _, row in frame[[code_key, price_key]].dropna().iterrows()

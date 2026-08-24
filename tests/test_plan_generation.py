@@ -588,6 +588,44 @@ class TestPlanGeneration(unittest.TestCase):
 
         self.assertEqual(prices, {"113682": 130.113})
 
+    def test_cb_position_outside_the_ranking_uses_the_plan_date_daily_close_snapshot(self):
+        db.insert_positions("cb", "2026-06-29", [
+            {"code": "113062", "name": "常银转债", "shares": 10},
+            {"code": "113659", "name": "莱克转债", "shares": 10},
+        ])
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary) / "20260629"
+            root.mkdir()
+            (root / "cb_universe_raw.csv").write_text(
+                "bond_code,bond_name,cb_price\n113659,莱克转债,100.0\n",
+                encoding="utf-8",
+            )
+            (root / "plan_price_universe.csv").write_text(
+                "bond_code,cb_price,turnover_trade_date\n"
+                "113659,132.474,2026-06-29\n",
+                encoding="utf-8",
+            )
+            with patch("app.plan_service.RAW_DATA_DIR", Path(temporary)):
+                prices = plan_service.capture_frozen_plan_prices("2026-06-29")
+
+        self.assertEqual(prices["cb"]["113659"], 132.474)
+
+    def test_cb_daily_close_snapshot_rejects_a_different_trade_date(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary) / "20260629"
+            root.mkdir()
+            (root / "plan_price_universe.csv").write_text(
+                "bond_code,cb_price,turnover_trade_date\n"
+                "113659,133.012,2026-06-26\n",
+                encoding="utf-8",
+            )
+            with patch("app.plan_service.RAW_DATA_DIR", Path(temporary)):
+                prices = plan_service._raw_snapshot_prices(
+                    "2026-06-29", "cb", ["113659"]
+                )
+
+        self.assertEqual(prices, {})
+
     def test_size_strategy_orders_uses_plan_generation_context(self):
         cb_size = Mock(return_value={"orders": [], "summary": {"cash_left": 0}})
         stock_size = Mock(return_value={"orders": [], "summary": {"cash_left": 0}})

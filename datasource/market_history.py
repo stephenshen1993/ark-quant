@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
@@ -62,6 +63,7 @@ def prepare_market_history(
     ] | None = None,
     store_path: Path,
     fallback_workers: int = 4,
+    allow_partial: bool = False,
 ) -> MarketHistoryResult:
     """Fill only proven trading-day gaps, using full-market batches before per-symbol fallback."""
     started = perf_counter()
@@ -136,36 +138,46 @@ def prepare_market_history(
 
             def _fetch_symbol(
                 item: tuple[str, list[date]],
-            ) -> pd.DataFrame | MarketFetchResult:
+            ) -> tuple[pd.DataFrame | MarketFetchResult | None, Exception | None]:
                 symbol, days = item
-                return fallback_fetcher(symbol, min(days), max(days))
+                try:
+                    return fallback_fetcher(symbol, min(days), max(days)), None
+                except Exception as exc:
+                    return None, exc
 
             items = sorted(missing_by_symbol.items())
             with ThreadPoolExecutor(
                 max_workers=max(1, min(fallback_workers, len(items)))
             ) as executor:
-                try:
-                    for (symbol, days), fetched_symbol in zip(
-                        items,
-                        executor.map(_fetch_symbol, items),
-                    ):
-                        frame, physical_calls = _unwrap_fetch_result(fetched_symbol)
-                        external_calls += physical_calls
-                        normalized = _normalize_rows(
-                            frame,
+                for (symbol, days), (fetched_symbol, error) in zip(
+                    items,
+                    executor.map(_fetch_symbol, items),
+                ):
+                    if error is not None:
+                        if allow_partial:
+                            logging.warning(
+                                "Skipping unavailable %s history for %s: %s",
+                                requirements.source,
+                                symbol,
+                                error,
+                            )
+                            continue
+                        raise _source_error(
                             requirements,
-                            [symbol],
-                            days,
-                        )
-                        refreshed_keys.update(_upsert_rows(conn, requirements, normalized))
-                except Exception as exc:
-                    raise _source_error(
+                            effective_date,
+                            "market_history_fallback",
+                            remaining,
+                            error,
+                        ) from error
+                    frame, physical_calls = _unwrap_fetch_result(fetched_symbol)
+                    external_calls += physical_calls
+                    normalized = _normalize_rows(
+                        frame,
                         requirements,
-                        effective_date,
-                        "market_history_fallback",
-                        remaining,
-                        exc,
-                    ) from exc
+                        [symbol],
+                        days,
+                    )
+                    refreshed_keys.update(_upsert_rows(conn, requirements, normalized))
 
         complete = _load_rows(conn, requirements, required_symbols, required_dates)
         missing_after = _missing_pairs(
@@ -174,7 +186,7 @@ def prepare_market_history(
             required_symbols,
             required_dates,
         )
-        if missing_after:
+        if missing_after and not allow_partial:
             sample = ", ".join(
                 f"{symbol}@{day.isoformat()}" for symbol, day in missing_after[:10]
             )
@@ -469,7 +481,12 @@ def _to_frame(
     symbols: Sequence[str],
     trading_days: Sequence[date],
 ) -> pd.DataFrame:
-    ordered = [rows[(symbol, day)] for day in trading_days for symbol in symbols]
+    ordered = [
+        rows[(symbol, day)]
+        for day in trading_days
+        for symbol in symbols
+        if (symbol, day) in rows
+    ]
     columns = [requirements.symbol_field, "trade_date", *requirements.market_fields]
     return pd.DataFrame(ordered, columns=columns)
 

@@ -26,15 +26,15 @@ class StrategyMarketDataContractTests(unittest.TestCase):
         self.assertEqual(cb_requirements.strategy, "cb")
         self.assertEqual(stock_requirements.strategy, "stock")
         self.assertGreaterEqual(cb_requirements.lookback_trading_days, 20)
-        self.assertIn("eligible_universe", cb_requirements.dataset_fields)
+        self.assertIn("market_universe", cb_requirements.dataset_fields)
         self.assertIn("enriched_universe", cb_requirements.dataset_fields)
         self.assertIn("merged", stock_requirements.dataset_fields)
-        self.assertEqual(cb_requirements.expected_symbols_dataset, "eligible_universe")
+        self.assertEqual(cb_requirements.expected_symbols_dataset, "market_universe")
         self.assertEqual(cb_requirements.coverage_datasets, ("enriched_universe",))
         self.assertEqual(stock_requirements.expected_symbols_dataset, "universe")
         self.assertEqual(stock_requirements.coverage_datasets, ("merged",))
 
-    def test_cb_bundle_uses_prefiltered_universe_as_coverage_contract(self) -> None:
+    def test_cb_bundle_uses_market_universe_as_coverage_contract(self) -> None:
         requirements = cb_run.market_data_requirements(
             cb_run.load_config(cb_run.DEFAULT_CONFIG)
         )
@@ -43,8 +43,9 @@ class StrategyMarketDataContractTests(unittest.TestCase):
                 {"bond_code": "113001", "stock_code": "600001", "cb_price": 110.0},
                 {"bond_code": "113002", "stock_code": "600002", "cb_price": 180.0},
             ]),
-            "eligible_universe": pd.DataFrame([
+            "market_universe": pd.DataFrame([
                 {"bond_code": "113001", "stock_code": "600001", "cb_price": 110.0},
+                {"bond_code": "113002", "stock_code": "600002", "cb_price": 180.0},
             ]),
             "enriched_universe": pd.DataFrame([
                 {
@@ -59,6 +60,18 @@ class StrategyMarketDataContractTests(unittest.TestCase):
                     "market_cap": 5_000_000_000.0,
                     "market_cap_as_of_date": "2026-08-21",
                 },
+                {
+                    "bond_code": "113002",
+                    "stock_code": "600002",
+                    "cb_price": 180.0,
+                    "turnover_yuan": 13_000_000.0,
+                    "turnover_trade_date": "2026-08-21",
+                    "stock_momentum_20d": 0.04,
+                    "stock_volatility_20d": 0.03,
+                    "stock_factor_trade_date": "2026-08-21",
+                    "market_cap": 6_000_000_000.0,
+                    "market_cap_as_of_date": "2026-08-21",
+                },
             ]),
         }
 
@@ -70,14 +83,14 @@ class StrategyMarketDataContractTests(unittest.TestCase):
                 cache_root=Path(tmp),
             )
 
-        self.assertEqual(bundle.manifest["expected_symbols"], ["113001"])
+        self.assertEqual(bundle.manifest["expected_symbols"], ["113001", "113002"])
         self.assertEqual(
             bundle.manifest["dataset_actual_symbols"]["cb_universe"],
             ["113001", "113002"],
         )
         self.assertEqual(
             bundle.manifest["dataset_actual_symbols"]["enriched_universe"],
-            ["113001"],
+            ["113001", "113002"],
         )
 
     def test_local_strategy_parameter_changes_do_not_invalidate_raw_inputs(self) -> None:
@@ -100,12 +113,12 @@ class StrategyMarketDataContractTests(unittest.TestCase):
             cb_run.market_data_requirements(changed_cb).fingerprint,
         )
 
-    def test_cb_history_scope_filter_changes_invalidate_input_bundle(self) -> None:
+    def test_cb_strategy_filter_changes_do_not_invalidate_input_bundle(self) -> None:
         config = cb_run.load_config(cb_run.DEFAULT_CONFIG)
         changed = copy.deepcopy(config)
         changed["filters"]["max_cb_price"] += 1
 
-        self.assertNotEqual(
+        self.assertEqual(
             cb_run.market_data_requirements(config).fingerprint,
             cb_run.market_data_requirements(changed).fingerprint,
         )
