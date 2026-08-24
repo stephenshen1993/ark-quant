@@ -41,6 +41,7 @@ from datasource.market_history import (
     prepare_market_history,
     reconcile_corporate_actions,
 )
+from datasource.stock_history import fetch_stock_history_with_adjustment
 from datasource.trade_calendar import is_market_hours, load_exchange_trading_days
 
 
@@ -1315,7 +1316,18 @@ def market_data_requirements(config: dict, max_universe: int | None = None) -> D
     )
 
 
-def _cb_history_requirements(*, symbol_field: str, lookback: int, source: str) -> DataRequirements:
+def _cb_history_requirements(
+    *,
+    symbol_field: str,
+    lookback: int,
+    source: str,
+    market_fields: tuple[str, ...] = (
+        "raw_close",
+        "volume",
+        "amount",
+        "adjustment_factor",
+    ),
+) -> DataRequirements:
     return DataRequirements(
         strategy="cb",
         dataset_fields={},
@@ -1324,7 +1336,7 @@ def _cb_history_requirements(*, symbol_field: str, lookback: int, source: str) -
         source_version="cb-history-v1",
         algorithm_version="raw-history-v1",
         lookback_trading_days=lookback,
-        market_fields=("raw_close", "volume", "amount", "adjustment_factor"),
+        market_fields=market_fields,
     )
 
 
@@ -1356,54 +1368,6 @@ def _normalize_daily_history(
     else:
         result["amount"] = result["raw_close"] * result["volume"]
     return result.dropna(subset=["trade_date", "raw_close", "volume", "amount"])
-
-
-def _fetch_stock_history_with_adjustment(
-    ak,
-    stock_code: str,
-    start: date,
-    end: date,
-) -> MarketFetchResult:
-    symbol = stock_symbol_with_exchange(stock_code)
-    external_calls = 0
-
-    def _fetch(adjust: str) -> pd.DataFrame:
-        nonlocal external_calls
-        try:
-            external_calls += 1
-            return ak.stock_zh_a_daily(
-                symbol=symbol,
-                start_date=start.strftime("%Y%m%d"),
-                end_date=end.strftime("%Y%m%d"),
-                adjust=adjust,
-            )
-        except Exception:
-            external_calls += 1
-            return ak.stock_zh_a_hist_tx(
-                symbol=symbol,
-                start_date=start.strftime("%Y%m%d"),
-                end_date=end.strftime("%Y%m%d"),
-                adjust=adjust,
-            )
-
-    raw = _normalize_daily_history(
-        _fetch(""),
-        symbol_field="stock_code",
-        symbol=stock_code,
-    )
-    adjusted = _normalize_daily_history(
-        _fetch("hfq"),
-        symbol_field="stock_code",
-        symbol=stock_code,
-    )[["stock_code", "trade_date", "raw_close"]].rename(
-        columns={"raw_close": "adjusted_close"}
-    )
-    result = raw.merge(adjusted, on=["stock_code", "trade_date"], how="left")
-    result["adjustment_factor"] = result["adjusted_close"] / result["raw_close"]
-    return MarketFetchResult(
-        frame=result.drop(columns=["adjusted_close"]),
-        external_calls=external_calls,
-    )
 
 
 def fetch_stock_history_batch(
@@ -1572,10 +1536,17 @@ def prepare_cb_history_inputs(
         "trade_date": "turnover_trade_date",
     })[["bond_code", "cb_close_daily", "turnover_yuan_daily", "turnover_trade_date"]]
 
+    stock_history_provider = str(
+        config.get("data", {}).get("stock_history_provider", "sina")
+    ).strip().lower()
+    stock_history_workers = int(
+        config.get("data", {}).get("per_symbol_fetch_workers", 4)
+    )
     stock_requirements = _cb_history_requirements(
         symbol_field="stock_code",
         lookback=21,
-        source="tushare+akshare-stock-daily",
+        source=f"akshare-{stock_history_provider}-stock-daily",
+        market_fields=("raw_close", "adjustment_factor"),
     )
     action_snapshots: list[pd.DataFrame] = []
 
@@ -1587,28 +1558,24 @@ def prepare_cb_history_inputs(
         return result
 
     def _fetch_stock_one(symbol: str, start: date, end: date) -> MarketFetchResult:
-        result = _fetch_stock_history_with_adjustment(
+        result = fetch_stock_history_with_adjustment(
             ak,
+            stock_history_provider,
             symbol,
             start,
             end,
         )
         return _record_action_snapshot(result)
 
-    def _fetch_stock_batch(missing_dates: Iterable[date]) -> MarketFetchResult:
-        return _record_action_snapshot(
-            fetch_stock_history_batch(stock_codes, missing_dates)
-        )
-
     stock_history = prepare_market_history(
         stock_requirements,
         effective_date,
         stock_codes,
         trading_days,
-        _fetch_stock_batch,
+        None,
         fallback_fetcher=_fetch_stock_one,
         store_path=history_store_path,
-        fallback_workers=int(config.get("data", {}).get("per_symbol_fetch_workers", 4)),
+        fallback_workers=stock_history_workers,
     )
     invalidation = None
     if action_snapshots:
@@ -1624,9 +1591,10 @@ def prepare_cb_history_inputs(
                 effective_date,
                 stock_codes,
                 trading_days,
-                _fetch_stock_batch,
+                None,
                 fallback_fetcher=_fetch_stock_one,
                 store_path=history_store_path,
+                fallback_workers=stock_history_workers,
             )
 
     momentum = prepare_derived_factors(

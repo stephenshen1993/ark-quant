@@ -30,7 +30,8 @@
     "max_market_data_age_days": 4,
     "allow_market_cap_estimate": true,
     "save_raw_snapshot": true,
-    "per_symbol_fetch_workers": 4,
+    "stock_history_provider": "sina",
+    "per_symbol_fetch_workers": 2,
     "max_per_symbol_fetch_failures": 10,
     "max_market_cap_fetch_failures": 10
   }

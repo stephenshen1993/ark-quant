@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
+from datasource import stock_history
 from strategies.cb_rotation import run as cb_run
 
 
@@ -28,7 +29,107 @@ class _FakeAkshare:
         })
 
 
+def _provider_frame(scale: float = 1.0) -> pd.DataFrame:
+    return pd.DataFrame({
+        "date": ["2026-08-24"],
+        "open": [9.9 * scale],
+        "close": [10.0 * scale],
+        "high": [10.2 * scale],
+        "low": [9.8 * scale],
+        "amount": [100.0],
+    })
+
+
+class _ProviderAkshare:
+    def __init__(self, *, sina=(), tencent=()) -> None:
+        self.sina_responses = list(sina)
+        self.tencent_responses = list(tencent)
+        self.sina_calls: list[str] = []
+        self.tencent_calls: list[str] = []
+
+    @staticmethod
+    def _next(responses):
+        if not responses:
+            raise AssertionError("unexpected provider call")
+        response = responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response.copy()
+
+    def stock_zh_a_daily(self, *, symbol, start_date, end_date, adjust):
+        del symbol, start_date, end_date
+        self.sina_calls.append(adjust)
+        return self._next(self.sina_responses)
+
+    def stock_zh_a_hist_tx(self, *, symbol, start_date, end_date, adjust):
+        del symbol, start_date, end_date
+        self.tencent_calls.append(adjust)
+        return self._next(self.tencent_responses)
+
+
 class ConvertibleBondHistoryAdapterTests(unittest.TestCase):
+    def test_stock_history_retries_sina_without_mixing_fallback_provider(self) -> None:
+        ak = _ProviderAkshare(sina=[
+            pd.DataFrame({"notice": ["temporary malformed response"]}),
+            _provider_frame(),
+            _provider_frame(1.1),
+        ])
+        with patch.object(stock_history, "sleep") as retry_sleep:
+            result = stock_history.fetch_stock_history_with_adjustment(
+                ak,
+                "sina",
+                "300037",
+                date(2026, 8, 24),
+                date(2026, 8, 24),
+            )
+
+        self.assertEqual(ak.sina_calls, ["", "", "hfq"])
+        self.assertEqual(ak.tencent_calls, [])
+        self.assertEqual(result.external_calls, 3)
+        self.assertAlmostEqual(result.frame.iloc[0]["adjustment_factor"], 1.1)
+        retry_sleep.assert_called_once()
+
+    def test_stock_history_reports_persistent_sina_failure(self) -> None:
+        ak = _ProviderAkshare(sina=[
+            RuntimeError("sina rate limited") for _ in range(3)
+        ])
+        with (
+            patch.object(stock_history, "sleep"),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "300037 新浪历史行情不复权连续 3 次失败: sina rate limited",
+            ),
+        ):
+            stock_history.fetch_stock_history_with_adjustment(
+                ak,
+                "sina",
+                "300037",
+                date(2026, 8, 24),
+                date(2026, 8, 24),
+            )
+
+        self.assertEqual(ak.sina_calls, ["", "", ""])
+        self.assertEqual(ak.tencent_calls, [])
+
+    def test_tencent_stock_history_uses_its_own_price_adapter(self) -> None:
+        ak = _ProviderAkshare(tencent=[_provider_frame(), _provider_frame(1.2)])
+        result = stock_history.fetch_stock_history_with_adjustment(
+            ak,
+            "tencent",
+            "300037",
+            date(2026, 8, 24),
+            date(2026, 8, 24),
+        )
+
+        self.assertEqual(ak.sina_calls, [])
+        self.assertEqual(ak.tencent_calls, ["", "hfq"])
+        self.assertEqual(result.external_calls, 2)
+        self.assertEqual(
+            result.frame.columns.tolist(),
+            ["stock_code", "trade_date", "raw_close", "adjustment_factor"],
+        )
+        self.assertAlmostEqual(result.frame.iloc[0]["adjustment_factor"], 1.2)
+
     def test_history_adapter_excludes_bonds_not_listed_by_effective_date(self) -> None:
         effective_date = date(2026, 8, 19)
         trading_days = [effective_date - timedelta(days=20 - index) for index in range(21)]
@@ -257,7 +358,7 @@ class ConvertibleBondHistoryAdapterTests(unittest.TestCase):
         )
         self.assertEqual(first.preparation["stock_history"]["mode"], "cold_build")
         self.assertEqual(first.preparation["bond_history"]["external_calls"], 1)
-        self.assertEqual(first.preparation["stock_history"]["batch_requests"], 1)
+        self.assertEqual(first.preparation["stock_history"]["batch_requests"], 0)
         self.assertEqual(first.preparation["stock_history"]["fallback_symbols"], 1)
         self.assertEqual(first.preparation["stock_history"]["external_calls"], 2)
         self.assertEqual(first.preparation["momentum"]["mode"], "cold_build")
