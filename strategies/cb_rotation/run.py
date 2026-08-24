@@ -74,6 +74,8 @@ class CbHistoryInputs:
 
 def setup_logging() -> Path:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
+    if logging.getLogger().handlers:
+        return LOG_DIR / "ark_quant_server.log"
     log_file = LOG_DIR / f"cb_rotation_{datetime.now():%Y%m%d_%H%M%S}.log"
     logging.basicConfig(
         level=logging.INFO,
@@ -1269,10 +1271,12 @@ def snapshot_raw_data(
 
 def market_data_requirements(config: dict, max_universe: int | None = None) -> DataRequirements:
     """Declare the remote CB inputs independently from local ranking parameters."""
+    filters = config.get("filters", {})
     return DataRequirements(
         strategy="cb",
         dataset_fields={
             "cb_universe": ("bond_code", "stock_code", "cb_price"),
+            "eligible_universe": ("bond_code", "stock_code", "cb_price"),
             "enriched_universe": (
                 "bond_code",
                 "stock_code",
@@ -1289,14 +1293,24 @@ def market_data_requirements(config: dict, max_universe: int | None = None) -> D
         symbol_field="bond_code",
         source="akshare+tencent",
         source_version="cb-market-sources-v1",
-        algorithm_version="cb-raw-input-v1",
+        algorithm_version="cb-raw-input-v2",
         config_fingerprint=stable_fingerprint({
             "data": config.get("data", {}),
+            "history_scope_filters": {
+                name: filters.get(name)
+                for name in (
+                    "max_cb_price",
+                    "min_remaining_size_100m",
+                    "min_years_to_maturity",
+                    "exclude_call_risk",
+                    "exclude_st_stock",
+                )
+            },
             "max_universe": max_universe,
         }),
         lookback_trading_days=21,
         market_fields=("raw_close", "volume", "amount", "adjustment_factor"),
-        expected_symbols_dataset="cb_universe",
+        expected_symbols_dataset="eligible_universe",
         coverage_datasets=("enriched_universe",),
     )
 
@@ -1721,7 +1735,11 @@ def run(
             data_date,
         )
         enriched = enriched.merge(stock_caps, on="stock_code", how="left")
-        return {"cb_universe": universe, "enriched_universe": enriched}
+        return {
+            "cb_universe": universe,
+            "eligible_universe": eligible_universe,
+            "enriched_universe": enriched,
+        }
 
     bundle = prepare_market_data_bundle(
         requirements,

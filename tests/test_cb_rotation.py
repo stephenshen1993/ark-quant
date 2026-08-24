@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import unittest
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -13,6 +14,18 @@ from strategies.cb_rotation import run
 
 
 class ConvertibleBondRotationTests(unittest.TestCase):
+    def test_setup_logging_uses_server_log_when_root_already_configured(self) -> None:
+        with TemporaryDirectory() as tmp:
+            log_dir = Path(tmp)
+            with (
+                patch.object(run, "LOG_DIR", log_dir),
+                patch.object(logging.getLogger(), "handlers", [logging.NullHandler()]),
+            ):
+                log_file = run.setup_logging()
+
+            self.assertEqual(log_file, log_dir / "ark_quant_server.log")
+            self.assertEqual(list(log_dir.glob("cb_rotation_*.log")), [])
+
     def test_as_number_preserves_negative_values(self) -> None:
         values = run.as_number(pd.Series(["-3.28", "--", "-", "1.25%"]))
 

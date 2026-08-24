@@ -228,15 +228,18 @@ class TestStrategyRunner(unittest.TestCase):
     def test_data_source_failure_is_classified(self):
         from app import strategy_runner
 
-        with patch(
-            "app.strategy_runner._run_strategy_impl",
-            side_effect=RuntimeError("数据源获取失败"),
-        ):
-            with self.assertRaises(strategy_runner.StrategyRunnerError) as caught:
-                strategy_runner.run_strategy("stock")
+        with self.assertLogs("app.strategy_runner", level="ERROR") as logs:
+            with patch(
+                "app.strategy_runner._run_strategy_impl",
+                side_effect=RuntimeError("数据源获取失败"),
+            ):
+                with self.assertRaises(strategy_runner.StrategyRunnerError) as caught:
+                    strategy_runner.run_strategy("stock")
 
         self.assertEqual(caught.exception.status_code, 500)
         self.assertEqual(caught.exception.detail["code"], "DATA_SOURCE_UNAVAILABLE")
+        self.assertIn("strategy=stock", logs.output[0])
+        self.assertIn("数据源获取失败", logs.output[0])
 
 
 if __name__ == "__main__":

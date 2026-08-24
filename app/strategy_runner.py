@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
+import logging
 import threading
 from time import perf_counter
 
@@ -10,6 +11,7 @@ from datasource.market_data_bundle import PreparationMetadata
 from datasource.trade_calendar import resolve_effective_trading_date
 
 Strategy = str
+LOGGER = logging.getLogger(__name__)
 
 
 class StrategyRunnerError(Exception):
@@ -165,6 +167,7 @@ def run_strategy(
     except (Exception, SystemExit) as exc:
         msg = str(exc) if str(exc) else type(exc).__name__
         code = _classify_error(msg)
+        LOGGER.exception("Strategy run failed: strategy=%s code=%s", strategy, code)
         raise StrategyRunnerError(
             500,
             {"code": code, "message": f"策略运行失败：{msg}"},

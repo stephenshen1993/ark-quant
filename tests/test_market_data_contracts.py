@@ -1,8 +1,13 @@
 import copy
 import inspect
+import tempfile
 import unittest
+from datetime import date
+from pathlib import Path
 
-from datasource.market_data_bundle import DataRequirements
+import pandas as pd
+
+from datasource.market_data_bundle import DataRequirements, prepare_market_data_bundle
 from strategies.cb_rotation import run as cb_run
 from strategies.stock_smallcap import run as stock_run
 
@@ -21,12 +26,59 @@ class StrategyMarketDataContractTests(unittest.TestCase):
         self.assertEqual(cb_requirements.strategy, "cb")
         self.assertEqual(stock_requirements.strategy, "stock")
         self.assertGreaterEqual(cb_requirements.lookback_trading_days, 20)
+        self.assertIn("eligible_universe", cb_requirements.dataset_fields)
         self.assertIn("enriched_universe", cb_requirements.dataset_fields)
         self.assertIn("merged", stock_requirements.dataset_fields)
-        self.assertEqual(cb_requirements.expected_symbols_dataset, "cb_universe")
+        self.assertEqual(cb_requirements.expected_symbols_dataset, "eligible_universe")
         self.assertEqual(cb_requirements.coverage_datasets, ("enriched_universe",))
         self.assertEqual(stock_requirements.expected_symbols_dataset, "universe")
         self.assertEqual(stock_requirements.coverage_datasets, ("merged",))
+
+    def test_cb_bundle_uses_prefiltered_universe_as_coverage_contract(self) -> None:
+        requirements = cb_run.market_data_requirements(
+            cb_run.load_config(cb_run.DEFAULT_CONFIG)
+        )
+        frames = {
+            "cb_universe": pd.DataFrame([
+                {"bond_code": "113001", "stock_code": "600001", "cb_price": 110.0},
+                {"bond_code": "113002", "stock_code": "600002", "cb_price": 180.0},
+            ]),
+            "eligible_universe": pd.DataFrame([
+                {"bond_code": "113001", "stock_code": "600001", "cb_price": 110.0},
+            ]),
+            "enriched_universe": pd.DataFrame([
+                {
+                    "bond_code": "113001",
+                    "stock_code": "600001",
+                    "cb_price": 110.0,
+                    "turnover_yuan": 12_000_000.0,
+                    "turnover_trade_date": "2026-08-21",
+                    "stock_momentum_20d": 0.05,
+                    "stock_volatility_20d": 0.02,
+                    "stock_factor_trade_date": "2026-08-21",
+                    "market_cap": 5_000_000_000.0,
+                    "market_cap_as_of_date": "2026-08-21",
+                },
+            ]),
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = prepare_market_data_bundle(
+                requirements,
+                date(2026, 8, 21),
+                lambda: frames,
+                cache_root=Path(tmp),
+            )
+
+        self.assertEqual(bundle.manifest["expected_symbols"], ["113001"])
+        self.assertEqual(
+            bundle.manifest["dataset_actual_symbols"]["cb_universe"],
+            ["113001", "113002"],
+        )
+        self.assertEqual(
+            bundle.manifest["dataset_actual_symbols"]["enriched_universe"],
+            ["113001"],
+        )
 
     def test_local_strategy_parameter_changes_do_not_invalidate_raw_inputs(self) -> None:
         stock_config = stock_run.load_config(stock_run.DEFAULT_CONFIG)
@@ -37,7 +89,7 @@ class StrategyMarketDataContractTests(unittest.TestCase):
         cb_config = cb_run.load_config(cb_run.DEFAULT_CONFIG)
         changed_cb = copy.deepcopy(cb_config)
         changed_cb["top_n"] += 1
-        changed_cb["filters"]["max_cb_price"] += 1
+        changed_cb["filters"]["min_turnover_yuan"] += 1
 
         self.assertEqual(
             stock_run.market_data_requirements(stock_config).fingerprint,
@@ -46,6 +98,16 @@ class StrategyMarketDataContractTests(unittest.TestCase):
         self.assertEqual(
             cb_run.market_data_requirements(cb_config).fingerprint,
             cb_run.market_data_requirements(changed_cb).fingerprint,
+        )
+
+    def test_cb_history_scope_filter_changes_invalidate_input_bundle(self) -> None:
+        config = cb_run.load_config(cb_run.DEFAULT_CONFIG)
+        changed = copy.deepcopy(config)
+        changed["filters"]["max_cb_price"] += 1
+
+        self.assertNotEqual(
+            cb_run.market_data_requirements(config).fingerprint,
+            cb_run.market_data_requirements(changed).fingerprint,
         )
 
     def test_stock_test_universe_uses_an_isolated_raw_bundle(self) -> None:
