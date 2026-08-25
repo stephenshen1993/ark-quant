@@ -3021,13 +3021,14 @@
     <div class="plan-execution-dossier" aria-label="计划执行卷宗">
       <nav x-show="expandedAccountId" x-cloak class="plan-execution-index" aria-label="账户交易明细导航">
         <div class="plan-execution-index-list">
-          <a
+          <button
             x-show="fundingPlan()"
-            href="#plan-funding-step"
+            type="button"
+            @click="focusFundingPlan()"
             class="plan-execution-index-item">
             <span class="plan-execution-index-number">01</span>
             <span class="plan-execution-index-copy">资金安排</span>
-          </a>
+          </button>
           <template x-for="(plan, accountIndex) in accountTradingPlans()" :key="'index-' + plan.account_id">
             <button
               type="button"
@@ -5587,6 +5588,11 @@
           const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
           target?.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' })
         })
+      },
+      focusFundingPlan() {
+        const target = document.getElementById('plan-funding-step')
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        target?.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' })
       },
       applyFocusMode() {
         document.documentElement.classList.toggle('plan-focus-mode', this.focusMode)

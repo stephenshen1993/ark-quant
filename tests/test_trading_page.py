@@ -552,6 +552,12 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn('@toggle="handleAccountPlanToggle($event, plan.account_id)"', self.html)
         self.assertNotIn('<details class="plan-account-card" open', self.html)
 
+    def test_funding_index_keeps_plan_route_while_scrolling_to_funding_section(self):
+        self.assertNotIn('href="#plan-funding-step"', self.html)
+        self.assertIn('@click="focusFundingPlan()"', self.html)
+        self.assertIn('focusFundingPlan() {', self.html)
+        self.assertIn("document.getElementById('plan-funding-step')", self.html)
+
     def test_expanded_account_plan_keeps_context_and_execution_guardrails(self):
         self.assertNotIn('class="plan-account-folio"', self.html)
         self.assertIn('x-show="expandedAccountId"', self.html)
