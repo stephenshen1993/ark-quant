@@ -2209,7 +2209,7 @@ def browser_check_code(
 	                    const rows = Array.from(card.querySelectorAll('.plan-trade-row'));
 	                    const cashLabels = Array.from(card.querySelectorAll('.plan-cash-label'))
 	                      .map(label => label.textContent.trim());
-		                    const requiredLabels = ['证券代码', '证券名称', '仓位', '买卖', '交易数量', '参考价', '估算金额'];
+	                    const requiredLabels = ['证券代码', '证券名称', '委托数量', '参考价', '预计金额'];
 	                    const completeRows = rows.every(row => {{
 	                      const labels = Array.from(row.querySelectorAll('[data-label]'))
 	                        .map(cell => cell.dataset.label);
@@ -2219,25 +2219,17 @@ def browser_check_code(
 	                    const noHorizontalOverflow = scrollContainers.every(container =>
 	                      container.scrollWidth <= container.clientWidth + 2
 	                    );
-	                    const title = card.querySelector('.plan-account-folio-title')?.innerText || '';
+	                    const title = card.querySelector('.plan-account-title')?.innerText || '';
 	                    const rowHeights = rows.map(row => row.getBoundingClientRect().height);
 	                    const tradeTableWidth = card.querySelector('.plan-trade-table')?.getBoundingClientRect().width || 0;
-	                    const sideLabels = rows
-	                      .map(row => row.querySelector('.plan-trade-side')?.innerText.trim())
-	                      .filter(Boolean);
-	                    const actionLabels = rows
-	                      .map(row => row.querySelector('.plan-trade-action')?.innerText.trim())
-	                      .filter(Boolean);
-	                    const noActionGroupRows = card.querySelectorAll('.plan-trade-action-group-row').length === 0
-	                      && card.querySelectorAll('.plan-trade-action-group').length === 0;
-	                    const sideRanks = sideLabels.map(label => label === '卖出' ? 0 : label === '买入' ? 1 : -1);
-	                    const tradeDirectionsOrdered = sideRanks.every(rank => rank >= 0)
-	                      && sideRanks.every((rank, idx) => idx === 0 || rank >= sideRanks[idx - 1]);
+	                    const actionLabels = Array.from(card.querySelectorAll('.plan-trade-group-main'))
+	                      .map(node => node.innerText.split('·')[0].trim());
                     const actionRanks = actionLabels.map(label => (
                       {{ '清仓': 0, '减仓': 1, '建仓': 2, '加仓': 3 }}[label] ?? -1
                     ));
 	                    const positionActionsOrdered = actionRanks.every(rank => rank >= 0)
 	                      && actionRanks.every((rank, idx) => idx === 0 || rank >= actionRanks[idx - 1]);
+	                    const tradeDetailWidth = card.querySelector('.plan-account-detail')?.getBoundingClientRect().width || 0;
 	                    const metrics = {{
 	                      accountLabel: title,
 	                      open: card.open,
@@ -2251,34 +2243,25 @@ def browser_check_code(
 	                        && !card.querySelector(':scope > summary .plan-cash-equation')
 	                        && !card.querySelector('.plan-cash-audit')?.open,
 	                      compactWhenOpen: !card.querySelector('.plan-cash-equation')?.checkVisibility()
-	                        && Boolean(card.querySelector('.plan-account-open-summary')?.checkVisibility()),
+	                        && !card.querySelector('.plan-account-open-summary'),
 	                      hasEndingBalance: cashLabels.includes('计划后预计资金余额'),
-	                      hasStickyFolio: window.getComputedStyle(card.querySelector('.plan-account-folio')).position === 'sticky',
-	                      folioIsMinimal: title.includes(`账户 ${{context.expectedIndex}}/${{context.total}}`)
-	                        && !title.includes('账户交易计划')
-	                        && !title.includes('→')
-	                        && !title.includes('开盘执行')
-	                        && !card.querySelector('.plan-account-folio-meta'),
-	                      noScreenshotToggle: !Array.from(card.querySelectorAll('.plan-account-folio-actions button'))
-	                        .some(button => button.innerText.includes('截图模式')),
+	                      hasAccountSwitcher: Boolean(document.querySelector('.plan-execution-index')?.checkVisibility()),
+	                      noDuplicateFolio: !card.querySelector('.plan-account-folio'),
 	                      hasGuardrails: card.querySelectorAll('.plan-execution-guardrail').length >= 2,
-		                      rowSideVisible: rows.length > 0 && sideLabels.length === rows.length
-		                        && sideLabels.every(label => ['卖出', '买入'].includes(label)),
-		                      rowPositionActionVisible: rows.length > 0 && actionLabels.length === rows.length
+		                      groupedActionsVisible: actionLabels.length > 0
 		                        && actionLabels.every(label => ['清仓', '减仓', '建仓', '加仓'].includes(label)),
+		                      noRepeatedRowAction: rows.every(row => !row.querySelector('.plan-trade-action-badge')),
 		                      quantityFirst: rows.every(row => row.querySelector('.plan-trade-quantity')?.innerText.match(/\\d/)),
 		                      noVisiblePositionRoutes: rows.every(row => !row.querySelector('.plan-trade-position-route')),
 		                      positionRouteInTitle: rows.every(row => row.querySelector('.plan-trade-position')?.title.includes('持仓变化：')),
 	                      codeNameSplit: rows.every(row => row.querySelector('.plan-trade-code') && row.querySelector('.plan-trade-name')),
-	                      noActionGroupRows,
-	                      tradeDirectionsOrdered,
 	                      positionActionsOrdered,
 	                      noRepeatedActionColumn: rows.every(row => !row.querySelector('[data-label="仓位动作"]')),
 	                      noExecutionStepColumn: !Array.from(card.querySelectorAll('th'))
 	                        .some(th => th.innerText.trim() === '顺序')
 	                        && rows.every(row => !row.querySelector('.plan-trade-step')),
 	                      compactTradeRows: context.isNarrow || rowHeights.every(height => height <= 46),
-	                      compactTradeWidth: context.isNarrow || tradeTableWidth <= 760,
+	                      fullWidthTradeTable: tradeTableWidth > 0 && tradeTableWidth <= tradeDetailWidth + 2,
 	                      noPhaseHeadings: !card.querySelector('.plan-trade-phase-heading')
 	                        && !card.innerText.includes('卖出阶段')
 	                        && !card.innerText.includes('买入阶段'),
@@ -2296,23 +2279,20 @@ def browser_check_code(
 	                        && metrics.cashEquationDeferred
 	                        && metrics.compactWhenOpen
 	                        && metrics.hasEndingBalance
-	                        && metrics.hasStickyFolio
-	                        && metrics.folioIsMinimal
-	                        && metrics.noScreenshotToggle
+	                        && metrics.hasAccountSwitcher
+	                        && metrics.noDuplicateFolio
 		                        && metrics.hasGuardrails
-		                        && metrics.rowSideVisible
-		                        && metrics.rowPositionActionVisible
+		                        && metrics.groupedActionsVisible
+		                        && metrics.noRepeatedRowAction
 		                        && metrics.quantityFirst
 		                        && metrics.noVisiblePositionRoutes
 	                        && metrics.positionRouteInTitle
 	                        && metrics.codeNameSplit
-	                        && metrics.noActionGroupRows
-	                        && metrics.tradeDirectionsOrdered
 	                        && metrics.positionActionsOrdered
 	                        && metrics.noRepeatedActionColumn
 	                        && metrics.noExecutionStepColumn
 	                        && metrics.compactTradeRows
-	                        && metrics.compactTradeWidth
+	                        && metrics.fullWidthTradeTable
 	                        && metrics.noPhaseHeadings
 	                        && metrics.noRowPriceCap
 	                        && metrics.urlKeepsAccount,

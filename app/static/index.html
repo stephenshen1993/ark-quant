@@ -625,25 +625,6 @@
     letter-spacing: -0.035em;
   }
   .plan-masthead-copy { min-width: 0; }
-  .plan-execution-kicker {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 5px;
-    color: var(--ark-accent);
-    font-family: var(--ark-font-label);
-    font-size: 10px;
-    font-weight: 750;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-  }
-  .plan-execution-kicker span + span {
-    padding-left: 8px;
-    border-left: 1px solid var(--ark-line);
-    color: var(--ark-muted);
-    font-family: var(--ark-font-data);
-    letter-spacing: 0.04em;
-  }
   .plan-execution-brief {
     max-width: 720px;
     margin: 8px 0 0;
@@ -692,35 +673,8 @@
   }
   .plan-masthead-side {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
-    gap: 8px;
-    max-width: 470px;
-  }
-  .plan-masthead-revision {
-    color: var(--ark-muted);
-    font-family: var(--ark-font-data);
-    font-size: 12px;
-    white-space: nowrap;
-  }
-  .plan-masthead-temperature {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-height: 30px;
-    padding: 4px 10px;
-    border: 1px solid var(--ark-line);
-    border-radius: 999px;
-    background: var(--ark-panel);
-    color: var(--ark-muted);
-    font-size: 12px;
-    white-space: nowrap;
-  }
-  .plan-masthead-temperature strong {
-    color: var(--ark-text);
-    font-family: var(--ark-font-data);
-    font-weight: 760;
   }
   .plan-workbench .plan-decision-hero {
     gap: 22px;
@@ -768,22 +722,12 @@
     position: sticky;
     top: 0;
     z-index: 12;
-    display: grid;
-    grid-template-columns: 120px minmax(0, 1fr);
-    gap: 12px;
-    align-items: center;
-    padding: 9px 10px 9px 14px;
+    padding: 6px;
     border: 1px solid var(--ark-line);
     border-radius: 10px;
     background: color-mix(in srgb, var(--ark-panel) 96%, transparent);
     box-shadow: 0 8px 24px rgba(20, 32, 42, 0.06);
     backdrop-filter: blur(14px);
-  }
-  .plan-execution-index-heading {
-    color: var(--ark-muted);
-    font-size: 10px;
-    font-weight: 750;
-    letter-spacing: 0.1em;
   }
   .plan-execution-index-list {
     display: grid;
@@ -793,7 +737,7 @@
   }
   .plan-execution-index-item {
     display: grid;
-    grid-template-columns: 26px minmax(0, 1fr) auto;
+    grid-template-columns: 26px minmax(0, 1fr);
     gap: 7px;
     align-items: center;
     min-width: 0;
@@ -835,12 +779,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .plan-execution-index-state {
-    color: var(--ark-muted);
-    font-size: 10px;
-    font-weight: 620;
-    white-space: nowrap;
-  }
   .plan-execution-sheet {
     overflow: clip;
     border: 1px solid var(--ark-line);
@@ -855,10 +793,10 @@
   .plan-run-step { scroll-margin-top: 68px; }
   .plan-step-header {
     display: grid;
-    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-columns: 44px minmax(0, 1fr);
     gap: 14px;
-    align-items: start;
-    padding: 18px 22px 14px;
+    align-items: center;
+    padding: 18px 22px 12px;
   }
   .plan-step-number {
     width: 40px;
@@ -868,35 +806,11 @@
     background: var(--ark-paper);
     font-size: 12px;
   }
-  .plan-step-eyebrow {
-    color: var(--ark-muted);
-    font-size: 10px;
-    font-weight: 750;
-    letter-spacing: 0.09em;
-  }
   .plan-step-title {
-    margin-top: 2px;
     color: var(--ark-text);
     font-size: 17px;
     font-weight: 750;
     line-height: 1.3;
-  }
-  .plan-step-copy {
-    margin-top: 3px;
-    color: var(--ark-muted);
-    font-size: 12px;
-    line-height: 1.55;
-  }
-  .plan-step-meta {
-    align-self: center;
-    padding: 4px 8px;
-    border: 1px solid var(--ark-line);
-    border-radius: 999px;
-    color: var(--ark-muted);
-    font-family: var(--ark-font-data);
-    font-size: 10px;
-    font-weight: 700;
-    white-space: nowrap;
   }
   .plan-step-body { padding: 0 22px 18px 80px; }
   .plan-funding-plan,
@@ -997,7 +911,12 @@
     font-weight: 650;
     white-space: nowrap;
   }
-  .plan-account-funding-state.is-ready { color: #28724f; background: #e3f1e8; border-color: #cce5d5; }
+  .plan-account-funding-state.is-ready {
+    padding-right: 0;
+    border-color: transparent;
+    background: transparent;
+    color: var(--ark-muted);
+  }
   .plan-account-funding-state.is-same-day { color: #9a6108; background: #f6ead5; border-color: #ead5b2; }
   .plan-account-funding-state.is-future { color: #315e86; background: #e1eaf2; border-color: #cbdbe8; }
   .plan-account-funding-state.is-blocked { color: #a24343; background: #f4e3e2; border-color: #e8c9c7; }
@@ -1057,18 +976,10 @@
   .plan-account-card[open] .plan-account-toggle-open { display: inline; }
   .plan-account-toggle-icon { transition: transform 150ms ease; }
   .plan-account-card[open] .plan-account-toggle-icon { transform: rotate(180deg); }
-  .plan-account-open-summary {
-    display: none;
-    margin: 7px 0 0 58px;
-    color: var(--ark-muted);
-    font-size: 12px;
-    line-height: 1.5;
-  }
   .plan-account-card[open] > summary { padding: 14px 22px; }
   .plan-account-card[open] .plan-account-prerequisite,
   .plan-account-card[open] .plan-account-blocked-reason,
   .plan-account-card[open] .plan-account-detail-toggle { display: none; }
-  .plan-account-card[open] .plan-account-open-summary { display: block; }
   .plan-cash-audit {
     margin-top: 12px;
     border-top: 1px solid var(--ark-faint);
@@ -1132,46 +1043,6 @@
     border-top: 1px solid var(--ark-line);
     padding: 0 22px 20px 80px;
   }
-  .plan-account-folio {
-    position: sticky;
-    top: 0;
-    z-index: 8;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 14px;
-    align-items: center;
-    margin: 0 -22px 0 -80px;
-    padding: 8px 22px 8px 80px;
-    border-bottom: 1px solid var(--ark-line);
-    background: color-mix(in srgb, var(--ark-panel) 96%, transparent);
-    backdrop-filter: blur(12px);
-  }
-  .plan-account-folio-title { font-size: 13px; font-weight: 750; }
-  .plan-account-folio-close {
-    min-height: 34px;
-    padding: 5px 10px;
-    border: 1px solid var(--ark-line);
-    border-radius: 8px;
-    color: var(--ark-accent);
-    font-size: 12px;
-    font-weight: 700;
-  }
-  .plan-account-folio-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .plan-account-folio-nav {
-    min-height: 34px;
-    padding: 5px 9px;
-    border: 1px solid var(--ark-line);
-    border-radius: 8px;
-    color: var(--ark-muted);
-    font-size: 12px;
-    font-weight: 650;
-  }
-  .plan-account-folio-nav:hover,
-  .plan-account-folio-close:hover { background: var(--ark-bg); color: var(--ark-text); }
   .plan-execution-guardrails {
     display: grid;
     gap: 5px;
@@ -1191,56 +1062,6 @@
   }
   .plan-execution-guardrail strong { color: var(--ark-text); font-size: 12px; }
   .plan-trade-section { margin-top: 12px; }
-  .plan-trade-summary {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
-    width: 100%;
-    margin-bottom: 8px;
-  }
-  .plan-trade-summary-item {
-    --plan-trade-tone: var(--ark-muted);
-    display: grid;
-    gap: 2px;
-    min-width: 0;
-    min-height: 42px;
-    padding: 7px 9px 7px 11px;
-    border: 1px solid var(--ark-faint);
-    border-left: 3px solid var(--plan-trade-tone);
-    border-radius: 7px;
-    background: var(--ark-paper);
-  }
-  .plan-trade-summary-item.is-action-sell-all { --plan-trade-tone: var(--ark-problem); }
-  .plan-trade-summary-item.is-action-trim { --plan-trade-tone: var(--ark-warn); }
-  .plan-trade-summary-item.is-action-buy { --plan-trade-tone: var(--ark-accent); }
-  .plan-trade-summary-item.is-action-add { --plan-trade-tone: var(--ark-info); }
-  .plan-trade-summary-label {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 4px;
-    color: var(--plan-trade-tone);
-    font-size: 11px;
-    font-weight: 750;
-    line-height: 1.1;
-  }
-  .plan-trade-summary-count {
-    color: var(--ark-muted);
-    font-family: var(--ark-font-data);
-    font-size: 10px;
-    font-weight: 650;
-    white-space: nowrap;
-  }
-  .plan-trade-summary-amount {
-    overflow: hidden;
-    color: var(--ark-text);
-    font-family: var(--ark-font-data);
-    font-size: 11px;
-    font-weight: 750;
-    line-height: 1.15;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
   .plan-trade-table-scroll {
     width: 100%;
     max-width: 100%;
@@ -1255,7 +1076,6 @@
   }
   .plan-trade-code-col { width: 82px; }
   .plan-trade-name-col { width: 184px; }
-  .plan-trade-action-col { width: 74px; }
   .plan-trade-quantity-col { width: 96px; }
   .plan-trade-price-col { width: 92px; }
   .plan-trade-amount-col { width: 136px; }
@@ -1268,10 +1088,40 @@
     text-align: left;
     white-space: nowrap;
   }
-  .plan-trade-table th:nth-child(3),
-  .plan-trade-table td:nth-child(3) { text-align: center; }
-  .plan-trade-table th:nth-child(n + 4),
-  .plan-trade-table td:nth-child(n + 4) { text-align: right; }
+  .plan-trade-table th:nth-child(n + 3),
+  .plan-trade-table td:nth-child(n + 3) { text-align: right; }
+  .plan-trade-group-row {
+    --plan-trade-tone: var(--ark-muted);
+  }
+  .plan-trade-group-row.is-action-sell-all { --plan-trade-tone: var(--ark-problem); }
+  .plan-trade-group-row.is-action-trim { --plan-trade-tone: var(--ark-warn); }
+  .plan-trade-group-row.is-action-buy { --plan-trade-tone: var(--ark-accent-deep); }
+  .plan-trade-group-row.is-action-add { --plan-trade-tone: var(--ark-info); }
+  .plan-trade-group-row th {
+    padding: 10px 10px 6px;
+    border-top: 2px solid color-mix(in srgb, var(--plan-trade-tone) 62%, white);
+    border-bottom: 1px solid var(--ark-faint);
+    color: var(--ark-text);
+    text-align: left !important;
+  }
+  .plan-trade-group-row:first-child th { border-top-width: 1px; }
+  .plan-trade-group-summary {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .plan-trade-group-main {
+    color: var(--plan-trade-tone);
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .plan-trade-group-meta {
+    color: var(--ark-muted);
+    font-family: var(--ark-font-data);
+    font-size: 11px;
+    font-weight: 650;
+  }
   .plan-trade-row td {
     padding: 6px 10px;
     border-bottom: 1px solid var(--ark-faint);
@@ -1289,34 +1139,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .plan-trade-action {
-    color: var(--ark-text);
-    font-weight: 700;
-    white-space: nowrap;
-  }
-  .plan-trade-action-badge {
-    --plan-trade-tone: var(--ark-text);
-    display: inline-flex;
-    align-items: center;
-    min-height: 22px;
-    padding: 2px 6px;
-    border: 1px solid color-mix(in srgb, var(--plan-trade-tone) 26%, white);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--plan-trade-tone) 9%, white);
-    color: var(--plan-trade-tone);
-    font-size: 12px;
-    font-weight: 800;
-    line-height: 1;
-  }
-  .plan-trade-action-badge.is-action-sell-all { --plan-trade-tone: var(--ark-problem); }
-  .plan-trade-action-badge.is-action-trim { --plan-trade-tone: var(--ark-warn); }
-  .plan-trade-action-badge.is-action-buy { --plan-trade-tone: var(--ark-accent-deep); }
-  .plan-trade-action-badge.is-action-add { --plan-trade-tone: var(--ark-info); }
-  .plan-trade-row.is-action-group-start td { border-top: 2px solid var(--ark-line); }
-  .plan-trade-row.is-action-group-start.is-action-sell-all td { border-top-color: color-mix(in srgb, var(--ark-problem) 62%, white); }
-  .plan-trade-row.is-action-group-start.is-action-trim td { border-top-color: color-mix(in srgb, var(--ark-warn) 62%, white); }
-  .plan-trade-row.is-action-group-start.is-action-buy td { border-top-color: color-mix(in srgb, var(--ark-accent) 62%, white); }
-  .plan-trade-row.is-action-group-start.is-action-add td { border-top-color: color-mix(in srgb, var(--ark-info) 62%, white); }
   .plan-trade-position,
   .plan-trade-price,
   .plan-trade-amount {
@@ -2262,7 +2084,6 @@
     }
     .plan-workbench .workspace-title { font-size: 30px; }
     .plan-masthead-side { justify-content: flex-start; max-width: none; }
-    .plan-masthead-revision { white-space: normal; }
     .plan-decision-hero {
       grid-template-columns: 1fr;
       gap: 18px;
@@ -2273,19 +2094,18 @@
     .plan-state-chain { display: grid; grid-template-columns: 1fr; gap: 5px; }
     .plan-execution-index {
       position: static;
-      grid-template-columns: 1fr;
-      gap: 7px;
-      padding: 10px;
+      padding: 6px;
       box-shadow: none;
     }
-    .plan-execution-index-list { grid-template-columns: 1fr; }
+    .plan-execution-index-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .plan-execution-index-item { grid-template-columns: 24px minmax(0, 1fr); padding: 4px 6px; }
+    .plan-execution-index-number { width: 24px; height: 24px; }
     .plan-step-header {
       grid-template-columns: 40px minmax(0, 1fr);
       gap: 12px;
       padding: 16px;
     }
     .plan-step-number { width: 36px; height: 36px; }
-    .plan-step-meta { grid-column: 2; justify-self: start; }
     .plan-step-body { padding: 0 16px 16px; }
     .plan-funding-header { display: block; }
     .plan-funding-table-scroll { overflow: visible; }
@@ -2327,8 +2147,7 @@
     .plan-account-heading { grid-template-columns: 40px minmax(0, 1fr); gap: 10px 12px; }
     .plan-account-funding-state { grid-column: 2; justify-self: start; }
     .plan-account-command,
-    .plan-account-prerequisite,
-    .plan-account-open-summary { margin-left: 52px; }
+    .plan-account-prerequisite { margin-left: 52px; }
     .plan-cash-equation { grid-template-columns: 1fr; border: 0; }
     .plan-cash-term {
       display: grid;
@@ -2343,21 +2162,8 @@
     .plan-cash-label { font-size: 11px; }
     .plan-cash-value { margin-top: 0; text-align: right; }
     .plan-account-detail { padding: 0 16px 16px; }
-    .plan-account-folio {
-      grid-template-columns: 1fr;
-      margin: 0 -16px;
-      padding: 10px 16px;
-    }
-	    .plan-account-folio-actions {
-	      display: grid;
-	      grid-template-columns: repeat(2, minmax(0, 1fr));
-	    }
-    .plan-account-folio-nav,
-    .plan-account-folio-close { min-height: 40px; }
     .plan-execution-guardrails { padding: 11px 12px; }
     .plan-execution-guardrail { grid-template-columns: 1fr; gap: 2px; font-size: 13px; }
-    .plan-trade-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 10px; }
-    .plan-trade-summary-item { min-height: 40px; }
     .plan-trade-table-scroll { overflow: visible; }
     .plan-trade-table,
     .plan-trade-table tbody { display: block; width: 100%; }
@@ -2369,23 +2175,20 @@
       clip: rect(0 0 0 0);
       white-space: nowrap;
     }
+    .plan-trade-group-row { display: block; }
+    .plan-trade-group-row th { display: block; padding: 11px 0 7px; }
 	    .plan-trade-row {
 	      display: grid;
-	      grid-template-columns: 66px minmax(0, 1fr) 44px 42px auto;
+	      grid-template-columns: 66px minmax(0, 1fr) 48px auto;
 	      grid-template-areas:
-	        "code name action side amount"
-	        "position position position price amount";
+	        "code name price amount"
+	        "position position price amount";
 	      column-gap: 14px;
 	      row-gap: 7px;
       padding: 10px 0;
       border-bottom: 1px solid var(--ark-line);
     }
     .plan-trade-row:last-child { border-bottom: 0; }
-    .plan-trade-row.is-action-group-start { border-top: 2px solid var(--ark-line); }
-    .plan-trade-row.is-action-group-start.is-action-sell-all { border-top-color: color-mix(in srgb, var(--ark-problem) 62%, white); }
-    .plan-trade-row.is-action-group-start.is-action-trim { border-top-color: color-mix(in srgb, var(--ark-warn) 62%, white); }
-    .plan-trade-row.is-action-group-start.is-action-buy { border-top-color: color-mix(in srgb, var(--ark-accent) 62%, white); }
-    .plan-trade-row.is-action-group-start.is-action-add { border-top-color: color-mix(in srgb, var(--ark-info) 62%, white); }
     .plan-trade-row td {
       display: block;
       min-width: 0;
@@ -2404,8 +2207,6 @@
 	    }
     .plan-trade-code { grid-area: code; }
     .plan-trade-name { grid-area: name; }
-    .plan-trade-action { grid-area: action; text-align: center !important; }
-    .plan-trade-side { grid-area: side; text-align: right !important; }
     .plan-trade-position { grid-area: position; }
     .plan-trade-price { grid-area: price; }
     .plan-trade-amount { grid-area: amount; text-align: right !important; }
@@ -3058,10 +2859,6 @@
     :aria-busy="generatingPlan || !planReady ? 'true' : 'false'">
     <div class="workspace-title-row flex justify-between gap-5">
       <div class="plan-masthead-copy">
-        <div x-show="isReviewableExecutionPlan()" x-cloak class="plan-execution-kicker">
-          <span>Execution Log</span>
-          <span x-text="executionDate()"></span>
-        </div>
         <div class="plan-masthead-title">
           <h1 class="workspace-title tracking-normal">计划</h1>
           <span
@@ -3081,21 +2878,6 @@
         </p>
       </div>
       <div class="plan-masthead-side">
-        <div
-          x-show="planReady && temperatureText() !== '-'"
-          x-cloak
-          class="plan-masthead-temperature"
-          aria-label="当前全市场温度">
-          <span>温度</span>
-          <strong x-text="temperatureText()"></strong>
-          <span x-show="temperatureLabel()" x-text="temperatureLabel()"></span>
-        </div>
-        <div
-          x-show="hasSavedGeneratedPlan()"
-          x-cloak
-          class="plan-masthead-revision"
-          x-text="planRevisionText()">
-        </div>
         <button
           x-show="hasSavedGeneratedPlan()"
           x-cloak
@@ -3174,8 +2956,7 @@
     <!-- 执行计划必须紧跟今日决策 -->
     <template x-if="isReviewableExecutionPlan() || (isHistoricalPlanSnapshot() && snapshotExpanded)">
     <div class="plan-execution-dossier" aria-label="计划执行卷宗">
-      <nav class="plan-execution-index" aria-label="计划索引">
-        <div class="plan-execution-index-heading">计划索引</div>
+      <nav x-show="expandedAccountId" x-cloak class="plan-execution-index" aria-label="账户交易明细导航">
         <div class="plan-execution-index-list">
           <a
             x-show="fundingPlan()"
@@ -3183,7 +2964,6 @@
             class="plan-execution-index-item">
             <span class="plan-execution-index-number">01</span>
             <span class="plan-execution-index-copy">资金安排</span>
-            <span class="plan-execution-index-state" x-text="fundingActionCount() + ' 笔'"></span>
           </a>
           <template x-for="(plan, accountIndex) in accountTradingPlans()" :key="'index-' + plan.account_id">
             <button
@@ -3191,10 +2971,10 @@
               class="plan-execution-index-item"
               :class="expandedAccountId === plan.account_id ? 'is-current' : ''"
               :aria-pressed="expandedAccountId === plan.account_id ? 'true' : 'false'"
-              @click="switchAccountPlan(plan.account_id)">
+              :aria-label="expandedAccountId === plan.account_id ? '收起' + plan.account_name + '交易明细' : '查看' + plan.account_name + '交易明细'"
+              @click="expandedAccountId === plan.account_id ? closeAccountPlan(plan.account_id) : switchAccountPlan(plan.account_id)">
               <span class="plan-execution-index-number" x-text="plan.display_sequence"></span>
               <span class="plan-execution-index-copy" x-text="plan.account_name"></span>
-              <span class="plan-execution-index-state" x-text="fundingStateShortText(plan.funding)"></span>
             </button>
           </template>
         </div>
@@ -3204,12 +2984,7 @@
         <section id="plan-funding-step" class="plan-funding-plan plan-run-step" aria-label="资金调拨计划">
           <header class="plan-step-header">
             <span class="plan-step-number">01</span>
-            <div>
-              <div class="plan-step-eyebrow">资金调拨计划</div>
-              <h2 class="plan-step-title">资金安排</h2>
-              <p class="plan-step-copy">按资金可用日期执行；账户交易前先确认对应资金条件。</p>
-            </div>
-            <span class="plan-step-meta" x-text="fundingActionCount() + ' 笔调拨'"></span>
+            <h2 class="plan-step-title">先完成资金安排</h2>
           </header>
           <div class="plan-step-body plan-funding-table-scroll">
             <table class="plan-funding-table" aria-label="资金调拨动作">
@@ -3264,11 +3039,8 @@
                   <div class="plan-account-heading">
                     <span class="plan-step-number" x-text="plan.display_sequence"></span>
                     <div class="plan-account-heading-copy">
-                      <div class="plan-step-eyebrow">账户交易计划</div>
                       <h3 class="plan-account-title" x-text="plan.account_name"></h3>
                       <p class="plan-account-subtitle">
-                        <span x-text="plan.portfolio_name"></span>
-                        <span aria-hidden="true"> · </span>
                         <span x-text="plan.strategy_name"></span>
                         <span x-show="accountTradeDateText(plan)" aria-hidden="true"> · </span>
                         <span x-show="accountTradeDateText(plan)" x-text="accountTradeDateText(plan)"></span>
@@ -3278,53 +3050,20 @@
                   </div>
                   <div class="plan-account-command plan-account-toggle-closed" x-text="accountExecutionSummary(plan)"></div>
                   <div x-show="plan.funding.state !== 'ready'" class="plan-account-prerequisite" x-text="fundingPrerequisiteText(plan)"></div>
-                  <div class="plan-account-open-summary" x-text="accountExecutionSummary(plan)"></div>
                   <p x-show="plan.funding.blocked_reason" class="plan-account-blocked-reason mt-3 text-xs font-medium text-red-600" x-text="plan.funding.blocked_reason"></p>
                   <div class="plan-account-detail-toggle">
-                    <span class="plan-account-toggle-closed">展开证券交易明细</span>
-                    <span class="plan-account-toggle-open">收起证券交易明细</span>
+                    <span class="plan-account-toggle-closed" x-text="'查看 ' + accountTradeOrders(plan).length + ' 笔交易'"></span>
+                    <span class="plan-account-toggle-open">收起交易明细</span>
                     <span class="plan-account-toggle-icon" aria-hidden="true">⌄</span>
                   </div>
                 </summary>
                 <div class="plan-account-detail">
-	                  <header class="plan-account-folio" aria-label="当前展开账户">
-	                    <div class="plan-account-folio-title" x-text="accountPlanFolioTitle(plan)"></div>
-	                    <div class="plan-account-folio-actions">
-	                      <button
-	                        x-show="previousAccountPlanId(plan.account_id)"
-	                        type="button"
-                        class="plan-account-folio-nav"
-                        @click="switchAccountPlan(previousAccountPlanId(plan.account_id))">
-                        上一个账户
-                      </button>
-                      <button
-                        x-show="nextAccountPlanId(plan.account_id)"
-                        type="button"
-                        class="plan-account-folio-nav"
-                        @click="switchAccountPlan(nextAccountPlanId(plan.account_id))">
-                        下一个账户
-                      </button>
-                      <button type="button" class="plan-account-folio-close" @click="closeAccountPlan(plan.account_id)">收起</button>
-                    </div>
-                  </header>
 	                  <section class="plan-trade-section">
-	                    <div class="plan-trade-summary" aria-label="交易动作汇总">
-	                      <template x-for="summary in accountTradeActionOverview(plan)" :key="summary.action">
-	                        <div class="plan-trade-summary-item" :class="tradeActionToneClass(summary.action)">
-	                          <div class="plan-trade-summary-label">
-	                            <span x-text="summary.label"></span>
-	                            <span class="plan-trade-summary-count" x-text="summary.count + ' 笔'"></span>
-	                          </div>
-	                          <div class="plan-trade-summary-amount" x-text="summary.amount_label + ' ' + fmtMoney(summary.amount)"></div>
-	                        </div>
-	                      </template>
-	                    </div>
 	                    <div class="plan-trade-table-scroll">
-	                      <table class="plan-trade-table">
+	                      <table class="plan-trade-table" aria-label="证券交易明细">
                         <colgroup>
                           <col class="plan-trade-code-col">
                           <col class="plan-trade-name-col">
-                          <col class="plan-trade-action-col">
                           <col class="plan-trade-quantity-col">
                           <col class="plan-trade-price-col">
                           <col class="plan-trade-amount-col">
@@ -3333,22 +3072,25 @@
                           <tr>
                             <th>证券代码</th>
                             <th>证券名称</th>
-                            <th>调仓动作</th>
                             <th>委托数量</th>
                             <th>参考价</th>
                             <th>预计金额</th>
                           </tr>
                         </thead>
-                        <tbody>
-                          <template x-for="(order, orderIndex) in accountTradeOrders(plan)" :key="plan.account_id + '-' + order.action + '-' + order.code">
-	                            <tr class="plan-trade-row" :class="tradeActionGroupStartClass(accountTradeOrders(plan)[orderIndex - 1]?.action, order.action)">
+                        <template x-for="group in accountTradeActionOverview(plan)" :key="plan.account_id + '-' + group.action">
+                          <tbody>
+                            <tr class="plan-trade-group-row" :class="tradeActionToneClass(group.action)">
+                              <th colspan="5" scope="rowgroup">
+                                <span class="plan-trade-group-summary">
+                                  <span class="plan-trade-group-main" x-text="group.label + ' · ' + group.count + ' 笔'"></span>
+                                  <span class="plan-trade-group-meta" x-text="group.amount_label + ' ' + fmtMoney(group.amount)"></span>
+                                </span>
+                              </th>
+                            </tr>
+                            <template x-for="order in group.orders" :key="plan.account_id + '-' + group.action + '-' + order.code">
+	                            <tr class="plan-trade-row">
                               <td class="plan-trade-code" data-label="证券代码" x-text="order.code"></td>
                               <td class="plan-trade-name" data-label="证券名称" x-text="order.name"></td>
-                              <td
-                                class="plan-trade-action"
-                                data-label="调仓动作">
-                                <span class="plan-trade-action-badge" :class="tradeActionToneClass(order.action)" x-text="positionActionText(order.action)"></span>
-                              </td>
                               <td
                                 class="plan-trade-position"
                                 data-label="委托数量"
@@ -3363,25 +3105,26 @@
                               </td>
                               <td class="plan-trade-amount" data-label="预计金额" x-text="fmtMoney(order.estimated_amount)"></td>
                             </tr>
-                          </template>
-                        </tbody>
+                            </template>
+                          </tbody>
+                        </template>
 	                      </table>
 	                    </div>
 	                  </section>
-	                  <section class="plan-execution-guardrails" aria-label="执行保护">
-	                    <div class="plan-execution-guardrail">
-	                      <strong>参考价口径</strong>
-	                      <span x-text="'参考价（非限价）基于 ' + (plan.execution_guardrails?.price_basis_date || executionReadModel()?.plan_date || '计划基准日') + ' 的计划估值；仅用于估算，不是券商限价。'"></span>
-	                    </div>
-	                    <template x-for="rule in plan.execution_guardrails?.rules || []" :key="rule.kind">
-	                      <div class="plan-execution-guardrail">
-	                        <strong>硬约束</strong>
-	                        <span x-text="guardrailText(rule)"></span>
-	                      </div>
-	                    </template>
-	                  </section>
 	                  <details class="plan-cash-audit">
-	                    <summary>资金估算过程</summary>
+	                    <summary>执行说明与资金估算</summary>
+	                    <section class="plan-execution-guardrails" aria-label="执行保护">
+	                      <div class="plan-execution-guardrail">
+	                        <strong>参考价口径</strong>
+	                        <span x-text="'参考价（非限价）基于 ' + (plan.execution_guardrails?.price_basis_date || executionReadModel()?.plan_date || '计划基准日') + ' 的计划估值；仅用于估算，不是券商限价。'"></span>
+	                      </div>
+	                      <template x-for="rule in plan.execution_guardrails?.rules || []" :key="rule.kind">
+	                        <div class="plan-execution-guardrail">
+	                          <strong>硬约束</strong>
+	                          <span x-text="guardrailText(rule)"></span>
+	                        </div>
+	                      </template>
+	                    </section>
 	                    <div class="plan-cash-equation" aria-label="账户交易计划资金闭合">
 	                      <div class="plan-cash-term">
 	                        <div class="plan-cash-label">起始可用资金</div>
@@ -3425,6 +3168,7 @@
         <span class="ml-2 text-xs font-normal text-gray-400" x-text="planHistorySummary()"></span>
       </summary>
       <div class="mt-3 space-y-2">
+        <p x-show="hasSavedGeneratedPlan()" class="workspace-meta" x-text="'当前计划 · ' + planRevisionText()"></p>
         <p x-show="historyLoading" class="workspace-meta">正在读取历史计划…</p>
         <p x-show="historyError" class="text-sm text-red-700" x-text="historyError"></p>
         <p x-show="!historyLoading && !historyError && !planHistory.length" class="workspace-meta">尚无已完成的历史计划。</p>
@@ -5709,27 +5453,27 @@
       fundingPlan() {
         return this.executionReadModel()?.funding_plan || null
       },
-      fundingActionCount() {
-        return (this.fundingPlan()?.groups || []).reduce(
-          (total, group) => total + (group?.actions || []).length,
-          0,
-        )
-      },
       accountTradingPlans() {
         const plans = this.executionReadModel()?.account_trading_plans || []
         const firstAccountStep = this.fundingPlan() ? 2 : 1
         return plans.map((plan, index) => ({
           ...plan,
-          display_ordinal: `${index + 1}/${plans.length}`,
           display_sequence: String(index + firstAccountStep).padStart(2, '0'),
         }))
       },
       executionBriefText() {
-        const fundingCount = this.fundingActionCount()
-        const accountCount = this.accountTradingPlans().length
-        const fundingText = fundingCount ? `${fundingCount} 笔资金调拨` : '无需资金调拨'
-        const accountText = accountCount ? `${accountCount} 个账户交易安排` : '无需账户交易'
-        return `${fundingText} · ${accountText}；按资金可用日期和账户状态依次复核。`
+        const plans = this.accountTradingPlans()
+        const blocked = plans.find(plan => plan?.funding?.state === 'blocked')
+        if (blocked) return `${blocked.account_name}资金不足，暂不可执行；先处理资金缺口。`
+        const waiting = plans.find(plan => plan?.funding?.state === 'waits_for_funds')
+        if (waiting) return `${waiting.account_name}需等待资金可用；到账前不要执行该账户交易。`
+        const transfer = plans.find(plan => plan?.funding?.state === 'needs_same_day_transfer')
+        if (transfer) {
+          const readyCount = plans.filter(plan => plan?.funding?.state === 'ready').length
+          const readyText = readyCount ? `其余 ${readyCount} 个账户可直接执行。` : ''
+          return `先向${transfer.account_name}调入 ${this.fmtMoney(transfer.funding.transfer_in || 0)} 并确认到账；${readyText}`
+        }
+        return `${plans.length} 个账户资金已具备，可直接执行证券交易。`
       },
       hasExecutionPlans() {
         return Boolean(this.fundingPlan() || this.accountTradingPlans().length)
@@ -5755,55 +5499,14 @@
         else url.searchParams.delete('planAccount')
         history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
       },
-      adjacentAccountPlanId(accountId, offset) {
-        const plans = this.accountTradingPlans()
-        const index = plans.findIndex(item => item.account_id === accountId)
-        if (index < 0) return ''
-        return plans[index + offset]?.account_id || ''
-      },
-      previousAccountPlanId(accountId) {
-        return this.adjacentAccountPlanId(accountId, -1)
-      },
-      nextAccountPlanId(accountId) {
-        return this.adjacentAccountPlanId(accountId, 1)
-      },
-      accountPlanOrdinal(plan, accountIndex = null, explicitTotal = null) {
-        if (plan?.display_ordinal) return plan.display_ordinal
-        const plans = this.accountTradingPlans()
-        const total = Number.isInteger(explicitTotal) && explicitTotal > 0 ? explicitTotal : plans.length
-        if (Number.isInteger(accountIndex) && accountIndex >= 0) {
-          return total > 0 ? `${accountIndex + 1}/${total}` : `${accountIndex + 1}`
-        }
-        const index = plans.findIndex(item => item.account_id === plan?.account_id)
-        return index >= 0 && total > 0 ? `${index + 1}/${total}` : ''
-      },
-      accountPlanFolioTitle(plan, accountIndex = null, explicitTotal = null) {
-        const ordinal = this.accountPlanOrdinal(plan, accountIndex, explicitTotal)
-        return ordinal ? `${plan.account_name} · 交易明细 · ${ordinal}` : `${plan.account_name} · 交易明细`
-      },
       accountTradeDateText(plan) {
         const tradeDate = plan?.trade_date || ''
+        if (!this.isSelectedHistoricalPlan()) return ''
         if (!tradeDate || tradeDate === this.executionDate()) return ''
         return `${tradeDate} 开盘执行`
       },
       accountExecutionSummary(plan) {
-        const funding = this.accountFundingSummary(plan)
-        const ending = this.fmtMoney(plan?.cash?.expected_ending || 0)
-        const actions = this.accountActionSummary(plan)
-        return `${funding}；${actions}；计划后资金 ${ending}`
-      },
-      accountFundingSummary(plan) {
-        const funding = plan?.funding || {}
-        if (funding.state === 'needs_same_day_transfer') {
-          return `需先调入 ${this.fmtMoney(funding.transfer_in || 0)}`
-        }
-        if (funding.state === 'waits_for_funds') {
-          return funding.display_date
-            ? `等待资金可用 ${funding.display_date}`
-            : '等待资金可用'
-        }
-        if (funding.state === 'blocked') return '资金不足'
-        return '无需调入'
+        return this.accountActionSummary(plan)
       },
       accountActionSummary(plan) {
         const groups = this.accountTradeGroups(plan)
@@ -5847,11 +5550,9 @@
             : `等待资金于 ${funding.display_date || '待确认日期'} 可用；此前不可执行。`
         }
         if (funding.state === 'needs_same_day_transfer') {
-          return incomingText
-            ? `执行前先完成：${incomingText}；确认到账后再交易。`
-            : `执行前先调入 ${this.fmtMoney(funding.transfer_in)}，确认到账后再交易。`
+          return `先确认 ${this.fmtMoney(funding.transfer_in)} 已调入，再执行该账户交易。`
         }
-        return '无需前置调入；账户现有资金与预计卖出可覆盖本计划。'
+        return ''
       },
       guardrailText(rule) {
         if (rule?.kind === 'buy_price_ceiling') {
@@ -5864,13 +5565,15 @@
       },
       fundingStateDescriptor(funding) {
         const descriptor = {
-          ready: { text: '资金已具备', className: 'is-ready' },
-          needs_same_day_transfer: { text: '需要当日调入', className: 'is-same-day' },
+          ready: { text: '可直接执行', className: 'is-ready' },
+          needs_same_day_transfer: { text: '待调入', className: 'is-same-day' },
           waits_for_funds: { text: '等待未来资金可用', className: 'is-future' },
           blocked: { text: '资金不足 · 已阻断', className: 'is-blocked' },
         }[funding?.state] || { text: '等待资金确认', className: '' }
         const shouldShowDate = Boolean(
-          funding?.display_date && funding.display_date !== this.executionDate()
+          funding?.display_date &&
+          ['waits_for_funds', 'blocked'].includes(funding?.state) &&
+          funding.display_date !== this.executionDate()
         )
         return {
           ...descriptor,
@@ -5879,9 +5582,6 @@
       },
       fundingStateText(funding) {
         return this.fundingStateDescriptor(funding).text
-      },
-      fundingStateShortText(funding) {
-        return this.fundingStateDescriptor({ ...(funding || {}), display_date: '' }).text
       },
       fundingStateClass(funding) {
         return this.fundingStateDescriptor(funding).className
@@ -5952,6 +5652,7 @@
             ...item,
             count: matched.length,
             amount: matched.reduce((sum, order) => sum + Math.abs(Number(order?.estimated_amount || 0)), 0),
+            orders: matched,
           }
         }).filter(item => item.count)
       },
@@ -5969,10 +5670,6 @@
           BUY: 'is-action-buy',
           ADD: 'is-action-add',
         }[action] || ''
-      },
-      tradeActionGroupStartClass(previousAction, action) {
-        if (!action || previousAction === action) return ''
-        return `is-action-group-start ${this.tradeActionToneClass(action)}`
       },
       showReadinessPanel() {
         return !['action', 'future-action', 'no-action', 'historical'].includes(this.planState())
