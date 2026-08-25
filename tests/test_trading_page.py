@@ -657,7 +657,7 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn('class="plan-trade-quantity-col"', self.html)
         self.assertIn('class="plan-trade-price-col"', self.html)
         self.assertIn('class="plan-trade-amount-col"', self.html)
-        self.assertIn("width: min(100%, 720px);", self.html)
+        self.assertIn(".plan-trade-table {\n    width: 100%;", self.html)
         self.assertIn(".plan-trade-name-col { width: 184px; }", self.html)
         self.assertIn('x-text="positionActionText(order.action)"', self.html)
         self.assertIn('tradeActionToneClass(order.action)', self.html)

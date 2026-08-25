@@ -604,7 +604,7 @@
     padding-top: 30px;
   }
   .plan-workbench.is-execution-document {
-    padding-top: 22px;
+    padding-top: 18px;
   }
   .plan-workbench .workspace-title-row {
     margin-bottom: 18px;
@@ -612,14 +612,46 @@
   }
   .plan-workbench .workspace-title { font-size: 34px; }
   .plan-workbench.is-execution-document .workspace-title-row {
-    margin-bottom: 10px;
-    padding-bottom: 12px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 24px;
+    margin-bottom: 14px;
+    padding-bottom: 16px;
+    border-bottom-width: 2px;
   }
   .plan-workbench.is-execution-document .workspace-title {
-    font-family: var(--ark-font-body);
-    font-size: 28px;
-    font-weight: 760;
-    letter-spacing: -0.03em;
+    font-size: 32px;
+    letter-spacing: -0.035em;
+  }
+  .plan-masthead-copy { min-width: 0; }
+  .plan-execution-kicker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 5px;
+    color: var(--ark-accent);
+    font-family: var(--ark-font-label);
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .plan-execution-kicker span + span {
+    padding-left: 8px;
+    border-left: 1px solid var(--ark-line);
+    color: var(--ark-muted);
+    font-family: var(--ark-font-data);
+    letter-spacing: 0.04em;
+  }
+  .plan-execution-brief {
+    max-width: 720px;
+    margin: 8px 0 0;
+    color: var(--ark-text);
+    font-size: 14px;
+    font-weight: 620;
+    line-height: 1.55;
+    text-wrap: pretty;
   }
   .plan-masthead-title {
     display: flex;
@@ -663,7 +695,8 @@
     flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
-    gap: 10px;
+    gap: 8px;
+    max-width: 470px;
   }
   .plan-masthead-revision {
     color: var(--ark-muted);
@@ -728,9 +761,144 @@
   }
   .plan-execution-dossier {
     display: grid;
-    gap: 14px;
+    gap: 12px;
     margin-bottom: 18px;
   }
+  .plan-execution-index {
+    position: sticky;
+    top: 0;
+    z-index: 12;
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr);
+    gap: 12px;
+    align-items: center;
+    padding: 9px 10px 9px 14px;
+    border: 1px solid var(--ark-line);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--ark-panel) 96%, transparent);
+    box-shadow: 0 8px 24px rgba(20, 32, 42, 0.06);
+    backdrop-filter: blur(14px);
+  }
+  .plan-execution-index-heading {
+    color: var(--ark-muted);
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.1em;
+  }
+  .plan-execution-index-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+    min-width: 0;
+  }
+  .plan-execution-index-item {
+    display: grid;
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    gap: 7px;
+    align-items: center;
+    min-width: 0;
+    min-height: 38px;
+    padding: 5px 8px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    color: var(--ark-text);
+    text-align: left;
+    text-decoration: none;
+  }
+  .plan-execution-index-item:hover,
+  .plan-execution-index-item.is-current {
+    border-color: var(--ark-line);
+    background: var(--ark-paper);
+  }
+  .plan-execution-index-number,
+  .plan-step-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ark-accent);
+    font-family: var(--ark-font-data);
+    font-size: 11px;
+    font-weight: 800;
+  }
+  .plan-execution-index-number {
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--ark-line);
+    border-radius: 999px;
+    background: var(--ark-panel);
+  }
+  .plan-execution-index-copy {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 12px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .plan-execution-index-state {
+    color: var(--ark-muted);
+    font-size: 10px;
+    font-weight: 620;
+    white-space: nowrap;
+  }
+  .plan-execution-sheet {
+    overflow: clip;
+    border: 1px solid var(--ark-line);
+    border-radius: 11px;
+    background: var(--ark-panel);
+  }
+  .plan-history-panel {
+    border-color: var(--ark-faint) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  .plan-run-step { scroll-margin-top: 68px; }
+  .plan-step-header {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    gap: 14px;
+    align-items: start;
+    padding: 18px 22px 14px;
+  }
+  .plan-step-number {
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--ark-line);
+    border-radius: 999px;
+    background: var(--ark-paper);
+    font-size: 12px;
+  }
+  .plan-step-eyebrow {
+    color: var(--ark-muted);
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.09em;
+  }
+  .plan-step-title {
+    margin-top: 2px;
+    color: var(--ark-text);
+    font-size: 17px;
+    font-weight: 750;
+    line-height: 1.3;
+  }
+  .plan-step-copy {
+    margin-top: 3px;
+    color: var(--ark-muted);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .plan-step-meta {
+    align-self: center;
+    padding: 4px 8px;
+    border: 1px solid var(--ark-line);
+    border-radius: 999px;
+    color: var(--ark-muted);
+    font-family: var(--ark-font-data);
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .plan-step-body { padding: 0 22px 18px 80px; }
   .plan-funding-plan,
   .plan-account-card {
     box-shadow: none !important;
@@ -792,28 +960,33 @@
   }
   .plan-account-list {
     display: grid;
-    gap: 12px;
+    gap: 0;
   }
   .plan-account-card {
-    border: 1px solid var(--ark-line);
-    border-radius: 8px;
+    border: 0;
+    border-top: 1px solid var(--ark-line);
+    border-radius: 0;
     background: var(--ark-panel);
+    scroll-margin-top: 68px;
   }
+  .plan-account-list:not(.has-funding-step) .plan-account-card:first-child { border-top: 0; }
   .plan-account-card[data-state="blocked"] { border-left: 4px solid #a24343; }
   .plan-account-card[data-state="waits_for_funds"] { border-left: 4px solid var(--ark-info); }
   .plan-account-card > summary {
     display: block;
-    padding: 14px 18px;
+    padding: 17px 22px;
     cursor: pointer;
     list-style: none;
   }
   .plan-account-card > summary::-webkit-details-marker { display: none; }
   .plan-account-heading {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 16px;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    gap: 14px;
     align-items: start;
   }
+  .plan-account-heading .plan-step-number { grid-row: 1 / span 2; }
+  .plan-account-heading-copy { min-width: 0; }
   .plan-account-title { font-size: 17px; font-weight: 700; }
   .plan-account-subtitle { margin-top: 3px; color: var(--ark-muted); font-size: 13px; }
   .plan-account-funding-state {
@@ -829,13 +1002,21 @@
   .plan-account-funding-state.is-future { color: #315e86; background: #e1eaf2; border-color: #cbdbe8; }
   .plan-account-funding-state.is-blocked { color: #a24343; background: #f4e3e2; border-color: #e8c9c7; }
   .plan-account-prerequisite {
-    margin-top: 8px;
+    margin: 8px 0 0 58px;
     padding: 0;
     border-left: 0;
     background: transparent;
     color: var(--ark-muted);
     font-size: 13px;
     line-height: 1.45;
+  }
+  .plan-account-command {
+    margin: 8px 0 0 58px;
+    color: var(--ark-text);
+    font-size: 13px;
+    font-weight: 620;
+    line-height: 1.5;
+    text-wrap: pretty;
   }
   .plan-account-card[data-state="needs_same_day_transfer"] .plan-account-prerequisite { color: #9a6108; }
   .plan-account-card[data-state="waits_for_funds"] .plan-account-prerequisite { color: #315e86; }
@@ -878,12 +1059,12 @@
   .plan-account-card[open] .plan-account-toggle-icon { transform: rotate(180deg); }
   .plan-account-open-summary {
     display: none;
-    margin-top: 8px;
+    margin: 7px 0 0 58px;
     color: var(--ark-muted);
     font-size: 12px;
     line-height: 1.5;
   }
-  .plan-account-card[open] > summary { padding: 12px 18px; }
+  .plan-account-card[open] > summary { padding: 14px 22px; }
   .plan-account-card[open] .plan-account-prerequisite,
   .plan-account-card[open] .plan-account-blocked-reason,
   .plan-account-card[open] .plan-account-detail-toggle { display: none; }
@@ -949,7 +1130,7 @@
   }
   .plan-account-detail {
     border-top: 1px solid var(--ark-line);
-    padding: 0 18px 18px;
+    padding: 0 22px 20px 80px;
   }
   .plan-account-folio {
     position: sticky;
@@ -959,8 +1140,8 @@
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 14px;
     align-items: center;
-    margin: 0 -18px;
-    padding: 8px 18px;
+    margin: 0 -22px 0 -80px;
+    padding: 8px 22px 8px 80px;
     border-bottom: 1px solid var(--ark-line);
     background: color-mix(in srgb, var(--ark-panel) 96%, transparent);
     backdrop-filter: blur(12px);
@@ -1014,7 +1195,7 @@
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
-    width: min(100%, 720px);
+    width: 100%;
     margin-bottom: 8px;
   }
   .plan-trade-summary-item {
@@ -1067,7 +1248,7 @@
     -webkit-overflow-scrolling: touch;
   }
   .plan-trade-table {
-    width: min(100%, 720px);
+    width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
     font-size: 13px;
@@ -1146,6 +1327,7 @@
   .plan-trade-amount { font-weight: 700; }
   html.plan-focus-mode .app-nav,
   html.plan-focus-mode .global-status-shell,
+  html.plan-focus-mode .plan-history-panel,
   html.plan-focus-mode .plan-conditions-panel,
   html.plan-focus-mode .plan-readiness-panel,
   html.plan-focus-mode .plan-advanced-panel { display: none !important; }
@@ -2074,8 +2256,12 @@
       margin-bottom: 16px;
       padding-bottom: 16px;
     }
+    .plan-workbench.is-execution-document .workspace-title-row {
+      grid-template-columns: 1fr;
+      align-items: start;
+    }
     .plan-workbench .workspace-title { font-size: 30px; }
-    .plan-masthead-side { justify-content: flex-start; }
+    .plan-masthead-side { justify-content: flex-start; max-width: none; }
     .plan-masthead-revision { white-space: normal; }
     .plan-decision-hero {
       grid-template-columns: 1fr;
@@ -2085,6 +2271,22 @@
     .plan-decision-title { font-size: 27px; }
     .plan-decision-mark { border-width: 1px 0 0; padding: 12px 0 0; text-align: left; }
     .plan-state-chain { display: grid; grid-template-columns: 1fr; gap: 5px; }
+    .plan-execution-index {
+      position: static;
+      grid-template-columns: 1fr;
+      gap: 7px;
+      padding: 10px;
+      box-shadow: none;
+    }
+    .plan-execution-index-list { grid-template-columns: 1fr; }
+    .plan-step-header {
+      grid-template-columns: 40px minmax(0, 1fr);
+      gap: 12px;
+      padding: 16px;
+    }
+    .plan-step-number { width: 36px; height: 36px; }
+    .plan-step-meta { grid-column: 2; justify-self: start; }
+    .plan-step-body { padding: 0 16px 16px; }
     .plan-funding-header { display: block; }
     .plan-funding-table-scroll { overflow: visible; }
     .plan-funding-table,
@@ -2120,8 +2322,13 @@
     .plan-funding-window { grid-area: window; }
     .plan-funding-direction { grid-area: route; }
     .plan-funding-amount { grid-area: amount; text-align: right; }
-    .plan-account-heading { grid-template-columns: 1fr; gap: 10px; }
-    .plan-account-funding-state { justify-self: start; }
+    .plan-account-card > summary,
+    .plan-account-card[open] > summary { padding: 15px 16px; }
+    .plan-account-heading { grid-template-columns: 40px minmax(0, 1fr); gap: 10px 12px; }
+    .plan-account-funding-state { grid-column: 2; justify-self: start; }
+    .plan-account-command,
+    .plan-account-prerequisite,
+    .plan-account-open-summary { margin-left: 52px; }
     .plan-cash-equation { grid-template-columns: 1fr; border: 0; }
     .plan-cash-term {
       display: grid;
@@ -2850,7 +3057,11 @@
     aria-label="计划工作台"
     :aria-busy="generatingPlan || !planReady ? 'true' : 'false'">
     <div class="workspace-title-row flex justify-between gap-5">
-      <div>
+      <div class="plan-masthead-copy">
+        <div x-show="isReviewableExecutionPlan()" x-cloak class="plan-execution-kicker">
+          <span>Execution Log</span>
+          <span x-text="executionDate()"></span>
+        </div>
         <div class="plan-masthead-title">
           <h1 class="workspace-title tracking-normal">计划</h1>
           <span
@@ -2862,6 +3073,12 @@
           </span>
         </div>
         <div class="workspace-meta mt-2" x-text="planTimelineText()"></div>
+        <p
+          x-show="isReviewableExecutionPlan()"
+          x-cloak
+          class="plan-execution-brief"
+          x-text="executionBriefText()">
+        </p>
       </div>
       <div class="plan-masthead-side">
         <div
@@ -2916,39 +3133,6 @@
       <div class="plan-decision-mark" x-text="planRevisionText()"></div>
     </section>
 
-    <details class="ark-panel mb-4 px-4 py-3" aria-label="历史计划" @toggle="if ($event.currentTarget.open && !historyLoaded) loadPlanHistory()">
-      <summary class="cursor-pointer text-sm font-semibold text-gray-900">
-        历史计划
-        <span class="ml-2 text-xs font-normal text-gray-400" x-text="planHistorySummary()"></span>
-      </summary>
-      <div class="mt-3 space-y-2">
-        <p x-show="historyLoading" class="workspace-meta">正在读取历史计划…</p>
-        <p x-show="historyError" class="text-sm text-red-700" x-text="historyError"></p>
-        <p x-show="!historyLoading && !historyError && !planHistory.length" class="workspace-meta">尚无已完成的历史计划。</p>
-        <template x-for="item in planHistory" :key="item.plan_id">
-          <button
-            type="button"
-            @click="loadHistoricalPlan(item.plan_id)"
-            class="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 text-left text-sm hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900"
-            :class="selectedHistoricalPlanId === item.plan_id ? 'border-teal-700 bg-teal-50' : ''">
-            <span>
-              <span class="font-medium text-gray-900" x-text="historyPlanTitle(item)"></span>
-              <span class="ml-2 text-xs text-gray-400" x-text="historyPlanCreatedAt(item)"></span>
-            </span>
-            <span class="text-xs font-medium" :class="item.status === 'stale' ? 'text-amber-700' : 'text-teal-700'" x-text="historyPlanStatus(item)"></span>
-          </button>
-        </template>
-        <p class="workspace-meta">历史计划保留生成当时的输入与输出；查看后仅供追溯，不应据此执行交易。</p>
-        <button
-          x-show="isSelectedHistoricalPlan()"
-          type="button"
-          @click="returnToCurrentPlan()"
-          class="text-sm font-medium text-teal-700 underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">
-          返回当前计划
-        </button>
-      </div>
-    </details>
-
     <details x-show="isHistoricalPlanSnapshot()" x-cloak class="ark-panel plan-snapshot-notice mb-4 px-4 py-3" :open="snapshotExpanded" @toggle="snapshotExpanded = $event.currentTarget.open" aria-label="已保存计划快照">
       <summary class="cursor-pointer text-sm font-semibold text-gray-900">查看已保存计划快照</summary>
       <p class="workspace-meta mt-1">计划输入或执行窗口已不再适用；下方内容仅供追溯，不应据此执行交易。</p>
@@ -2990,12 +3174,44 @@
     <!-- 执行计划必须紧跟今日决策 -->
     <template x-if="isReviewableExecutionPlan() || (isHistoricalPlanSnapshot() && snapshotExpanded)">
     <div class="plan-execution-dossier" aria-label="计划执行卷宗">
+      <nav class="plan-execution-index" aria-label="计划索引">
+        <div class="plan-execution-index-heading">计划索引</div>
+        <div class="plan-execution-index-list">
+          <a
+            x-show="fundingPlan()"
+            href="#plan-funding-step"
+            class="plan-execution-index-item">
+            <span class="plan-execution-index-number">01</span>
+            <span class="plan-execution-index-copy">资金安排</span>
+            <span class="plan-execution-index-state" x-text="fundingActionCount() + ' 笔'"></span>
+          </a>
+          <template x-for="(plan, accountIndex) in accountTradingPlans()" :key="'index-' + plan.account_id">
+            <button
+              type="button"
+              class="plan-execution-index-item"
+              :class="expandedAccountId === plan.account_id ? 'is-current' : ''"
+              :aria-pressed="expandedAccountId === plan.account_id ? 'true' : 'false'"
+              @click="switchAccountPlan(plan.account_id)">
+              <span class="plan-execution-index-number" x-text="plan.display_sequence"></span>
+              <span class="plan-execution-index-copy" x-text="plan.account_name"></span>
+              <span class="plan-execution-index-state" x-text="fundingStateShortText(plan.funding)"></span>
+            </button>
+          </template>
+        </div>
+      </nav>
+      <div class="plan-execution-sheet">
       <template x-if="fundingPlan()">
-        <section class="ark-panel plan-funding-plan p-5" aria-label="资金调拨计划">
-          <div class="plan-funding-header mb-2">
-            <h2 class="text-base font-semibold text-gray-900">资金调拨计划</h2>
-          </div>
-          <div class="plan-funding-table-scroll">
+        <section id="plan-funding-step" class="plan-funding-plan plan-run-step" aria-label="资金调拨计划">
+          <header class="plan-step-header">
+            <span class="plan-step-number">01</span>
+            <div>
+              <div class="plan-step-eyebrow">资金调拨计划</div>
+              <h2 class="plan-step-title">资金安排</h2>
+              <p class="plan-step-copy">按资金可用日期执行；账户交易前先确认对应资金条件。</p>
+            </div>
+            <span class="plan-step-meta" x-text="fundingActionCount() + ' 笔调拨'"></span>
+          </header>
+          <div class="plan-step-body plan-funding-table-scroll">
             <table class="plan-funding-table" aria-label="资金调拨动作">
               <colgroup>
                 <col class="plan-funding-route-col">
@@ -3033,14 +3249,12 @@
       </template>
       <template x-if="accountTradingPlans().length">
         <section aria-label="账户交易计划">
-          <div class="mb-3">
-            <h2 class="mt-1 text-base font-semibold text-gray-900">账户交易计划</h2>
-          </div>
-          <div class="plan-account-list">
+          <div class="plan-account-list" :class="fundingPlan() ? 'has-funding-step' : ''">
 	            <template x-for="(plan, accountIndex) in accountTradingPlans()" :key="plan.account_id">
               <details
                 name="account-trading-plan"
                 class="plan-account-card"
+                :id="'plan-account-' + plan.account_id"
                 :open="expandedAccountId === plan.account_id"
                 @toggle="handleAccountPlanToggle($event, plan.account_id)"
                 :data-plan-account-id="plan.account_id"
@@ -3048,7 +3262,9 @@
                 :aria-label="plan.account_name + '交易计划'">
                 <summary>
                   <div class="plan-account-heading">
-                    <div>
+                    <span class="plan-step-number" x-text="plan.display_sequence"></span>
+                    <div class="plan-account-heading-copy">
+                      <div class="plan-step-eyebrow">账户交易计划</div>
                       <h3 class="plan-account-title" x-text="plan.account_name"></h3>
                       <p class="plan-account-subtitle">
                         <span x-text="plan.portfolio_name"></span>
@@ -3060,7 +3276,8 @@
                     </div>
                     <span class="plan-account-funding-state" :class="fundingStateClass(plan.funding)" x-text="fundingStateText(plan.funding)"></span>
                   </div>
-                  <div class="plan-account-prerequisite" x-text="fundingPrerequisiteText(plan)"></div>
+                  <div class="plan-account-command plan-account-toggle-closed" x-text="accountExecutionSummary(plan)"></div>
+                  <div x-show="plan.funding.state !== 'ready'" class="plan-account-prerequisite" x-text="fundingPrerequisiteText(plan)"></div>
                   <div class="plan-account-open-summary" x-text="accountExecutionSummary(plan)"></div>
                   <p x-show="plan.funding.blocked_reason" class="plan-account-blocked-reason mt-3 text-xs font-medium text-red-600" x-text="plan.funding.blocked_reason"></p>
                   <div class="plan-account-detail-toggle">
@@ -3198,8 +3415,42 @@
           </div>
         </section>
       </template>
+      </div>
     </div>
     </template>
+
+    <details class="ark-panel plan-history-panel mb-4 px-4 py-3" aria-label="历史计划" @toggle="if ($event.currentTarget.open && !historyLoaded) loadPlanHistory()">
+      <summary class="cursor-pointer text-sm font-semibold text-gray-900">
+        历史计划
+        <span class="ml-2 text-xs font-normal text-gray-400" x-text="planHistorySummary()"></span>
+      </summary>
+      <div class="mt-3 space-y-2">
+        <p x-show="historyLoading" class="workspace-meta">正在读取历史计划…</p>
+        <p x-show="historyError" class="text-sm text-red-700" x-text="historyError"></p>
+        <p x-show="!historyLoading && !historyError && !planHistory.length" class="workspace-meta">尚无已完成的历史计划。</p>
+        <template x-for="item in planHistory" :key="item.plan_id">
+          <button
+            type="button"
+            @click="loadHistoricalPlan(item.plan_id)"
+            class="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 text-left text-sm hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900"
+            :class="selectedHistoricalPlanId === item.plan_id ? 'border-teal-700 bg-teal-50' : ''">
+            <span>
+              <span class="font-medium text-gray-900" x-text="historyPlanTitle(item)"></span>
+              <span class="ml-2 text-xs text-gray-400" x-text="historyPlanCreatedAt(item)"></span>
+            </span>
+            <span class="text-xs font-medium" :class="item.status === 'stale' ? 'text-amber-700' : 'text-teal-700'" x-text="historyPlanStatus(item)"></span>
+          </button>
+        </template>
+        <p class="workspace-meta">历史计划保留生成当时的输入与输出；查看后仅供追溯，不应据此执行交易。</p>
+        <button
+          x-show="isSelectedHistoricalPlan()"
+          type="button"
+          @click="returnToCurrentPlan()"
+          class="text-sm font-medium text-teal-700 underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">
+          返回当前计划
+        </button>
+      </div>
+    </details>
 
     <!-- 本次计划条件 -->
     <details x-show="!isSelectedHistoricalPlan()" aria-label="计划条件" class="ark-panel plan-conditions-panel px-5 py-3 mb-4" :open="!plan">
@@ -5458,12 +5709,27 @@
       fundingPlan() {
         return this.executionReadModel()?.funding_plan || null
       },
+      fundingActionCount() {
+        return (this.fundingPlan()?.groups || []).reduce(
+          (total, group) => total + (group?.actions || []).length,
+          0,
+        )
+      },
       accountTradingPlans() {
         const plans = this.executionReadModel()?.account_trading_plans || []
+        const firstAccountStep = this.fundingPlan() ? 2 : 1
         return plans.map((plan, index) => ({
           ...plan,
           display_ordinal: `${index + 1}/${plans.length}`,
+          display_sequence: String(index + firstAccountStep).padStart(2, '0'),
         }))
+      },
+      executionBriefText() {
+        const fundingCount = this.fundingActionCount()
+        const accountCount = this.accountTradingPlans().length
+        const fundingText = fundingCount ? `${fundingCount} 笔资金调拨` : '无需资金调拨'
+        const accountText = accountCount ? `${accountCount} 个账户交易安排` : '无需账户交易'
+        return `${fundingText} · ${accountText}；按资金可用日期和账户状态依次复核。`
       },
       hasExecutionPlans() {
         return Boolean(this.fundingPlan() || this.accountTradingPlans().length)
@@ -5513,7 +5779,7 @@
       },
       accountPlanFolioTitle(plan, accountIndex = null, explicitTotal = null) {
         const ordinal = this.accountPlanOrdinal(plan, accountIndex, explicitTotal)
-        return ordinal ? `账户 ${ordinal}` : '当前账户'
+        return ordinal ? `${plan.account_name} · 交易明细 · ${ordinal}` : `${plan.account_name} · 交易明细`
       },
       accountTradeDateText(plan) {
         const tradeDate = plan?.trade_date || ''
@@ -5551,7 +5817,8 @@
         this.$nextTick(() => {
           const target = Array.from(document.querySelectorAll('[data-plan-account-id]'))
             .find(item => item.dataset.planAccountId === accountId)
-          target?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+          const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+          target?.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' })
         })
       },
       applyFocusMode() {
