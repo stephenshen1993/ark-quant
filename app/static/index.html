@@ -1163,6 +1163,61 @@
   }
   html.plan-focus-mode .plan-account-card > summary { padding: 16px 18px; }
   html.plan-focus-mode .plan-trade-table { font-size: 15px; }
+  @media (min-width: 761px) {
+    .plan-workbench.is-execution-document { padding-top: 12px; }
+    .plan-workbench.is-execution-document .workspace-title-row {
+      gap: 18px;
+      margin-bottom: 8px;
+      padding-bottom: 10px;
+    }
+    .plan-workbench.is-execution-document .workspace-title { font-size: 29px; }
+    .plan-execution-brief { margin-top: 4px; line-height: 1.4; }
+    .plan-focus-toggle { min-height: 32px; padding: 5px 10px; }
+    .plan-execution-dossier { gap: 8px; margin-bottom: 12px; }
+    .plan-execution-index { padding: 4px; }
+    .plan-execution-index-item {
+      grid-template-columns: 22px minmax(0, 1fr);
+      gap: 6px;
+      min-height: 30px;
+      padding: 2px 6px;
+    }
+    .plan-execution-index-number { width: 22px; height: 22px; }
+    .plan-step-header {
+      grid-template-columns: 28px minmax(0, 1fr);
+      gap: 10px;
+      padding: 10px 16px 6px;
+    }
+    .plan-step-number { width: 26px; height: 26px; font-size: 10px; }
+    .plan-step-title { font-size: 15px; }
+    .plan-step-body { padding: 0 16px 10px 54px; }
+    .plan-funding-table th { padding: 4px 8px; }
+    .plan-funding-table td { padding: 6px 8px; }
+    .plan-funding-direction,
+    .plan-funding-amount { font-size: 13px; }
+    .plan-account-card > summary { padding: 11px 16px 10px; }
+    .plan-account-card[open] > summary { padding: 9px 16px; }
+    .plan-account-heading {
+      grid-template-columns: 28px minmax(0, 1fr) auto;
+      gap: 10px;
+    }
+    .plan-account-title { font-size: 15px; }
+    .plan-account-subtitle { margin-top: 1px; font-size: 12px; }
+    .plan-account-command,
+    .plan-account-prerequisite {
+      margin-top: 5px;
+      margin-left: 38px;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .plan-account-detail-toggle { margin-top: 6px; padding-top: 6px; }
+    .plan-account-detail { padding: 0 16px 12px 54px; }
+    .plan-trade-section { margin-top: 4px; }
+    .plan-trade-table th { padding: 5px 8px; }
+    .plan-trade-group-row th { padding: 6px 8px 4px; }
+    .plan-trade-row td { padding: 4px 8px; line-height: 1.2; }
+    .plan-cash-audit { margin-top: 8px; }
+    .plan-cash-audit > summary { min-height: 28px; }
+  }
   @media (prefers-reduced-motion: reduce) {
     .plan-account-toggle-icon { transition: none; }
   }
