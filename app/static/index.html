@@ -1099,11 +1099,11 @@
     table-layout: fixed;
     font-size: 13px;
   }
-  .plan-trade-code-col { width: 82px; }
-  .plan-trade-name-col { width: 184px; }
-  .plan-trade-quantity-col { width: 96px; }
-  .plan-trade-price-col { width: 92px; }
-  .plan-trade-amount-col { width: 136px; }
+  .plan-trade-code-col { width: 14%; }
+  .plan-trade-name-col { width: 18%; }
+  .plan-trade-quantity-col { width: 22%; }
+  .plan-trade-price-col { width: 18%; }
+  .plan-trade-amount-col { width: 28%; }
   .plan-trade-table th {
     padding: 7px 10px;
     border-bottom: 1px solid var(--ark-line);
@@ -1113,8 +1113,10 @@
     text-align: left;
     white-space: nowrap;
   }
-  .plan-trade-table th:nth-child(n + 3),
-  .plan-trade-table td:nth-child(n + 3) { text-align: right; }
+  .plan-trade-table th:nth-child(3),
+  .plan-trade-table td:nth-child(3) { text-align: center; }
+  .plan-trade-table th:nth-child(n + 4),
+  .plan-trade-table td:nth-child(n + 4) { text-align: right; }
   .plan-trade-group-row {
     --plan-trade-tone: var(--ark-muted);
   }
