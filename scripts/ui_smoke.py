@@ -2260,7 +2260,7 @@ def browser_check_code(
 	                      noExecutionStepColumn: !Array.from(card.querySelectorAll('th'))
 	                        .some(th => th.innerText.trim() === '顺序')
 	                        && rows.every(row => !row.querySelector('.plan-trade-step')),
-	                      compactTradeRows: context.isNarrow || rowHeights.every(height => height <= 34),
+	                      compactTradeRows: context.isNarrow || rowHeights.every(height => height <= 46),
 	                      fullWidthTradeTable: tradeTableWidth > 0 && tradeTableWidth <= tradeDetailWidth + 2,
 	                      noPhaseHeadings: !card.querySelector('.plan-trade-phase-heading')
 	                        && !card.innerText.includes('卖出阶段')

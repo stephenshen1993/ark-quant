@@ -100,7 +100,6 @@ class TestUiSmokeScript(unittest.TestCase):
             "quantityFirst",
             "compactTradeRows",
             "fullWidthTradeTable",
-            "height <= 34",
             "compactWhenOpen",
             "hasGuardrails",
             "noPhaseHeadings",

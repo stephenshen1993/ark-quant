@@ -707,12 +707,13 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn("is-action-group-start", self.html)
         self.assertNotIn('class="plan-trade-action-badge"', self.html)
 
-    def test_execution_document_uses_compact_desktop_ledger_density(self):
+    def test_execution_document_puts_account_identity_on_one_desktop_line(self):
         self.assertIn("@media (min-width: 761px)", self.html)
-        self.assertIn(".plan-execution-index-item {\n      grid-template-columns: 22px", self.html)
-        self.assertIn(".plan-step-body { padding: 0 16px 10px 54px; }", self.html)
-        self.assertIn(".plan-account-card[open] > summary { padding: 9px 16px; }", self.html)
-        self.assertIn(".plan-trade-row td { padding: 4px 8px; line-height: 1.2; }", self.html)
+        self.assertIn('class="plan-account-subtitle-separator"', self.html)
+        self.assertIn(".plan-account-heading-copy {\n      display: flex;", self.html)
+        self.assertIn(".plan-account-heading .plan-step-number { grid-row: auto; }", self.html)
+        self.assertIn(".plan-account-card[open] > summary { padding: 10px 18px; }", self.html)
+        self.assertIn(".plan-trade-row td {\n    padding: 6px 10px;", self.html)
 
     def test_account_plan_summary_exposes_the_trade_detail_toggle(self):
         self.assertIn("plan.account_name + '交易计划'", self.html)
