@@ -715,6 +715,13 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn(".plan-account-card[open] > summary { padding: 10px 18px; }", self.html)
         self.assertIn(".plan-trade-row td {\n    padding: 6px 10px;", self.html)
 
+    def test_execution_sections_use_distinct_header_bands_without_extra_rows(self):
+        self.assertIn(".plan-funding-plan .plan-step-header {", self.html)
+        self.assertIn(".plan-account-card:not([open]) > summary:hover {", self.html)
+        self.assertIn("box-shadow: inset 3px 0 0 var(--ark-accent);", self.html)
+        self.assertIn(".plan-execution-index-item.is-current {", self.html)
+        self.assertNotIn("资金安排阶段", self.html)
+
     def test_account_plan_summary_exposes_the_trade_detail_toggle(self):
         self.assertIn("plan.account_name + '交易计划'", self.html)
         self.assertIn('class="plan-account-detail-toggle"', self.html)

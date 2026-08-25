@@ -754,6 +754,16 @@
     border-color: var(--ark-line);
     background: var(--ark-paper);
   }
+  .plan-execution-index-item.is-current {
+    border-color: color-mix(in srgb, var(--ark-accent) 34%, var(--ark-line));
+    background: color-mix(in srgb, var(--ark-accent-soft) 68%, var(--ark-panel));
+    box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--ark-accent) 72%, transparent);
+    color: var(--ark-accent-deep);
+  }
+  .plan-execution-index-item.is-current .plan-execution-index-number {
+    border-color: color-mix(in srgb, var(--ark-accent) 38%, var(--ark-line));
+    color: var(--ark-accent-deep);
+  }
   .plan-execution-index-number,
   .plan-step-number {
     display: inline-flex;
@@ -811,6 +821,10 @@
     font-size: 17px;
     font-weight: 750;
     line-height: 1.3;
+  }
+  .plan-funding-plan .plan-step-header {
+    border-bottom: 1px solid var(--ark-line);
+    background: color-mix(in srgb, var(--ark-bg) 64%, var(--ark-panel));
   }
   .plan-step-body { padding: 0 22px 18px 80px; }
   .plan-funding-plan,
@@ -889,8 +903,12 @@
   .plan-account-card > summary {
     display: block;
     padding: 17px 22px;
+    background: color-mix(in srgb, var(--ark-paper) 74%, var(--ark-panel));
     cursor: pointer;
     list-style: none;
+  }
+  .plan-account-card:not([open]) > summary:hover {
+    background: color-mix(in srgb, var(--ark-accent-soft) 22%, var(--ark-panel));
   }
   .plan-account-card > summary::-webkit-details-marker { display: none; }
   .plan-account-heading {
@@ -977,7 +995,13 @@
   .plan-account-card[open] .plan-account-toggle-open { display: inline; }
   .plan-account-toggle-icon { transition: transform 150ms ease; }
   .plan-account-card[open] .plan-account-toggle-icon { transform: rotate(180deg); }
-  .plan-account-card[open] > summary { padding: 14px 22px; }
+  .plan-account-card[open] > summary {
+    padding: 14px 22px;
+    border-bottom: 1px solid color-mix(in srgb, var(--ark-accent) 24%, var(--ark-line));
+    background: color-mix(in srgb, var(--ark-accent-soft) 58%, var(--ark-panel));
+    box-shadow: inset 3px 0 0 var(--ark-accent);
+  }
+  .plan-account-card[open] .plan-account-title { color: var(--ark-accent-deep); }
   .plan-account-card[open] .plan-account-prerequisite,
   .plan-account-card[open] .plan-account-blocked-reason,
   .plan-account-card[open] .plan-account-detail-toggle { display: none; }
