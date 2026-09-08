@@ -37,6 +37,7 @@ from datasource.market_data_bundle import (
     stable_fingerprint,
 )
 from datasource.market_history import (
+    DataPreparationError,
     MarketFetchResult,
     prepare_market_history,
     reconcile_corporate_actions,
@@ -1306,7 +1307,7 @@ def market_data_requirements(config: dict, max_universe: int | None = None) -> D
         symbol_field="bond_code",
         source="akshare+tencent",
         source_version="cb-market-sources-v1",
-        algorithm_version="cb-raw-input-v3",
+        algorithm_version="cb-raw-input-v4",
         config_fingerprint=stable_fingerprint({
             "data": config.get("data", {}),
             "max_universe": max_universe,
@@ -1463,6 +1464,56 @@ def _compute_history_factor(
     return pd.DataFrame(rows, columns=["stock_code", factor_name])
 
 
+def confirmed_cb_suspensions(ak, universe: pd.DataFrame, effective_date: date) -> list[dict]:
+    """Confirm full-day suspensions; stale prices alone are never evidence.
+
+    SZSE synchronizes underlying-stock and convertible-bond suspensions:
+    https://www.szse.cn/www/investor/knowledge/t20221026_596809.html
+    Do not infer Shanghai bond status from an underlying-stock record.
+    """
+    records = ak.stock_tfp_em(date=effective_date.strftime("%Y%m%d"))
+    required = {"代码", "停牌时间", "停牌截止时间", "预计复牌时间", "停牌期限"}
+    if not required.issubset(records.columns):
+        raise RuntimeError("停复牌数据缺少必需字段")
+    confirmed = {}
+    for row in records.to_dict("records"):
+        start = pd.to_datetime(row["停牌时间"], errors="coerce")
+        end = pd.to_datetime(row["停牌截止时间"], errors="coerce")
+        resume = pd.to_datetime(row["预计复牌时间"], errors="coerce")
+        duration = row["停牌期限"]
+        if pd.isna(start) or start.date() > effective_date:
+            continue
+        if pd.notna(end) and end.date() < effective_date:
+            continue
+        if pd.notna(resume) and resume.date() <= effective_date:
+            continue
+        if duration not in {"连续停牌", "停牌一天"}:
+            continue
+        if duration == "停牌一天" and start.date() != effective_date:
+            continue
+        confirmed[str(row["代码"]).zfill(6)] = {
+            "suspended_from": start.date().isoformat(),
+            "suspended_through": end.date().isoformat() if pd.notna(end) else None,
+            "reason": str(row.get("停牌原因") or "停牌"),
+        }
+    facts = []
+    for row in universe.to_dict("records"):
+        bond = str(row["bond_code"]).zfill(6)
+        stock = normalize_stock_code(row["stock_code"])
+        evidence_code = bond if bond in confirmed else stock
+        if evidence_code not in confirmed:
+            continue
+        if evidence_code != bond and not bond.startswith(("123", "127", "128")):
+            continue
+        facts.append({
+            "bond_code": bond, "stock_code": stock,
+            "effective_date": effective_date.isoformat(),
+            "source": "eastmoney-stock-tfp", "evidence_code": evidence_code,
+            "tradable": False, **confirmed[evidence_code],
+        })
+    return facts
+
+
 def prepare_cb_history_inputs(
     ak,
     universe: pd.DataFrame,
@@ -1523,15 +1574,44 @@ def prepare_cb_history_inputs(
         result["adjustment_factor"] = 1.0
         return result
 
-    bond_history = prepare_market_history(
-        bond_requirements,
-        effective_date,
-        bond_codes,
-        trading_days,
-        _fetch_bond_batch,
-        fallback_fetcher=_fetch_bond_one,
-        store_path=history_store_path,
-    )
+    suspended_bonds = []
+    try:
+        bond_history = prepare_market_history(
+            bond_requirements, effective_date, bond_codes, trading_days,
+            _fetch_bond_batch, fallback_fetcher=_fetch_bond_one,
+            store_path=history_store_path,
+        )
+    except DataPreparationError as exc:
+        if exc.detail.get("code") != "MARKET_HISTORY_INCOMPLETE":
+            raise
+        missing = exc.detail["missing"]
+        missing_codes = {item["symbol"] for item in missing}
+        try:
+            suspended_bonds = confirmed_cb_suspensions(
+                ak, history_universe[history_universe.bond_code.isin(missing_codes)],
+                effective_date,
+            )
+        except Exception as status_error:
+            logging.warning("停牌状态未能确认，保留行情缺口错误: %s", status_error)
+            raise exc from status_error
+        suspended_codes = {item["bond_code"] for item in suspended_bonds}
+        if any(item["symbol"] not in suspended_codes or
+               item["trade_date"] != effective_date.isoformat() for item in missing):
+            raise
+        history_universe = history_universe[
+            ~history_universe.bond_code.isin(suspended_codes)
+        ].copy()
+        bond_codes = sorted(history_universe.bond_code.unique())
+        if not bond_codes:
+            raise RuntimeError("当日转债行情范围全部停牌，无法生成榜单") from exc
+        stock_codes = sorted({normalize_stock_code(s) for s in
+                              history_universe.stock_code.dropna()} - {""})
+        logging.info("当日已确认停牌，排除转债: %s", json.dumps(suspended_bonds, ensure_ascii=False))
+        # Verified rows from the first attempt are already persisted. No re-fetch.
+        bond_history = prepare_market_history(
+            bond_requirements, effective_date, bond_codes, trading_days,
+            None, store_path=history_store_path,
+        )
     turnover = bond_history.frame.rename(columns={
         "raw_close": "cb_close_daily",
         "amount": "turnover_yuan_daily",
@@ -1642,6 +1722,7 @@ def prepare_cb_history_inputs(
         turnover=turnover,
         stock_factors=stock_factors,
         preparation={
+            "suspended_bonds": suspended_bonds,
             "bond_history": bond_history.metadata.to_dict(),
             "stock_history": stock_history.metadata.to_dict(),
             "momentum": momentum.metadata.to_dict(),
@@ -1683,6 +1764,11 @@ def run(
             data_date,
         )
         history_preparation = history_inputs.preparation
+        suspension_facts = {
+            item["bond_code"]: json.dumps(item, ensure_ascii=False, sort_keys=True)
+            for item in history_preparation.get("suspended_bonds", [])
+        }
+        universe["suspension_evidence"] = universe["bond_code"].map(suspension_facts)
         with_turnover = history_inputs.market_universe.merge(
             history_inputs.turnover,
             on="bond_code",

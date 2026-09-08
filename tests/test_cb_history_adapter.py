@@ -68,6 +68,81 @@ class _ProviderAkshare:
 
 
 class ConvertibleBondHistoryAdapterTests(unittest.TestCase):
+    def test_confirmed_suspension_is_date_scoped_and_sz_stock_only(self):
+        universe = pd.DataFrame([
+            {"bond_code": "127078", "stock_code": "002998"},
+            {"bond_code": "113001", "stock_code": "600001"},
+        ])
+        for start, end, resume, duration, expected in [
+            ("2026-09-04", None, None, "连续停牌", ["127078"]),
+            ("2026-09-08", None, None, "连续停牌", []),
+            ("2026-09-04", "2026-09-04", "2026-09-07", "连续停牌", []),
+            ("2026-09-07", "2026-09-07", "2026-09-08", "停牌一天", ["127078"]),
+            ("2026-09-04", None, None, "停牌一天", []),
+            ("2026-09-07", None, None, "盘中停牌", []),
+        ]:
+            with self.subTest(start=start, end=end, duration=duration):
+                frame = pd.DataFrame([{
+                    "代码": code, "停牌时间": start, "停牌截止时间": end,
+                    "预计复牌时间": resume, "停牌期限": duration,
+                    "停牌原因": "刊登重要公告",
+                } for code in ["002998", "600001"]])
+                ak = SimpleNamespace(stock_tfp_em=lambda **kw: frame)
+                facts = cb_run.confirmed_cb_suspensions(ak, universe, date(2026, 9, 7))
+                self.assertEqual([f["bond_code"] for f in facts], expected)
+
+    def test_suspended_bond_gap_does_not_abort_remaining_history(self):
+        effective = date(2026, 9, 7)
+        days = [effective - timedelta(days=20-i) for i in range(21)]
+        universe = pd.DataFrame([
+            {"bond_code": b, "stock_code": s, "active_reference": True,
+             "listing_date": date(2020, 1, 1)}
+            for b, s in [("113001", "600001"), ("127078", "002998")]
+        ])
+        batch = pd.DataFrame([
+            {"bond_code": b, "cb_close_daily": 110., "turnover_yuan_daily": 100000.,
+             "turnover_trade_date": d}
+            for b, d in [("113001", "2026-09-07"), ("127078", "2026-09-03")]
+        ])
+        ak = _FakeAkshare(days)
+        ak.bond_zh_hs_cov_daily = lambda **kw: pd.DataFrame({
+            "date": ["2026-09-03"], "close": [162.8], "volume": [1000.],
+        })
+        for confirmed in [True, False, "source_failure", "malformed"]:
+            with self.subTest(confirmed=confirmed), tempfile.TemporaryDirectory() as tmp:
+                ak.stock_tfp_em = lambda **kw: pd.DataFrame([{
+                    "代码": "002998" if confirmed is True else "000001",
+                    "停牌时间": "2026-09-04", "停牌截止时间": None,
+                    "预计复牌时间": None, "停牌期限": "连续停牌",
+                    "停牌原因": "刊登重要公告",
+                }])
+                if confirmed == "source_failure":
+                    def unavailable(**kw):
+                        raise RuntimeError("status source unavailable")
+                    ak.stock_tfp_em = unavailable
+                elif confirmed == "malformed":
+                    ak.stock_tfp_em = lambda **kw: pd.DataFrame({"unexpected": [1]})
+                with (
+                    patch.object(cb_run, "load_exchange_trading_days", return_value=days),
+                    patch.object(cb_run, "fetch_cb_daily_turnover", return_value=
+                                 cb_run.MarketFetchResult(batch, 0)),
+                ):
+                    def prepare():
+                        return cb_run.prepare_cb_history_inputs(
+                            ak, universe, {}, effective,
+                            history_store_path=Path(tmp)/"history.sqlite3",
+                            derived_store_path=Path(tmp)/"derived.sqlite3",
+                        )
+                    if confirmed is not True:
+                        with self.assertRaisesRegex(RuntimeError, "127078@2026-09-07"):
+                            prepare()
+                        continue
+                    result = prepare()
+                self.assertEqual(result.market_universe.bond_code.tolist(), ["113001"])
+                self.assertEqual(result.turnover.bond_code.tolist(), ["113001"])
+                self.assertEqual(result.stock_factors.stock_code.tolist(), ["600001"])
+                self.assertEqual(result.preparation["suspended_bonds"][0]["bond_code"], "127078")
+
     def test_stock_history_retries_sina_without_mixing_fallback_provider(self) -> None:
         ak = _ProviderAkshare(sina=[
             pd.DataFrame({"notice": ["temporary malformed response"]}),
