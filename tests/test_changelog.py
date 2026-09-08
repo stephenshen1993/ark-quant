@@ -91,6 +91,12 @@ class TestChangelogData(unittest.TestCase):
         self.assertIn("this.loadError = ''", self.html)
         self.assertNotIn("暂无更新", self.html)
 
+    def test_changelog_fetch_bypasses_stale_browser_cache(self):
+        self.assertIn(
+            "fetch('/static/changelog.json', { cache: 'no-store' })",
+            self.html,
+        )
+
     def test_scope_tags_only_use_explicit_changelog_metadata(self):
         self.assertIn("scopeTags(entry)", self.html)
         start = self.html.index("scopeTags(entry) {")

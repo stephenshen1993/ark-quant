@@ -4177,7 +4177,7 @@
       async load() {
         this.loadError = ''
         try {
-          const response = await fetch('/static/changelog.json')
+          const response = await fetch('/static/changelog.json', { cache: 'no-store' })
           if (!response.ok) throw new Error('更新日志加载失败')
           const entries = await response.json()
           this.entries = entries
