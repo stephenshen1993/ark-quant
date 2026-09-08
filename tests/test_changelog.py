@@ -44,7 +44,7 @@ class TestChangelogData(unittest.TestCase):
             moments.append(moment)
 
         self.assertEqual(moments, sorted(moments, reverse=True))
-        self.assertEqual(self.entries[0]["date"], "2026-08-24")
+        self.assertEqual(self.entries[0]["date"], "2026-09-08")
         self.assertLessEqual(self.entries[-1]["date"], "2026-06-29")
 
     def test_changelog_does_not_leak_engineering_tracker_metadata(self):
@@ -75,7 +75,7 @@ class TestChangelogData(unittest.TestCase):
 
         self.assertIn("更新日志维护规则", text)
         self.assertIn("日期分组、时分、类型、标题、正文和影响范围标签", text)
-        self.assertIn("更新”“优化”“公告”“下线", text)
+        self.assertIn("更新”“优化”“修复”“公告”“下线", text)
         self.assertIn("静态 JSON", text)
         self.assertIn("git log", text)
         self.assertIn("不进入 SQLite", text)
