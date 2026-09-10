@@ -65,6 +65,41 @@ class StockPriceAdjustmentTests(unittest.TestCase):
 
 
 class SnapshotBatchingTests(unittest.TestCase):
+    def test_tencent_snapshot_retries_only_missing_codes_after_timeout(self) -> None:
+        import requests
+
+        with patch("requests.get", side_effect=[
+            self._tencent_response("600001"),
+            requests.exceptions.ReadTimeout("temporary timeout"),
+            self._tencent_response("600002"),
+        ]) as fetch, patch("time.sleep"):
+            result = market.fetch_tencent_snapshot(
+                ["600001", "600002"], batch_size=1, max_workers=1,
+            )
+
+        self.assertEqual(result["stock_code"].tolist(), ["600001", "600002"])
+        self.assertEqual([call.args[0][-6:] for call in fetch.call_args_list],
+                         ["600001", "600002", "600002"])
+
+    def test_tencent_snapshot_repairs_partial_response(self) -> None:
+        with patch("requests.get", side_effect=[
+            self._tencent_response("600002"), self._tencent_response("600001"),
+        ]) as fetch, patch("time.sleep"):
+            result = market.fetch_tencent_snapshot(["600001", "600002"])
+
+        self.assertEqual(result["stock_code"].tolist(), ["600001", "600002"])
+        self.assertEqual(fetch.call_args_list[1].args[0], "http://qt.gtimg.cn/q=sh600001")
+
+    def test_tencent_snapshot_stops_retrying_persistent_failure(self) -> None:
+        import requests
+
+        with patch("requests.get", side_effect=requests.exceptions.ReadTimeout("timeout")) as fetch, \
+                patch("time.sleep"):
+            result = market.fetch_tencent_snapshot(["600001"])
+
+        self.assertTrue(result.empty)
+        self.assertEqual(fetch.call_count, 3)
+
     @staticmethod
     def _tencent_response(code: str):
         fields = [""] * 49

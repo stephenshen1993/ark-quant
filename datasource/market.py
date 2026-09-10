@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from typing import Callable, Iterable
@@ -205,8 +206,23 @@ def fetch_tencent_snapshot(
             )
         return rows
 
-    rows = _fetch_batches_in_order(codes, batch_size, max_workers, _fetch_batch)
-    snap = pd.DataFrame(rows)
+    rows_by_code: dict[str, dict] = {}
+    pending = codes
+    for attempt in range(3):
+        if attempt:
+            logging.warning(
+                "Retrying Tencent snapshot missing coverage: %s codes (attempt %s/3)",
+                len(pending), attempt + 1,
+            )
+            time.sleep(0.5 * attempt)
+        # Reduce pressure on the proxy/upstream while repairing failed batches.
+        workers = max_workers if attempt == 0 else min(max_workers, 2)
+        rows = _fetch_batches_in_order(pending, batch_size, workers, _fetch_batch)
+        rows_by_code.update((row["stock_code"], row) for row in rows)
+        pending = [code for code in codes if code not in rows_by_code]
+        if not pending:
+            break
+    snap = pd.DataFrame([rows_by_code[code] for code in codes if code in rows_by_code])
     if not snap.empty:
         snap["stock_code"] = snap["stock_code"].astype(str).str.zfill(6)
         snap = snap.drop_duplicates("stock_code")
