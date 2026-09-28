@@ -55,7 +55,7 @@ class TestAccountReadModel(unittest.TestCase):
         strategies = {item["id"]: item for item in read_model["strategies"]}
         self.assertEqual(
             set(strategies),
-            {"smallcap_stock", "multifactor_convertible_bond"},
+            {"smallcap_stock", "multifactor_convertible_bond", "overseas_growth"},
         )
         self.assertEqual(strategies["smallcap_stock"]["account_ids"], ["stock"])
         self.assertEqual(

@@ -74,7 +74,7 @@ def get_quotes(strategy: Literal["cb", "stock"], date: Optional[str] = None, aso
 
 
 @router.get("/{strategy}/quote")
-def get_quote(strategy: Literal["cb", "stock"], code: str):
+def get_quote(strategy: Literal["cb", "stock", "pingan"], code: str):
     """单标的实时名称+价格，用于录入时自动回填。"""
     code = str(code).zfill(6)
     if strategy == "cb":

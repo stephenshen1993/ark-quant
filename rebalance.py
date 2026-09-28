@@ -303,4 +303,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit("旧温度配置命令已退役。请在方舟计划页面生成当前统一配置计划。")

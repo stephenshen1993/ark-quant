@@ -6,9 +6,14 @@ ACTIVE_PORTFOLIO = "A"
 OVERSEAS_LONG_TERM_PORTFOLIO = "B"
 DOMESTIC_LONG_TERM_PORTFOLIO = "C"
 
-ACCOUNT_FACT_ORDER = ("stock", "cb", "cash", "overseas", "changqian")
+ACCOUNT_FACT_ORDER = ("stock", "cb", "pingan", "cash", "overseas", "changqian")
 
 ACCOUNT_FACT_FIELDS = {
+    "pingan": {
+        "total": "pingan_total", "cash": "pingan_cash", "available_cash": "pingan_available_cash",
+        "frozen_cash": "pingan_frozen_cash", "portfolio_id": "growth", "portfolio_node_id": "overseas_growth",
+        "portfolio_node_name": "海外增长", "role": "纳指与501312承载账户", "legacy_strategy": "pingan",
+    },
     "stock": {
         "total": "stock_total",
         "cash": "stock_cash",
@@ -97,7 +102,21 @@ def build_account_read_model(summary: dict | None) -> dict | None:
     account_facts = [_account_fact(account_id, summary) for account_id in ACCOUNT_FACT_ORDER]
     portfolio_nodes = _portfolio_nodes(account_facts)
     portfolios = _top_portfolios(portfolio_nodes)
+    from stage_allocation import allocation_amounts, targets_for, LABELS, WEIGHTS
+    from portfolio_rebalance import PlanValidationError
+    try:
+        current = allocation_amounts(summary)
+        targets = targets_for(current)
+        allocation = [{"id": key, "name": LABELS[key], "current_amount": value,
+                       "target_amount": targets[key], "target_weight": WEIGHTS.get(key, 0),
+                       "description": f"阶段目标 {WEIGHTS.get(key, 0):.0%}"}
+                      for key, value in current.items()]
+        allocation_error = None
+    except PlanValidationError as exc:
+        allocation = []
+        allocation_error = exc.message
     return {
+        "allocation": allocation, "allocation_error": allocation_error,
         "context": _context(summary),
         "accounts": account_facts,
         "strategies": _strategy_facts(account_facts),

@@ -40,6 +40,7 @@ class TestAccountStore(unittest.TestCase):
         self.assertEqual([item["id"] for item in summary["accounts"]], [
             "stock",
             "cb",
+            "pingan",
             "changqian",
             "overseas",
             "cash",

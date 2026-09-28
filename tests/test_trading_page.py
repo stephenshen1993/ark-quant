@@ -71,12 +71,12 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn('aria-label="投资概览"', self.html)
         self.assertIn("只看整体配置结构；下一步调拨和交易请进入计划。", self.html)
         self.assertIn("顶层组合", self.html)
-        self.assertIn("A 组合内部", self.html)
-        self.assertIn("B 申购能力", self.html)
+        self.assertIn("readModel().allocation", self.html)
+        self.assertNotIn("B 申购能力", self.html)
         self.assertIn("openBEditor()", self.html)
         self.assertIn("saveBPurchaseStatus()", self.html)
         self.assertIn("fetch('/api/account/context'", self.html)
-        self.assertIn("目标与偏离后续接入规则真源", self.html)
+        self.assertIn("按统一长期资产计算阶段目标", self.html)
         overview_start = self.html.index("function overviewWorkspace()")
         overview_end = self.html.index("function changelogPage()", overview_start)
         overview_body = self.html[overview_start:overview_end]
@@ -108,12 +108,9 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("class=\"plan-generate-action", self.html)
 
     def test_plan_scenarios_use_plain_language_and_hide_exceptions(self):
-        self.assertIn("默认只做 A 组合内轮动", self.html)
-        self.assertIn("同时进行组合间再平衡", self.html)
-        self.assertIn("本次范围：组合内轮动", self.html)
-        self.assertIn("海外长钱申购额度", self.html)
-        self.assertIn("不能正常申购", self.html)
-        self.assertIn("可以正常申购", self.html)
+        self.assertIn("周度统一检查，按目标调整", self.html)
+        self.assertIn("各投资方向净差额不足1000元暂不调整", self.html)
+        self.assertNotIn("同时进行组合间再平衡", self.html)
         self.assertNotIn("新增资金分配", self.html)
         self.assertNotIn("海外长钱恢复申购", self.html)
         self.assertNotIn("临时专项检查", self.html)
@@ -272,26 +269,17 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("tDate: localDate()", self.html)
         self.assertNotIn("factDateInputValue", self.html)
 
-    def test_inputs_use_progressive_disclosure_and_explicit_b_status(self):
-        self.assertIn('x-show="needsBCheck()"', self.html)
-        self.assertIn('x-model="funding.b_purchase_status"', self.html)
-        self.assertIn('value="unchecked"', self.html)
-        self.assertIn('value="unavailable"', self.html)
-        self.assertIn('value="available"', self.html)
-        self.assertIn('x-show="funding.b_purchase_status === \'available\'"', self.html)
-        start = self.html.index("needsBCheck()")
-        end = self.html.index("async loadTransferPlan", start)
-        self.assertIn("this.funding.check_type === 'quarterly'", self.html[start:end])
-        self.assertNotIn("monthly_contribution", self.html[start:end])
-        self.assertNotIn("b_recovery", self.html[start:end])
-        self.assertNotIn("ad_hoc", self.html[start:end])
+    def test_fund_conditions_live_with_the_shared_pingan_account(self):
+        self.assertIn('aria-label="场内基金交易条件"', self.html)
+        self.assertIn('x-model="term.cost_reviewed"', self.html)
+        self.assertNotIn('x-model="funding.b_purchase_status"', self.html)
 
     def test_complete_plan_uses_the_only_frozen_server_endpoint(self):
         self.assertIn("async generateCompletePlan()", self.html)
         start = self.html.index("async generateCompletePlan()")
         end = self.html.index("async loadPlan(", start)
         body = self.html[start:end]
-        self.assertIn("await this.saveFundingContext()", body)
+        self.assertNotIn("await this.saveFundingContext()", body)
         self.assertIn("fetch('/api/plan/generate', { method: 'POST' })", body)
         self.assertNotIn("response.status === 404", body)
         self.assertNotIn("size-orders", self.html)
@@ -768,7 +756,7 @@ class TestTradingPageInteraction(unittest.TestCase):
         )
 
     def test_plan_conditions_collapse_after_plan_exists(self):
-        self.assertIn(':open="!plan"', self.html)
+        self.assertIn("本阶段：周度统一检查", self.html)
         self.assertIn("计划条件", self.html)
 
     def test_plan_page_uses_server_states_and_puts_actions_before_readiness(self):

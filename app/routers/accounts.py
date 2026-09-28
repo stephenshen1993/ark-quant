@@ -60,6 +60,8 @@ class CurrentPositionIn(StrictRequest):
 
 
 class CurrentAccountUpdateIn(StrictRequest):
+    pending_amount: NonnegativeFinite = 0
+    fund_terms: Optional[list[dict]] = None
     expected_version: Optional[str] = None
     amount: Optional[NonnegativeFinite] = None
     available_cash: Optional[NonnegativeFinite] = None
@@ -111,7 +113,7 @@ def public_account_summary(summary: dict | None) -> dict | None:
 
 @router.get("/latest")
 def get_latest():
-    return public_account_summary(db.get_current_account_summary())
+    return public_account_summary(account_current_state.build_current_account_summary())
 
 
 @router.get("/summary")
@@ -224,6 +226,8 @@ def put_current_account(account_id: str, body: CurrentAccountUpdateIn):
             account_id,
             expected_version=body.expected_version,
             amount=body.amount,
+            pending_amount=body.pending_amount,
+            fund_terms=body.fund_terms,
             available_cash=body.available_cash,
             frozen_cash=body.frozen_cash,
             positions=[item.model_dump() for item in body.positions]

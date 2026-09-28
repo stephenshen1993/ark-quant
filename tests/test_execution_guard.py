@@ -4,6 +4,29 @@ from app.execution_guard import evaluate
 
 
 class TestExecutionGuard(unittest.TestCase):
+    def test_fund_buy_checks_limit_fees_and_shared_account_cash(self):
+        orders = [dict(action='BUY', code=code, delta_shares=100, price=10,
+                       commission_rate=.0001, minimum_fee=5) for code in ('161130', '501312')]
+        plan = {'funds': {'orders': orders}}
+        quotes = {'pingan': {code: {'price': 10} for code in ('161130', '501312')}}
+        result = evaluate(plan, {'quotes': quotes, 'available_cash': {'pingan': 2000}})
+        self.assertEqual(result['decisions'][0]['cash_cost'], 1005)
+        self.assertEqual(result['decisions'][1]['reason'], 'INSUFFICIENT_AVAILABLE_CASH')
+        quotes['pingan']['161130']['price'] = 10.01
+        result = evaluate(plan, {'quotes': quotes, 'available_cash': {'pingan': 10000}})
+        self.assertEqual(result['decisions'][0]['reason'], 'FUND_LIMIT_PRICE')
+
+    def test_fund_unfilled_sell_recommendation_cannot_fund_a_buy(self):
+        plan = {'funds': {'orders': [
+            dict(action=action, code=code, delta_shares=shares, price=10,
+                 commission_rate=.0001, minimum_fee=5)
+            for action, code, shares in [('TRIM', '161130', -200), ('BUY', '501312', 100)]
+        ]}}
+        quotes = {'pingan': {code: {'price': 10} for code in ('161130', '501312')}}
+        result = evaluate(plan, {'quotes': quotes, 'available_cash': {'pingan': 0}})
+        self.assertEqual(result['decisions'][0]['decision'], 'execute')
+        self.assertEqual(result['decisions'][1]['reason'], 'INSUFFICIENT_AVAILABLE_CASH')
+
     def test_skips_only_affected_orders_without_replanning(self):
         plan = {
             "stock": {"orders": [

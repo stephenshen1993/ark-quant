@@ -48,7 +48,7 @@ class TestAccountsApi(unittest.TestCase):
         self.assertEqual(r.json()["context"]["temperature"], 45.0)
         self.assertNotIn("account_updated_at", r.json())
         self.assertEqual(r.json()["total_assets"], 0)
-        self.assertEqual(len(r.json()["accounts"]), 5)
+        self.assertEqual(len(r.json()["accounts"]), 6)
         self.assertEqual(r.json()["read_model"]["context"]["snapshot_date"], "2026-06-29")
 
     def test_context_accepts_b_purchase_status_without_audit_fields(self):
@@ -122,7 +122,7 @@ class TestAccountsApi(unittest.TestCase):
         self.assertEqual(read_accounts["cash"]["carrier_strategy_ids"], ["cash_management"])
         self.assertEqual(
             {item["id"] for item in read_model["strategies"]},
-            {"smallcap_stock", "multifactor_convertible_bond"},
+            {"smallcap_stock", "multifactor_convertible_bond", "overseas_growth"},
         )
         portfolios = {item["id"]: item for item in read_model["portfolios"]}
         self.assertEqual(portfolios["A"]["account_ids"], ["stock", "cb", "cash"])

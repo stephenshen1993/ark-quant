@@ -10,6 +10,11 @@ from typing import Final
 
 
 ACCOUNT_DEFINITIONS: Final[dict[str, dict]] = {
+    "pingan": {
+        "label": "平安账户", "sub": "场内基金交易与托管",
+        "asset_classes": ("基金", "现金"), "country_exposure": "海外",
+        "strategy_ids": ("overseas_growth",), "participates_in_domestic_rebalance": False,
+    },
     "stock": {
         "label": "广发账户",
         "sub": "证券交易与托管",
@@ -53,6 +58,8 @@ ACCOUNT_DEFINITIONS: Final[dict[str, dict]] = {
 }
 
 STRATEGY_DEFINITIONS: Final[dict[str, dict]] = {
+    "overseas_growth": {"name": "海外增长", "scope": "账户内",
+                        "description": "按纳指与501312两个独立预算持有场内基金。"},
     "fund_transfer": {
         "name": "资金调拨策略",
         "scope": "跨账户",
@@ -181,8 +188,13 @@ def transfer_target_definitions() -> list[dict]:
 
 
 def public_investment_model() -> dict:
-    """Return the stable model consumed by API clients and future configuration UI."""
+    """Return current policy and compatibility metadata for API clients."""
+    from stage_allocation import POLICY_ID, WEIGHTS, MIN_ADJUSTMENT
+
     return {
+        "allocation_policy": {"id": POLICY_ID, "weights": dict(WEIGHTS),
+                              "cadence": "weekly", "minimum_adjustment": MIN_ADJUSTMENT},
+        "domestic_rebalance_targets_status": "legacy_not_active",
         "concepts": ("资产类别", "策略", "账户"),
         "country_note": "国别是资产或策略的风险暴露属性，不是独立层级。",
         "accounts": [account_definition(account_id) for account_id in ACCOUNT_DEFINITIONS],

@@ -13,6 +13,9 @@ from datasource.youzhiyouxing import DATA_URL
 
 class TestPlansApi(unittest.TestCase):
     def setUp(self):
+        calendar = patch("app.strategy_runner.resolve_effective_trading_date", return_value=date(2026, 6, 29))
+        calendar.start()
+        self.addCleanup(calendar.stop)
         self.cb_codes = ["113062", *[f"{113100 + index:06d}" for index in range(19)]]
         self.stock_quotes = patch(
             "datasource.market.fetch_tencent_snapshot",
@@ -50,6 +53,12 @@ class TestPlansApi(unittest.TestCase):
         )
         db._TEST_CONN.commit()
         db.insert_account_context("2026-06-29", 45.0)
+        from app import account_current_state
+        account_current_state.update_current_account("pingan", expected_version=None,
+                                                     available_cash=0, frozen_cash=0, positions=[])
+        db._TEST_CONN.execute("UPDATE account_state_versions SET as_of='2026-06-29' WHERE account_id='pingan'")
+        db._TEST_CONN.execute("UPDATE account_value_snapshots SET snapshot_date='2026-06-29' WHERE account_id='pingan'")
+        db._TEST_CONN.commit()
         db.insert_account_value_snapshot("stock", "2026-06-29", 209555, 274)
         db.insert_account_value_snapshot("cb", "2026-06-29", 227183, 110)
         db.insert_account_value_snapshot("changqian", "2026-06-29", 110606)
@@ -118,13 +127,13 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(portfolios["A"]["account_ids"], ["stock", "cb", "cash"])
         self.assertEqual(
             {item["id"] for item in read_model["strategies"]},
-            {"smallcap_stock", "multifactor_convertible_bond"},
+            {"smallcap_stock", "multifactor_convertible_bond", "overseas_growth"},
         )
         funding_plan = data["execution_read_model"]["funding_plan"]
         self.assertIsNotNone(funding_plan)
         self.assertEqual(
             [group["availability"] for group in funding_plan["groups"]],
-            ["same_day", "next_trading_day"],
+            ["same_day", "deferred"],
         )
         account_plans = data["execution_read_model"]["account_trading_plans"]
         self.assertEqual(
@@ -141,11 +150,11 @@ class TestPlansApi(unittest.TestCase):
         )
         self.assertEqual(
             account_plans[0]["cash"]["expected_ending"],
-            69511.0,
+            45728.45,
         )
         self.assertEqual(
             account_plans[1]["cash"]["expected_ending"],
-            -69514.72,
+            -63806.55,
         )
 
     def test_plan_service_builds_current_plan_without_http_route(self):
@@ -175,7 +184,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(readiness["status"], "ready")
         self.assertEqual(
             [item["account_id"] for item in readiness["accounts"]],
-            ["stock", "cb", "cash", "overseas", "changqian"],
+            ["stock", "cb", "pingan", "cash", "overseas", "changqian"],
         )
         self.assertEqual(
             {item["status"] for item in readiness["accounts"]},
@@ -244,6 +253,7 @@ class TestPlansApi(unittest.TestCase):
 
     def test_plan_readiness_returns_five_missing_facts_without_an_account_summary(self):
         db._TEST_CONN.execute("DELETE FROM account_contexts")
+        db._TEST_CONN.execute("DELETE FROM account_state_versions")
         db._TEST_CONN.execute("DELETE FROM account_value_snapshots")
         db._TEST_CONN.commit()
 
@@ -252,7 +262,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         readiness = response.json()
         self.assertEqual(readiness["status"], "needs_facts")
-        self.assertEqual(len(readiness["accounts"]), 5)
+        self.assertEqual(len(readiness["accounts"]), 6)
         self.assertEqual({item["status"] for item in readiness["accounts"]}, {"missing"})
 
     def test_plan_readiness_returns_a_structured_service_error(self):
@@ -276,8 +286,8 @@ class TestPlansApi(unittest.TestCase):
 
         self.assertEqual(r.status_code, 200)
         data = r.json()
-        self.assertTrue({"top_level", "a_internal", "cash"} <= set(data["fund_transfer"]))
-        self.assertEqual(data["fund_transfer"]["a_internal"]["status"], "ready")
+        self.assertTrue({"allocation", "actions", "cash"} <= set(data["fund_transfer"]))
+        self.assertEqual(data["fund_transfer"]["policy_id"], "growth-2026-09-28")
         self.assertNotEqual(data["transfer_deltas"]["stock"], 0)
         self.assertNotEqual(data["transfer_deltas"]["bond"], 0)
         self.assertTrue(data["transfer_steps"])
@@ -468,7 +478,7 @@ class TestPlansApi(unittest.TestCase):
 
         self.assertEqual(r.status_code, 404)
 
-    def test_get_latest_generated_plan_exposes_only_lifecycle_metadata(self):
+    def test_legacy_policy_plan_is_stale_and_exposes_only_lifecycle_metadata(self):
         plan_id = "plan-2026-06-29-deadbeef"
         db.insert_generated_plan(
             plan_id,
@@ -494,7 +504,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         generation = response.json()["generation"]
         self.assertEqual(generation["plan_id"], plan_id)
-        self.assertEqual(generation["status"], "complete")
+        self.assertEqual(generation["status"], "stale")
         self.assertEqual(generation["plan_date"], "2026-06-29")
         self.assertIsNone(generation["error"])
         self.assertEqual(generation["summary"]["funding_action_count"], 3)
@@ -611,6 +621,7 @@ class TestPlansApi(unittest.TestCase):
 
     def test_plan_returns_none_account_when_missing(self):
         db._TEST_CONN.execute("DELETE FROM account_contexts")
+        db._TEST_CONN.execute("DELETE FROM account_state_versions")
         db._TEST_CONN.execute("DELETE FROM account_value_snapshots")
         db._TEST_CONN.commit()
         r = self.client.get("/api/plan")
@@ -630,8 +641,8 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(data["plan_date"], "2026-06-29")
         self.assertIn("transfer_steps", data)
         self.assertIn("transfer_deltas", data)
-        self.assertEqual(data["fund_transfer"]["top_level"]["status"], "ready")
-        self.assertEqual(data["fund_transfer"]["a_internal"]["status"], "not_requested")
+        self.assertEqual(data["fund_transfer"]["policy_id"], "growth-2026-09-28")
+        self.assertEqual(data["fund_transfer"]["allocation"]["targets"]["changqian"], 0)
         self.assertEqual(
             data["account_read_model"]["portfolios"][0]["account_ids"],
             ["stock", "cb", "cash"],
@@ -643,7 +654,7 @@ class TestPlansApi(unittest.TestCase):
         r = self.client.get("/api/plan/transfer")
 
         self.assertEqual(r.status_code, 200)
-        self.assertTrue({"top_level", "a_internal", "cash"} <= set(r.json()["fund_transfer"]))
+        self.assertTrue({"allocation", "actions", "cash"} <= set(r.json()["fund_transfer"]))
 
     def test_transfer_plan_requires_current_overseas_snapshot(self):
         db._TEST_CONN.execute(
@@ -702,6 +713,9 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(data["cb"]["orders"], [])
 
     def test_full_plan_reports_missing_latest_strategy_inputs(self):
+        calendar = patch("app.strategy_runner.resolve_effective_trading_date", return_value=date(2026, 6, 30))
+        calendar.start()
+        self.addCleanup(calendar.stop)
         db._TEST_CONN.execute(
             """INSERT INTO market_temperatures
                (temperature,label,source_updated_at,source,fetched_at)
@@ -710,6 +724,8 @@ class TestPlansApi(unittest.TestCase):
         )
         db._TEST_CONN.commit()
         db.insert_account_context("2026-06-30", 45.0)
+        db._TEST_CONN.execute("UPDATE account_state_versions SET as_of='2026-06-30' WHERE account_id='pingan'")
+        db._TEST_CONN.commit()
         db.insert_account_value_snapshot("stock", "2026-06-30", 209555, 274)
         db.insert_account_value_snapshot("cb", "2026-06-30", 227183, 110)
         db.insert_account_value_snapshot("changqian", "2026-06-30", 110606)
@@ -922,6 +938,9 @@ class TestPlansApi(unittest.TestCase):
         )
 
     def test_monday_preopen_account_updates_are_valid_for_friday_plan(self):
+        calendar = patch("app.strategy_runner.resolve_effective_trading_date", return_value=date(2026, 7, 10))
+        calendar.start()
+        self.addCleanup(calendar.stop)
         db._TEST_CONN.execute("DELETE FROM market_temperatures")
         db._TEST_CONN.execute(
             """INSERT INTO market_temperatures
@@ -929,6 +948,7 @@ class TestPlansApi(unittest.TestCase):
                VALUES (45.0,'正常','2026-07-10T15:00',?,'2026-07-13T08:30:00')""",
             (DATA_URL,),
         )
+        db._TEST_CONN.execute("DELETE FROM account_state_versions")
         db._TEST_CONN.execute("DELETE FROM account_value_snapshots")
         db._TEST_CONN.commit()
 
@@ -936,6 +956,9 @@ class TestPlansApi(unittest.TestCase):
         db.insert_account_value_snapshot("cb", "2026-07-13", 227183, 110)
         db.insert_account_value_snapshot("changqian", "2026-07-13", 110606)
         db.insert_account_value_snapshot("cash", "2026-07-13", 59013)
+        from app import account_current_state
+        account_current_state.update_current_account("pingan", expected_version=None,
+                                                     available_cash=0, frozen_cash=0, positions=[])
         db.insert_account_value_snapshot("overseas", "2026-07-13", 93030)
         db.insert_positions("cb", "2026-07-13", [{
             "code": "113062", "name": "常银转债", "shares": 10,

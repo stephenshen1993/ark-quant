@@ -17,8 +17,8 @@ from zoneinfo import ZoneInfo
 from datasource import account_store, db, position_store, strategy_store
 from investment_model import ACCOUNT_DEFINITIONS, account_definition
 
-SECURITIES_ACCOUNTS = {"stock", "cb"}
-ACCOUNT_ORDER = ("stock", "cb", "cash", "changqian", "overseas")
+SECURITIES_ACCOUNTS = {"stock", "cb", "pingan"}
+ACCOUNT_ORDER = ("stock", "cb", "pingan", "cash", "changqian", "overseas")
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 
 
@@ -78,6 +78,20 @@ def build_current_account_summary() -> dict | None:
             result[cash_key] = cash
             result[cash_key.replace("_cash", "_available_cash")] = available_cash
             result[cash_key.replace("_cash", "_frozen_cash")] = frozen_cash
+        if account_id in {"changqian", "overseas"}:
+            result[f"{account_id}_pending"] = account["raw_data"].get("pending_amount", 0) if total is not None else None
+        if account_id == "pingan":
+            terms = account["raw_data"].get("fund_terms", [])
+            result["fund_terms"] = terms
+            result["fund_positions"] = account["valuation"].get("items", [])
+            by_code = {item["code"]: item["direction"] for item in terms}
+            by_code["501312"] = "technology"
+            amounts = {"nasdaq": 0.0, "technology": 0.0, "unclassified": 0.0}
+            for item in result["fund_positions"]:
+                direction = by_code.get(item["code"], "unclassified")
+                amounts[direction] += item.get("market_value") or 0
+            result.update({f"{key}_total": round(value, 2) if total is not None else None
+                           for key, value in amounts.items()})
         if account["as_of"] is not None:
             snapshot_dates[account_id] = account["as_of"]
         if account["updated_at"] is not None:
@@ -111,6 +125,8 @@ def update_current_account(
     available_cash: float | None = None,
     frozen_cash: float | None = None,
     positions: list[dict] | None = None,
+    pending_amount: float = 0,
+    fund_terms: list[dict] | None = None,
 ) -> dict:
     """Save one account from raw user facts and invalidate plans only on change."""
     _validate_account(account_id)
@@ -121,6 +137,13 @@ def update_current_account(
         frozen_cash=frozen_cash,
         positions=positions,
     )
+    if account_id in {"changqian", "overseas"}:
+        raw["pending_amount"] = account_store.validate_nonnegative_finite(pending_amount, "pending_amount")
+    if account_id == "pingan":
+        from app.fund_orders import normalize_terms
+        if any(not float(item["quantity"]).is_integer() for item in raw["positions"]):
+            raise CurrentAccountError("场内基金持仓份额必须为整数")
+        raw["fund_terms"] = normalize_terms(fund_terms or [])
     valuation = _derive_valuation(account_id, raw)
 
     with db._conn() as conn:
@@ -261,7 +284,7 @@ def _derive_valuation(account_id: str, raw: dict) -> dict:
     if account_id not in SECURITIES_ACCOUNTS:
         return {
             "status": "available",
-            "total": raw["amount"],
+            "total": raw["amount"] + raw.get("pending_amount", 0),
             "missing_codes": [],
             "items": [],
         }
@@ -398,6 +421,9 @@ def _current_account(conn: sqlite3.Connection, account_id: str) -> dict:
             version=_opaque_version("current", row["id"], account_id, row["created_at"]),
             operation=row["operation"],
         )
+
+    if account_id == "pingan":
+        return _missing_state(account_id)
 
     account_row = conn.execute(
         """SELECT * FROM account_value_snapshots
@@ -594,24 +620,25 @@ def _insert_version(
                 item["code"]: item.get("name") or ""
                 for item in valuation.get("items", [])
             }
-            position_snapshot_id = position_store.insert_position_snapshot(
-                conn,
-                account_id,
-                as_of,
-                [
-                    {
-                        "code": item["code"],
-                        "name": names.get(item["code"], ""),
-                        "shares": item["quantity"],
-                    }
-                    for item in raw["positions"]
-                ],
-            )
+            if account_id in {"stock", "cb"}:
+                position_snapshot_id = position_store.insert_position_snapshot(
+                    conn,
+                    account_id,
+                    as_of,
+                    [
+                        {
+                            "code": item["code"],
+                            "name": names.get(item["code"], ""),
+                            "shares": item["quantity"],
+                        }
+                        for item in raw["positions"]
+                    ],
+                )
             cash = raw["available_cash"] + raw["frozen_cash"]
             frozen_cash = raw["frozen_cash"]
             total = valuation.get("total")
         else:
-            total = raw["amount"]
+            total = valuation.get("total")
         account_snapshot_id = account_store.insert_account_value_snapshot_row(
             conn,
             account_id,
@@ -654,7 +681,7 @@ def _invalidate_derived_plans(conn: sqlite3.Connection) -> None:
 
 def _invalidate_plans_with_different_valuation(summary: dict) -> None:
     """Stale plans whose captured securities totals differ from current quotes."""
-    total_fields = ("stock_total", "bond_total")
+    total_fields = ("stock_total", "bond_total", "pingan_total", "nasdaq_total", "technology_total")
     with db._conn() as conn:
         with _write_transaction(conn):
             rows = conn.execute(

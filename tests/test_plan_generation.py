@@ -17,6 +17,9 @@ from datasource.youzhiyouxing import DATA_URL
 
 class TestPlanGeneration(unittest.TestCase):
     def setUp(self):
+        calendar = patch("app.strategy_runner.resolve_effective_trading_date", return_value=date(2026, 6, 29))
+        calendar.start()
+        self.addCleanup(calendar.stop)
         self.stock_quotes = patch(
             "datasource.market.fetch_tencent_snapshot",
             return_value=pd.DataFrame([{
@@ -58,6 +61,9 @@ class TestPlanGeneration(unittest.TestCase):
         )
         db._TEST_CONN.commit()
         db.insert_account_context("2026-06-29", 45.0)
+        from app import account_current_state
+        account_current_state.update_current_account("pingan", expected_version=None,
+                                                     available_cash=0, frozen_cash=0, positions=[])
         db.insert_account_value_snapshot("stock", "2026-06-29", 209555, 274)
         db.insert_account_value_snapshot("cb", "2026-06-29", 227183, 110)
         db.insert_account_value_snapshot("changqian", "2026-06-29", 110606)
@@ -292,7 +298,8 @@ class TestPlanGeneration(unittest.TestCase):
 
         snapshot = plan["snapshot"]
         plan_id = plan["generation"]["plan_id"]
-        self.assertEqual(snapshot["version"], 1)
+        self.assertEqual(snapshot["version"], 2)
+        self.assertEqual(snapshot["allocation_policy"], "growth-2026-09-28")
         self.assertEqual(snapshot["plan_id"], plan_id)
         self.assertEqual(snapshot["data_date"], "2026-06-29")
         self.assertEqual(snapshot["execution_date"], "2026-06-30")
@@ -318,6 +325,31 @@ class TestPlanGeneration(unittest.TestCase):
             plan_lifecycle.get_plan(plan_id)["plan"],
             before_stale,
         )
+
+    def test_complete_plan_freezes_pingan_funds_and_invalidates_on_term_change(self):
+        terms = [dict(direction=direction, code=code, limit_price=price, lot_size=100,
+                      commission_rate=.0001, minimum_fee=5, price_date='2026-06-29', cost_reviewed=True)
+                 for direction, code, price in [('nasdaq', '161130', 10), ('technology', '501312', 7)]]
+        current = account_current_state.get_current_account('pingan')
+        saved = account_current_state.update_current_account('pingan', expected_version=current['version'],
+            available_cash=0, frozen_cash=0, positions=[], fund_terms=terms)
+        def sized(*args, **kwargs):
+            return {'orders': [], 'summary': {}}
+        plan = plan_generation.generate_complete_plan(size_cb_orders=sized, size_stock_orders=sized)
+        orders = plan['funds']['orders']
+        self.assertEqual({o['code'] for o in orders}, {'161130', '501312'})
+        incoming = sum(a['amount'] for a in plan['fund_transfer']['actions'] if a['target'] == 'pingan')
+        self.assertLessEqual(plan['funds']['summary']['buy_cost'], incoming)
+        frozen = plan_lifecycle.get_plan(plan['generation']['plan_id'])['plan']
+        self.assertEqual(frozen['funds'], plan['funds'])
+        pa = next(p for p in plan['execution_read_model']['account_trading_plans'] if p['account_id'] == 'pingan')
+        self.assertTrue(pa['phases'][0]['orders'])
+        terms[0]['limit_price'] = 9.9
+        account_current_state.update_current_account('pingan', expected_version=saved['version'],
+            available_cash=0, frozen_cash=0, positions=[], fund_terms=terms)
+        changed = plan_lifecycle.get_plan(plan['generation']['plan_id'])
+        self.assertEqual(changed['status'], 'stale')
+        self.assertEqual(changed['plan']['funds'], frozen['funds'])
 
     def test_complete_plan_sizes_both_strategies_from_one_frozen_price_snapshot(self):
         prices = {

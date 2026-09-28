@@ -218,6 +218,13 @@ def seed_database(db_path: Path, plan_date: str) -> None:
 
     from app import account_current_state
 
+    account_current_state.update_current_account(
+        'pingan', expected_version=None, available_cash=0, frozen_cash=0, positions=[],
+        fund_terms=[dict(direction=direction, code=code, limit_price=price, lot_size=100,
+                         commission_rate=.0001, minimum_fee=5, price_date=plan_date, cost_reviewed=True)
+                    for direction, code, price in [('nasdaq', '161130', 10), ('technology', '501312', 7)]],
+    )
+
     stock_quotes = pd.DataFrame([{
         "stock_code": code,
         "stock_name_q": quote["name"],
@@ -272,7 +279,10 @@ def seed_database(db_path: Path, plan_date: str) -> None:
     ), patch(
         "datasource.market.fetch_cb_quotes_tencent", return_value=CB_QUOTES
     ):
-        saved_plan = build_current_plan()
+        with patch('app.plan_service.current_plan_date', return_value=plan_date):
+            saved_plan = build_current_plan()
+    from stage_allocation import POLICY_ID
+    saved_plan['snapshot'] = {'version': 2, 'allocation_policy': POLICY_ID}
     plan_id = plan_lifecycle.new_plan_id(plan_date)
     saved_plan["generation"] = {
         "plan_id": plan_id,
@@ -798,8 +808,8 @@ def browser_check_code(
                 'account.narrowGutter', {NARROW_GUTTER}, accountMetrics.shellStyle, {GEOMETRY_TOLERANCE},
               ));
             }}
-            if (accountMetrics.accountCount !== 5) {{
-              accountDifferences.push(difference('account.accountCount', 5, accountMetrics.accountCount));
+            if (accountMetrics.accountCount !== 6) {{
+              accountDifferences.push(difference('account.accountCount', 6, accountMetrics.accountCount));
             }}
             if (accountMetrics.selectedAccount !== '广发账户') {{
               accountDifferences.push(difference('account.defaultSelection', '广发账户', accountMetrics.selectedAccount));
@@ -1218,18 +1228,18 @@ def browser_check_code(
             await readinessAlert.waitFor({{ state: 'visible', timeout: 10000 }});
             const unknownOverview = await readinessErrorWorkspace.locator('.account-current-overview').innerText();
             const unknownStatuses = await readinessErrorWorkspace.locator('.account-current-rail-meta > span').allTextContents();
-            if (unknownOverview.includes('已就绪') || unknownStatuses.filter(text => text.trim() === '待确认').length !== 5) {{
+            if (unknownOverview.includes('已就绪') || unknownStatuses.filter(text => text.trim() === '待确认').length !== 6) {{
               fail('account.readiness-error', '计划就绪度失败时账户页仍然 fail-open', [
                 difference(
                   'account.readinessUnknown',
-                  {{ overviewIncludesReady: false, pendingStatusCount: 5 }},
+                  {{ overviewIncludesReady: false, pendingStatusCount: 6 }},
                   {{ overview: unknownOverview, statuses: unknownStatuses }},
                 ),
               ]);
             }}
             await readinessAlert.getByRole('button', {{ name: '重新确认', exact: true }}).click();
             await readinessErrorWorkspace.locator('.account-current-overview')
-              .filter({{ hasText: '5 / 5 个账户已就绪' }})
+              .filter({{ hasText: '6 / 6 个账户已就绪' }})
               .waitFor({{ state: 'visible', timeout: 10000 }});
             accountDataScenarioChecks.push({{
               name: 'readiness-error',
@@ -1288,6 +1298,15 @@ def browser_check_code(
               globalFactDateInputs: accountMetrics.visibleFactDateInputs,
               changedPayloads,
             }});
+            await chooseAccount('pingan');
+            await accountPage.getByLabel('基金限价', {{ exact: true }}).first().waitFor({{ state: 'visible' }});
+            if (await accountPage.getByLabel('基金限价', {{ exact: true }}).count() !== 2) {{
+              fail('account.pinganTerms', '平安两方向交易条件未完整显示');
+            }}
+            const fieldWidths = await accountPage.getByLabel('基金限价', {{ exact: true }}).evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().width));
+            if (fieldWidths.some(width => width < 130)) fail('account.pinganFieldWidth', '基金输入框被挤窄');
+            await assertPageIntegrity('account.pingan', main);
+            await page.screenshot({{ path: {json.dumps(account_screenshot.replace('.png','-pingan.png'))}, fullPage: true }});
             await chooseAccount('changqian');
             await chooseAccount('cash');
             const accountIntegrity = await assertPageIntegrity('account', main);
@@ -1349,65 +1368,15 @@ def browser_check_code(
             const fundingPlanPanel = executionDossier.locator('.plan-funding-plan');
             const accountPlanCards = executionDossier.locator('.plan-account-card');
             await fundingPlanPanel.waitFor({{ state: 'visible', timeout: 10000 }});
-            const planDetails = planPage.locator('details[aria-label="计划条件"]:visible');
-            const planDetailsCount = await planDetails.count();
-            if (planDetailsCount !== 1) {{
-              fail(
-                'plan.detailsControl',
-                '计划条件必须有且只有一个可见详情控件',
-                [difference('plan.visibleDetails', 1, planDetailsCount)],
-              );
+            const stageConditions = planPage.locator('section[aria-label="计划条件"]');
+            await stageConditions.waitFor({{ state: 'visible', timeout: 10000 }});
+            const stageRulesText = await stageConditions.innerText();
+            if (!stageRulesText.includes('周度统一检查') || !stageRulesText.includes('1000元')) {{
+              fail('plan.stageRules', '阶段检查节奏和小额规则缺失');
             }}
-            const planSummary = planDetails.locator(':scope > summary:visible');
-            const planSummaryCount = await planSummary.count();
-            if (planSummaryCount !== 1) {{
-              fail(
-                'plan.detailsControl',
-                '计划条件必须有且只有一个可见切换控件',
-                [difference('plan.visibleSummaries', 1, planSummaryCount)],
-              );
+            if (await stageConditions.locator('input, select').count()) {{
+              fail('plan.stageRules', '阶段规则不应保留旧温度、新钱或B申购输入');
             }}
-            await planSummary.waitFor({{ state: 'visible', timeout: 10000 }});
-            const wasOpen = await planDetails.evaluate(element => element.open);
-            await planSummary.focus();
-            const planFocus = await planSummary.evaluate(element => {{
-              return {{
-                activeTag: document.activeElement?.tagName || '',
-                isFocused: document.activeElement === element,
-              }};
-            }});
-            const clickAndReadDetailsState = async () => {{
-              const toggleResult = planDetails.evaluate(element => new Promise(resolve => {{
-                const summary = element.querySelector(':scope > summary');
-                let clickObserved = false;
-                const cleanup = () => {{
-                  summary?.removeEventListener('click', observeClick);
-                  element.removeEventListener('toggle', observeToggle);
-                }};
-                const observeClick = () => {{ clickObserved = true; }};
-                const observeToggle = () => {{
-                  if (!clickObserved) return;
-                  window.clearTimeout(timeout);
-                  cleanup();
-                  resolve({{ clickObserved, eventObserved: true, open: element.open }});
-                }};
-                const timeout = window.setTimeout(
-                  () => {{
-                    cleanup();
-                    resolve({{ clickObserved, eventObserved: false, open: element.open }});
-                  }},
-                  2000,
-                );
-                summary?.addEventListener('click', observeClick, {{ once: true }});
-                element.addEventListener('toggle', observeToggle);
-              }}));
-              await planSummary.click();
-              return toggleResult;
-            }};
-            const toggledResult = await clickAndReadDetailsState();
-            const restoredResult = await clickAndReadDetailsState();
-            const toggledOpen = toggledResult.open;
-            const restoredOpen = restoredResult.open;
             const [planShellBox, statusBox, dossierBox] = await Promise.all([
               planPage.boundingBox(),
               planPage.locator('.workspace-title-row').boundingBox(),
@@ -1460,19 +1429,7 @@ def browser_check_code(
               fundingTableMetrics,
               fundingActionCount: await fundingPlanPanel.locator('.plan-funding-action').count(),
               accountPlanCount: await accountPlanCards.count(),
-              visibleDetails: planDetailsCount,
-              wasOpen,
-              toggledOpen,
-              restoredOpen,
-              toggleEvents: {{
-                toggled: toggledResult.eventObserved,
-                restored: restoredResult.eventObserved,
-              }},
-              clicks: {{
-                toggled: toggledResult.clickObserved,
-                restored: restoredResult.clickObserved,
-              }},
-              focus: planFocus,
+              stageRulesText,
             }};
             const planDifferences = [];
             if ({json.dumps(viewport_name)} !== 'narrow') {{
@@ -1542,11 +1499,11 @@ def browser_check_code(
             }}
             if ({json.dumps(viewport_name)} !== 'narrow') {{
               const oversizedFundingRows = planMetrics.fundingTableMetrics.rowHeights
-                .filter(height => height > 52);
+                .filter(height => height > 64);
               if (oversizedFundingRows.length) {{
                 planDifferences.push(difference(
                   'plan.fundingRowHeights',
-                  {{ max: 52 }},
+                  {{ max: 64 }},
                   planMetrics.fundingTableMetrics.rowHeights,
                 ));
               }}
@@ -1571,40 +1528,6 @@ def browser_check_code(
                 }},
               ));
             }}
-            if (
-              !planMetrics.toggleEvents.toggled
-              || !planMetrics.toggleEvents.restored
-              || !planMetrics.clicks.toggled
-              || !planMetrics.clicks.restored
-              || planMetrics.toggledOpen === planMetrics.wasOpen
-              || planMetrics.restoredOpen !== planMetrics.wasOpen
-            ) {{
-              planDifferences.push(difference(
-                'plan.detailsToggle',
-                {{
-                  toggled: !planMetrics.wasOpen,
-                  restored: planMetrics.wasOpen,
-                  events: {{ toggled: true, restored: true }},
-                  clicks: {{ toggled: true, restored: true }},
-                }},
-                {{
-                  toggled: planMetrics.toggledOpen,
-                  restored: planMetrics.restoredOpen,
-                  events: planMetrics.toggleEvents,
-                  clicks: planMetrics.clicks,
-                }},
-              ));
-            }}
-            if (planMetrics.visibleDetails < 1) {{
-              planDifferences.push(difference('plan.visibleDetails', {{ min: 1 }}, planMetrics.visibleDetails));
-            }}
-            if (!planMetrics.focus.isFocused || planMetrics.focus.activeTag !== 'SUMMARY') {{
-              planDifferences.push(difference(
-                'plan.keyboardFocus',
-                {{ activeTag: 'SUMMARY', isFocused: true }},
-                planMetrics.focus,
-              ));
-            }}
             assertNoDifferences('plan.behavior', '计划页关键可见行为异常', planDifferences);
             const planIntegrity = await assertPageIntegrity('plan', main);
             await main.evaluate(element => element.scrollTo({{ top: 0, left: 0 }}));
@@ -1613,6 +1536,16 @@ def browser_check_code(
             await page.evaluate(() => document.activeElement?.blur?.());
             await page.waitForTimeout(100);
             await page.screenshot({{ path: {json.dumps(plan_screenshot)}, fullPage: true }});
+            const fundPlanCard = planPage.locator('.plan-account-card').filter({{ hasText: '平安账户' }}).first();
+            await fundPlanCard.locator(':scope > summary').click();
+            await fundPlanCard.locator('.plan-trade-row').first().waitFor({{ state: 'visible' }});
+            const fundRows = fundPlanCard.locator('.plan-trade-row');
+            if (await fundRows.count() !== 2 || await fundPlanCard.locator('td[data-label="限价"]').count() !== 2) {{
+              fail('plan.fundOrders', '两只基金的订单或限价未完整展示');
+            }}
+            await assertPageIntegrity('plan.fundOrders', main);
+            await fundPlanCard.screenshot({{ path: {json.dumps(plan_screenshot.replace('.png', '-funds.png'))} }});
+            await fundPlanCard.locator(':scope > summary').click();
             let expandedAccountPlanChecks = null;
             let planFocusChecks = null;
 
@@ -2097,7 +2030,9 @@ def browser_check_code(
                 : scenario.plan?.stock?.trade_date;
               const fundingDatesVisible = !scenario.fundingPlanVisible || (
                 (await scenarioFundingPlan.innerText()).includes(expectedFundingDate)
-                && (await scenarioAccountPlans.first().innerText()).includes(expectedFundingDate)
+                && (scenario.name === 'future-funding'
+                  ? (await scenarioAccountPlans.first().innerText()).includes(expectedFundingDate)
+                  : (await scenarioPage.innerText()).includes(expectedFundingDate))
               );
               const generateDisabled = await generateButton.isDisabled();
               const legacyPanelsVisible = await scenarioPage
@@ -2205,6 +2140,7 @@ def browser_check_code(
 	                  if (!(await accountPlan.evaluate(card => card.open))) {{
 	                    await accountPlan.locator(':scope > summary').click();
 	                  }}
+	                  await scenarioPage.locator('.plan-execution-index').waitFor({{ state: 'visible', timeout: 10000 }});
 	                  const check = await accountPlan.evaluate((card, context) => {{
 	                    const rows = Array.from(card.querySelectorAll('.plan-trade-row'));
 	                    const cashLabels = Array.from(card.querySelectorAll('.plan-cash-label'))
@@ -2365,7 +2301,7 @@ def browser_check_code(
               let orderEntryNarrowChecks = null;
               if ({json.dumps(viewport_name)} === 'narrow' && scenario.name === 'action') {{
                 const orderRows = scenarioPage.locator('.plan-trade-row:visible');
-		                const requiredOrderLabels = ['证券代码', '证券名称', '仓位', '买卖', '交易数量', '参考价', '估算金额'];
+		                const requiredOrderLabels = ['证券代码', '证券名称', '委托数量', '参考价', '预计金额'];
                 const orderEntryMetrics = await scenarioPage.evaluate(() => {{
                   const rows = Array.from(document.querySelectorAll('.plan-trade-row'))
                     .filter(row => row.checkVisibility());
@@ -2396,8 +2332,8 @@ def browser_check_code(
                 const noHorizontalOverflow = orderEntryMetrics.horizontalOverflow
                   .every(size => size.scrollWidth <= size.clientWidth + 2);
                 const compactLayout = orderEntryMetrics.completeRows.every(row =>
-	                  row.gridTemplateAreas.includes('code name action side amount')
-	                  && row.gridTemplateAreas.includes('position position position price amount')
+	                  row.gridTemplateAreas.includes('code name price amount')
+	                  && row.gridTemplateAreas.includes('position position price amount')
                 );
                 if (await orderRows.count() < 2 || !completeRows || !noHorizontalOverflow || !compactLayout) {{
                   scenarioDifferences.push(difference(

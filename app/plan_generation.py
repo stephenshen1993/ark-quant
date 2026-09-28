@@ -9,6 +9,7 @@ from app import strategy_runner
 from app.execution_guard import evaluate as evaluate_execution_guard
 from datasource import db
 from portfolio_rebalance import PlanValidationError
+from stage_allocation import POLICY_ID
 
 
 def build_plan_context(refresh_temperature: bool = False) -> dict:
@@ -31,6 +32,9 @@ def get_generated_plan(plan_id: str) -> dict | None:
     if not isinstance(plan, dict):
         return record
     record_status = record.get("status", plan_lifecycle.COMPLETE)
+    if record_status in {plan_lifecycle.COMPLETE, plan_lifecycle.STALE} and (plan.get("snapshot") or {}).get("allocation_policy") != POLICY_ID:
+        record_status = plan_lifecycle.STALE
+        record = {**record, "status": record_status}
     if record_status not in {plan_lifecycle.COMPLETE, plan_lifecycle.STALE}:
         return {
             **record,
@@ -59,7 +63,7 @@ def get_generated_plan(plan_id: str) -> dict | None:
 
 
 def evaluate_generated_plan_execution(plan_id: str, realtime: dict) -> dict | None:
-    record = plan_lifecycle.get_plan(plan_id)
+    record = get_generated_plan(plan_id)
     if record is None:
         return None
     if record.get("status") != plan_lifecycle.COMPLETE:
@@ -269,6 +273,7 @@ def prepare_complete_plan_generation(plan_date: str | None = None) -> tuple[str,
     market_temperature = plan_service.get_market_temperature()
     account = dict(account)
     account["temperature"] = market_temperature.temperature
+    account["plan_date"] = plan_date
     cb_rankings = db.get_rankings("cb", plan_date)
     try:
         fund_transfer = plan_service.build_fund_transfer(
@@ -363,6 +368,7 @@ def prepare_strategy_order_context() -> tuple[str, dict, dict]:
     account = dict(account)
     market_temperature = plan_service.get_market_temperature()
     account["temperature"] = market_temperature.temperature
+    account["plan_date"] = plan_date
     cb_rankings = db.get_rankings("cb", plan_date)
     try:
         fund_transfer = plan_service.build_fund_transfer(

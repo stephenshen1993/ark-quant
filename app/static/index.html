@@ -2375,6 +2375,15 @@
       line-height: 1.7;
     }
   }
+  .account-fund-terms { display: block; margin: 24px 0; color: var(--ark-muted); }
+  .account-fund-terms h3 { font-size: 16px; font-weight: 650; color: var(--ark-text); margin-bottom: 8px; }
+  .account-fund-terms p { font-size: 13px; line-height: 1.7; }
+  .account-fund-terms fieldset { min-width: 0; background: var(--ark-panel); }
+  .account-fund-terms legend { padding: 0 6px; font-weight: 650; color: var(--ark-text); }
+  .account-fund-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .account-fund-grid label { display: block; min-width: 0; font-size: 13px; line-height: 1.6; }
+  .account-fund-grid input { display: block; min-width: 0; margin-top: 5px; color: var(--ark-text); height: 42px; }
+  @media (max-width: 600px) { .account-fund-grid { grid-template-columns: minmax(0, 1fr); } }
 </style>
 </head>
 <body class="bg-gray-50 text-gray-900 flex h-screen antialiased">
@@ -2476,7 +2485,7 @@
           <div class="overview-section-heading">
             <div>
               <h2>顶层组合</h2>
-              <p>当前金额来自各账户最新数据；目标与偏离后续接入规则真源。</p>
+              <p>按统一长期资产计算阶段目标；账户现金单独归入直接现金。</p>
             </div>
             <strong class="overview-total" x-text="fmtMoney(totalAssets())"></strong>
           </div>
@@ -2507,67 +2516,13 @@
             </tbody>
           </table>
         </section>
-        <section class="ark-panel overview-section" aria-label="A 组合内部结构">
-          <div class="overview-section-heading">
-            <div>
-              <h2>A 组合内部</h2>
-              <p>只到策略与资金余额层级，不展开托管账户和具体证券持仓。</p>
-            </div>
-          </div>
-          <table class="overview-matrix">
-            <thead>
-              <tr>
-                <th>策略 / 资金职责</th>
-                <th class="num">当前占比</th>
-                <th class="num">当前金额</th>
-                <th>数据状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              <template x-for="node in activeNodes()" :key="node.id">
-                <tr>
-                  <td>
-                    <strong x-text="nodeName(node)"></strong>
-                    <small x-text="accountNames(node)"></small>
-                  </td>
-                  <td class="num">
-                    <span class="overview-bar" aria-hidden="true"><i :style="`width: ${activePercentValue(node.current_amount)}%`"></i></span>
-                    <span x-text="activePercentText(node.current_amount)"></span>
-                  </td>
-                  <td class="num" x-text="fmtMoney(node.current_amount)"></td>
-                  <td x-text="dataStateText(node)"></td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-        </section>
+        <p class="account-current-note is-warning" x-show="readModel().allocation_error" x-text="readModel().allocation_error"></p>
+
       </div>
       <aside class="overview-side" aria-label="概览辅助信息">
         <section class="ark-panel overview-side-panel">
           <h2>全市场温度</h2>
           <p x-text="temperatureText()"></p>
-        </section>
-        <section class="ark-panel overview-side-panel">
-          <h2>B 申购能力</h2>
-          <p x-text="bPurchaseText()"></p>
-          <button type="button" class="plan-focus-toggle mt-3" @click="openBEditor()">更新状态</button>
-          <div x-show="bEditorOpen" x-cloak class="mt-3 grid gap-2">
-            <label class="text-xs text-gray-500">申购状态
-              <select x-model="bDraft.status" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none">
-                <option value="unchecked">未确认</option>
-                <option value="unavailable">不能正常申购</option>
-                <option value="available">可以正常申购</option>
-              </select>
-            </label>
-            <label x-show="bDraft.status === 'available'" class="text-xs text-gray-500">可申购额度
-              <input type="number" min="0" step="0.01" inputmode="decimal" x-model="bDraft.limit" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none">
-            </label>
-            <p x-show="bSaveError" class="text-xs text-red-600" x-text="bSaveError"></p>
-            <div class="flex gap-2">
-              <button type="button" class="plan-focus-toggle" @click="saveBPurchaseStatus()" :disabled="bSaving" x-text="bSaving ? '保存中…' : '保存状态'"></button>
-              <button type="button" class="plan-focus-toggle" @click="bEditorOpen = false">取消</button>
-            </div>
-          </div>
         </section>
         <section class="ark-panel overview-side-panel">
           <h2>数据时间</h2>
@@ -2802,7 +2757,10 @@
                 @input="markEdited()"
                 placeholder="请输入当前余额">
             </div>
-            <p>这是当前可用于系统判断的账户余额，不要求与其他账户同一时间更新。</p>
+            <p x-text="['changqian', 'overseas'].includes(selectedId) ? '请填仍持有的余额；确认赎回在途另填下方，到账后移至资金池，避免重复计算。' : '填写当前资金池余额，新投入统一记在这里。'"></p>
+            <label x-show="['changqian', 'overseas'].includes(selectedId)">确认赎回在途（元）
+              <input type="number" min="0" step="0.01" x-model="draft.pending_amount" @input="markEdited()" class="border rounded p-2" aria-label="赎回在途金额">
+            </label>
           </div>
 
           <div x-show="selected?.kind === 'securities'" class="account-current-securities-editor">
@@ -2820,6 +2778,25 @@
                 <strong x-text="fmtMoney(selected?.valuation?.total)"></strong>
                 <small>系统派生，不手工填写</small>
               </div>
+            </section>
+
+            <section x-show="selectedId === 'pingan'" class="account-fund-terms" aria-label="场内基金交易条件">
+              <h3>两个方向各自的交易条件</h3>
+              <p>填写核实后的执行标的、限价和券商费用。费用使用实际小数费率；空缺将保留目标并暂停该方向订单。此处不记录持仓，实际份额仍在下方维护。</p>
+              <template x-for="term in (draft.fund_terms || [])" :key="term.direction">
+                <fieldset class="border rounded p-3 mt-3">
+                  <legend x-text="term.direction === 'nasdaq' ? '纳指方向' : '501312'"></legend>
+                  <div class="account-fund-grid">
+                    <label>代码<input class="w-full border rounded p-2" x-model="term.code" :readonly="term.direction === 'technology'" @input="term.cost_reviewed = false; markEdited()" maxlength="6" aria-label="基金代码"></label>
+                    <label>核实限价<input class="w-full border rounded p-2" type="number" min="0" step="0.001" x-model="term.limit_price" @input="term.cost_reviewed = false; markEdited()" aria-label="基金限价"></label>
+                    <label>价格基准日<input class="w-full border rounded p-2" type="date" x-model="term.price_date" @input="term.cost_reviewed = false; markEdited()" aria-label="基金价格基准日"></label>
+                    <label>最小交易单位（份）<input class="w-full border rounded p-2" type="number" min="1" step="1" x-model="term.lot_size" @input="term.cost_reviewed = false; markEdited()" aria-label="基金交易单位"></label>
+                    <label>佣金费率（小数）<input class="w-full border rounded p-2" type="number" min="0" step="0.00001" x-model="term.commission_rate" @input="term.cost_reviewed = false; markEdited()" aria-label="基金佣金费率"></label>
+                    <label>最低佣金（元）<input class="w-full border rounded p-2" type="number" min="0" step="0.01" x-model="term.minimum_fee" @input="term.cost_reviewed = false; markEdited()" aria-label="基金最低佣金"></label>
+                  </div>
+                  <label class="block mt-3"><input type="checkbox" x-model="term.cost_reviewed" @change="markEdited()"> 已核实该限价、溢价成本及以上交易条件</label>
+                </fieldset>
+              </template>
             </section>
 
             <section class="account-current-holdings" aria-label="当前持仓">
@@ -3077,6 +3054,7 @@
                       <td class="plan-funding-window" data-label="资金可用时间">
                         <span class="plan-funding-window-label" x-text="group.label"></span>
                         <span class="plan-funding-window-date" x-text="action.display_date || group.display_date"></span>
+                        <small class="block" x-show="action.note" x-text="action.note"></small>
                       </td>
                     </tr>
                   </template>
@@ -3138,7 +3116,7 @@
                             <th>证券代码</th>
                             <th>证券名称</th>
                             <th>委托数量</th>
-                            <th>参考价</th>
+                            <th x-text="plan.execution_guardrails?.reference_price_is_limit ? '限价' : '参考价'">参考价</th>
                             <th>预计金额</th>
                           </tr>
                         </thead>
@@ -3165,7 +3143,7 @@
                                   x-text="formatQuantity(order.quantity) + ' ' + order.unit">
                                 </div>
                               </td>
-                              <td class="plan-trade-price" data-label="参考价">
+                              <td class="plan-trade-price" :data-label="plan.execution_guardrails?.reference_price_is_limit ? '限价' : '参考价'" data-label="参考价">
                                 <span x-text="order.reference_price == null ? '-' : Number(order.reference_price).toFixed(3)"></span>
                               </td>
                               <td class="plan-trade-amount" data-label="预计金额" x-text="fmtMoney(order.estimated_amount)"></td>
@@ -3174,6 +3152,7 @@
                           </tbody>
                         </template>
 	                      </table>
+	                      <p class="workspace-meta mt-2" x-show="plan.execution_guardrails?.reference_price_is_limit">买入不高于表中限价，卖出不低于表中限价；费用已计入资金估算。</p>
 	                    </div>
 	                  </section>
 	                  <details class="plan-cash-audit">
@@ -3181,7 +3160,7 @@
 	                    <section class="plan-execution-guardrails" aria-label="执行保护">
 	                      <div class="plan-execution-guardrail">
 	                        <strong>参考价口径</strong>
-	                        <span x-text="'参考价（非限价）基于 ' + (plan.execution_guardrails?.price_basis_date || executionReadModel()?.plan_date || '计划基准日') + ' 的计划估值；仅用于估算，不是券商限价。'"></span>
+	                        <span x-text="plan.execution_guardrails?.reference_price_is_limit ? '本表为已核实限价：买入不高于此价，卖出不低于此价；转入到账后才可下单。' : '参考价（非限价）基于 ' + (plan.execution_guardrails?.price_basis_date || executionReadModel()?.plan_date || '计划基准日') + ' 的计划估值；仅用于估算，不是券商限价。'"></span>
 	                      </div>
 	                      <template x-for="rule in plan.execution_guardrails?.rules || []" :key="rule.kind">
 	                        <div class="plan-execution-guardrail">
@@ -3261,48 +3240,13 @@
       </div>
     </details>
 
-    <!-- 本次计划条件 -->
-    <details x-show="!isSelectedHistoricalPlan()" aria-label="计划条件" class="ark-panel plan-conditions-panel px-5 py-3 mb-4" :open="!plan">
-      <summary class="cursor-pointer select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">
-        <div class="inline-flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span class="text-sm font-semibold">本次计划条件</span>
-          <span class="text-xs text-gray-400">账户余额和持仓在“账户”页维护；这里只填写本次计划特有的条件。</span>
-        </div>
-      </summary>
-      <div class="mt-3 grid grid-cols-1 lg:grid-cols-[minmax(260px,420px)_1fr] gap-3 items-start">
-        <label class="flex items-start gap-3 rounded-lg bg-gray-50 px-3 py-3 text-sm text-gray-700">
-          <input
-            type="checkbox"
-            class="mt-1 h-4 w-4 rounded border-gray-300 text-teal-700 focus:ring-teal-700"
-            :checked="funding.check_type === 'quarterly'"
-            @change="funding.check_type = $event.target.checked ? 'quarterly' : 'a_internal'">
-          <span>
-            <span class="block font-medium text-gray-900">同时进行组合间再平衡</span>
-            <span class="mt-1 block text-xs text-gray-400">默认只做 A 组合内轮动；开启后先判断 A/B/C 组合间再平衡，再继续生成 A 组合内轮动。</span>
-          </span>
-        </label>
-        <div x-show="funding.check_type === 'a_internal'" class="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-3">
-          <div class="font-medium">本次范围：组合内轮动</div>
-          <div class="text-xs text-gray-400 mt-1">检查股票、转债和资金账户之间的轮动，并生成下一交易日可执行订单。</div>
-        </div>
-        <div x-show="needsBCheck()" class="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-3">
-          <div class="font-medium">组合再平衡</div>
-          <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-            <label class="text-xs text-gray-500">海外长钱申购额度
-              <select x-model="funding.b_purchase_status" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none">
-                <option value="unchecked">未确认</option>
-                <option value="unavailable">不能正常申购</option>
-                <option value="available">可以正常申购</option>
-              </select>
-            </label>
-            <label x-show="funding.b_purchase_status === 'available'" class="text-xs text-gray-500">可申购额度（元）
-              <input type="text" inputmode="decimal" x-model="funding.b_purchase_limit" class="mt-1 w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-1 focus-visible:outline-none" placeholder="0">
-            </label>
-            <div x-show="funding.b_purchase_status !== 'available'" class="md:col-span-2 text-xs text-gray-400">未确认或不能申购时，海外资产按暂不可买入处理。</div>
-          </div>
-        </div>
-      </div>
-    </details>
+    <section x-show="!isSelectedHistoricalPlan()" class="ark-panel plan-conditions-panel px-5 py-3 mb-4" aria-label="计划条件">
+      <strong>本阶段：周度统一检查，按目标调整</strong>
+      <p class="workspace-meta">各投资方向净差额不足1000元暂不调整；其余向目标附近修复。新钱统一入池；未到账资金不支持买入。</p>
+      <template x-for="(reason, direction) in (plan?.fund_transfer?.blocked || {})" :key="direction">
+        <p class="text-sm text-amber-700 mt-2"><strong x-text="direction === 'nasdaq' ? '纳指方向' : direction === 'technology' ? '501312' : '转债'"></strong>：<span x-text="reason"></span>。目标保留。</p>
+      </template>
+    </section>
 
     <div x-show="planError" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-sm text-red-700 whitespace-pre-line" x-text="planError"></div>
 
@@ -3889,7 +3833,7 @@
         return this.context().total_assets ?? this.summary?.total_assets ?? null
       },
       topPortfolios() {
-        return this.readModel().portfolios || []
+        return this.readModel().allocation || []
       },
       activePortfolio() {
         return this.topPortfolios().find(item => item.id === 'A') || null
@@ -3898,7 +3842,7 @@
         return (this.readModel().portfolio_nodes || []).filter(item => item.portfolio_id === 'A')
       },
       portfolioLabel(portfolio) {
-        return `${portfolio.id} · ${portfolio.name}`
+        return portfolio.name
       },
       nodeName(node) {
         return node.id === 'a_cash_pool' ? '资金余额' : node.name
@@ -3947,8 +3891,8 @@
           ? `，数据 ${this.marketTemperature.updated_at.slice(0, 10)}`
           : ''
         return temperature == null
-          ? '等待温度数据，用于解释动态目标配置。'
-          : `${Number(temperature).toFixed(0)}°${label}${updatedAt}，用于解释目标配置，不直接生成交易动作。`
+          ? '等待温度数据；本阶段固定目标不依赖温度。'
+          : `${Number(temperature).toFixed(0)}°${label}${updatedAt}，仅供观察，本阶段不改变目标比例。`
       },
       bPurchaseText() {
         const context = this.context()
@@ -4380,8 +4324,8 @@
         if (!account) return
         this.selectedId = accountId
         this.selected = JSON.parse(JSON.stringify(account))
-        this.originalRaw = this.normalizeRaw(account.raw_data)
         this.draft = this.draftFromAccount(account)
+        this.originalRaw = this.normalizeRaw({...account.raw_data, fund_terms: this.draft.fund_terms})
         this.pendingAccountId = ''
         this.pendingPage = ''
         this.saveError = ''
@@ -4395,6 +4339,7 @@
         if (account.kind === 'balance') {
           return {
             amount: account.raw_data?.amount ?? '',
+            pending_amount: account.raw_data?.pending_amount ?? 0,
             available_cash: '',
             frozen_cash: '',
             positions: [],
@@ -4416,6 +4361,11 @@
         })
         return {
           amount: '',
+          fund_terms: ['nasdaq', 'technology'].map(direction => ({
+            direction, code: direction === 'technology' ? '501312' : '', limit_price: '',
+            lot_size: '', commission_rate: '', minimum_fee: '', price_date: '', cost_reviewed: false,
+            ...(account.raw_data?.fund_terms || []).find(term => term.direction === direction),
+          })),
           available_cash: account.raw_data?.available_cash ?? '',
           frozen_cash: account.raw_data?.frozen_cash ?? '',
           positions: this.sortPositionsByMarketValue(positions),
@@ -4515,9 +4465,14 @@
       },
       normalizeRaw(raw) {
         if (!this.selected || this.selected.kind === 'balance') {
-          return { amount: this.numberOrNull(raw?.amount) }
+          return { amount: this.numberOrNull(raw?.amount), ...(["changqian", "overseas"].includes(this.selectedId) ? {pending_amount: this.numberOrNull(raw?.pending_amount) ?? 0} : {}) }
         }
         return {
+          ...(this.selectedId === 'pingan' ? {fund_terms: (raw?.fund_terms || []).filter(term => term.code).map(term => ({
+            direction: term.direction, code: term.code, limit_price: this.numberOrNull(term.limit_price),
+            lot_size: this.numberOrNull(term.lot_size), commission_rate: this.numberOrNull(term.commission_rate),
+            minimum_fee: this.numberOrNull(term.minimum_fee), price_date: term.price_date || null, cost_reviewed: Boolean(term.cost_reviewed),
+          })).sort((a,b) => a.direction.localeCompare(b.direction))} : {}),
           available_cash: this.numberOrNull(raw?.available_cash),
           frozen_cash: this.numberOrNull(raw?.frozen_cash),
           positions: (raw?.positions || [])
@@ -4531,12 +4486,13 @@
       },
       payloadRaw() {
         if (this.selected?.kind === 'balance') {
-          return { amount: this.numberOrNull(this.draft.amount) }
+          return this.normalizeRaw(this.draft)
         }
         return this.normalizeRaw({
           available_cash: this.draft.available_cash,
           frozen_cash: this.draft.frozen_cash,
           positions: this.draft.positions,
+          fund_terms: this.draft.fund_terms,
         })
       },
       isDirty() {
@@ -4561,7 +4517,7 @@
         return '请填写可用资金、冻结资金，并检查证券代码、数量和重复代码。'
       },
       isWholeAccountClear(raw = this.payloadRaw()) {
-        if (this.selected?.kind === 'balance') return raw.amount === 0
+        if (this.selected?.kind === 'balance') return raw.amount === 0 && !(raw.pending_amount > 0)
         return raw.available_cash === 0 && raw.frozen_cash === 0 && raw.positions.length === 0
       },
       baselineWasClear() {
@@ -5107,8 +5063,7 @@
         this.planError = ''
         this.componentErrors = { cb: '', stock: '' }
         try {
-          this.generationStage = '保存计划条件'
-          await this.saveFundingContext()
+          // 阶段目标没有每次计划需另存的温度或新钱分配条件。
           this.generationStage = '生成完整计划'
           const response = await fetch('/api/plan/generate', { method: 'POST' })
           if (!response.ok) {
@@ -5792,6 +5747,7 @@
       },
       transferStatusText() {
         if (!this.plan?.fund_transfer) return '等待生成'
+        if (this.plan.fund_transfer.policy_id) return "已按统一阶段目标检查；到账前提见资金安排"
         const internal = this.plan.fund_transfer.a_internal
         if (internal?.status === 'not_requested') return '账户间资金调拨尚未检查'
         if (internal?.status === 'paused') return internal.pause_reason || '账户间资金调拨等待必要事实'
@@ -5839,6 +5795,7 @@
         return this.labelFundingActions(internal.actions || [])
       },
       fundingActions() {
+        if (this.plan?.fund_transfer?.actions) return this.labelFundingActions(this.plan.fund_transfer.actions)
         return this.topLevelActions().concat(this.aInternalActions())
       },
       topLevelStatusText() {
@@ -5853,6 +5810,15 @@
         return '本次无需组合间调拨'
       },
       topLevelRows() {
+        const allocation = this.plan?.fund_transfer?.allocation
+        if (allocation) return allocation.rows.map(row => ({
+          key: row.id, label: row.label, current: row.current, target: row.target,
+          currentPct: allocation.total ? `${(row.current / allocation.total * 100).toFixed(2)}%` : '-',
+          targetPct: `${(row.weight * 100).toFixed(0)}%`,
+          planned: row.planned_delta, plannedText: this.fundingDeltaText(row.planned_delta, '本次'),
+          remaining: row.remaining_gap,
+          remainingText: row.blocked_reason || this.fundingDeltaText(row.remaining_gap, '调后'),
+        }))
         const top = this.plan?.fund_transfer?.top_level
         if (!top?.current || !top?.targets) return []
         const labels = this.fundingLabels()

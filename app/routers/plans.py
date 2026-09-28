@@ -111,6 +111,7 @@ def _with_generation_summary(generation: dict | None) -> dict | None:
     }
     if generation.get("status") in {"complete", "stale"} and generation.get("plan_id"):
         saved = plan_generation.get_generated_plan(generation["plan_id"]) or {}
+        generation = {**generation, "status": saved.get("status", generation["status"])}
         plan = saved.get("plan") if isinstance(saved, dict) else {}
         execution = plan.get("execution_read_model") if isinstance(plan, dict) else {}
         execution = execution if isinstance(execution, dict) else {}

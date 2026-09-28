@@ -8,6 +8,7 @@ from datetime import date, datetime
 from investment_model import ACCOUNT_DEFINITIONS, account_definition
 
 ACCOUNT_VALUE_FIELDS = {
+    "pingan": ("pingan_total", "pingan_cash"),
     "stock": ("stock_total", "stock_cash"),
     "cb": ("bond_total", "bond_cash"),
     "changqian": ("changqian_total", None),
@@ -312,7 +313,7 @@ def get_current_account_summary(conn: sqlite3.Connection) -> dict | None:
 
 def build_account_items(snap: dict) -> list[dict]:
     items = []
-    for account_id in ("stock", "cb", "changqian", "overseas", "cash"):
+    for account_id in ("stock", "cb", "pingan", "changqian", "overseas", "cash"):
         total_key, cash_key = ACCOUNT_VALUE_FIELDS[account_id]
         meta = account_definition(account_id)
         frozen_key = cash_key.replace("_cash", "_frozen_cash") if cash_key else None

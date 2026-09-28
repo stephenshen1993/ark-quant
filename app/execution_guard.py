@@ -1,6 +1,8 @@
 """Evaluate next-day execution constraints without modifying a frozen plan."""
 from __future__ import annotations
 
+from math import isfinite
+
 from app.plan_execution_read_model import _cb_buy_price_ceiling
 
 
@@ -16,6 +18,7 @@ def evaluate(plan: dict, realtime: dict) -> dict:
     for strategy, section, code_key in (
         ("stock", plan.get("stock") or {}, "stock_code"),
         ("cb", plan.get("cb") or {}, "bond_code"),
+        ("pingan", plan.get("funds") or {}, "code"),
     ):
         for order in section.get("orders") or []:
             action = order.get("action")
@@ -29,13 +32,13 @@ def evaluate(plan: dict, realtime: dict) -> dict:
     ):
         quote = (quote_sets.get(strategy) or {}).get(code)
         decision = _decision(strategy, action, order, quote, available_cash)
-        if decision["decision"] == "execute" and action in {"SELL", "TRIM"}:
+        if decision["decision"] == "execute" and action in {"SELL", "TRIM"} and strategy != "pingan":
             available_cash[strategy] = round(
                 float(available_cash.get(strategy, 0)) + decision["execution_amount"], 2
             )
         if decision["decision"] == "execute" and action in BUY_ACTIONS:
             available_cash[strategy] = round(
-                float(available_cash.get(strategy, 0)) - decision["execution_amount"], 2
+                float(available_cash.get(strategy, 0)) - decision.get("cash_cost", decision["execution_amount"]), 2
             )
         decisions.append({"strategy": strategy, "code": code, **decision})
     return {
@@ -50,7 +53,16 @@ def _decision(strategy: str, action: str, order: dict, quote: dict | None, avail
         return {"decision": "skip", "reason": "QUOTE_UNAVAILABLE"}
     if quote.get("suspended"):
         return {"decision": "skip", "reason": "SUSPENDED"}
-    price = float(quote["price"])
+    try:
+        price = float(quote["price"])
+    except (TypeError, ValueError):
+        return {"decision": "skip", "reason": "QUOTE_UNAVAILABLE"}
+    if not isfinite(price) or price <= 0:
+        return {"decision": "skip", "reason": "QUOTE_UNAVAILABLE"}
+    if strategy == "pingan":
+        limit = float(order["price"])
+        if (action in BUY_ACTIONS and price > limit) or (action not in BUY_ACTIONS and price < limit):
+            return {"decision": "skip", "reason": "FUND_LIMIT_PRICE"}
     if action in BUY_ACTIONS and quote.get("limit_up") is not None and price >= float(quote["limit_up"]):
         return {"decision": "skip", "reason": "LIMIT_UP"}
     if action in {"SELL", "TRIM"} and quote.get("limit_down") is not None and price <= float(quote["limit_down"]):
@@ -59,6 +71,10 @@ def _decision(strategy: str, action: str, order: dict, quote: dict | None, avail
         return {"decision": "skip", "reason": "CB_BUY_PRICE_CEILING"}
     quantity = abs(float(order.get("delta_shares") or 0))
     amount = round(quantity * price, 2)
-    if action in BUY_ACTIONS and amount > float(available_cash.get(strategy, 0)) + 0.01:
+    cash_cost = amount
+    if strategy == "pingan":
+        cash_cost += round(max(float(order["minimum_fee"]), amount * float(order["commission_rate"])), 2)
+    if action in BUY_ACTIONS and cash_cost > float(available_cash.get(strategy, 0)) + 0.01:
         return {"decision": "skip", "reason": "INSUFFICIENT_AVAILABLE_CASH"}
-    return {"decision": "execute", "reason": None, "execution_amount": amount}
+    return {"decision": "execute", "reason": None, "execution_amount": amount,
+            **({"cash_cost": cash_cost} if strategy == "pingan" else {})}

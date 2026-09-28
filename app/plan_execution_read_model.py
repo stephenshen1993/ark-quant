@@ -13,6 +13,7 @@ AVAILABILITY_LABELS = {
 }
 
 REASON_LABELS = {
+    "stage_target_rebalance": "阶段目标调整",
     "a_internal_rebalance": "主动组合内部再平衡",
     "half_band_repair": "组合偏离修复",
     "monthly_soft_repair": "新增资金柔性补偏",
@@ -51,6 +52,7 @@ def build_execution_read_model(
     fund_transfer: dict | None,
     cb: dict | None,
     stock: dict | None,
+    funds: dict | None = None,
 ) -> dict:
     read_model = account_read_model or {}
     funding_actions = _raw_funding_actions(fund_transfer)
@@ -67,6 +69,7 @@ def build_execution_read_model(
             account_read_model=account_read_model,
             funding_actions=funding_actions,
             sections=(
+                {"strategy_id": "funds", "account_id": "pingan", "plan": funds},
                 {
                     "strategy_id": "stock",
                     "account_id": _account_id_for_strategy("stock", read_model),
@@ -118,6 +121,7 @@ def _funding_plan(
             "available_date": available_date,
             "display_date": available_date or "日期待确认",
             "cash_effect": action.get("cash_effect"),
+            "note": action.get("note"),
         })
 
     groups = []
@@ -145,6 +149,8 @@ def _funding_plan(
 def _raw_funding_actions(fund_transfer: dict | None) -> list[dict]:
     if not fund_transfer:
         return []
+    if "actions" in fund_transfer:
+        return fund_transfer["actions"]
     top_level = fund_transfer.get("top_level") or {}
     internal = fund_transfer.get("a_internal") or {}
     actions = (
@@ -392,7 +398,7 @@ def _execution_guardrails(
         })
     return {
         "price_basis_date": section.get("data_date") or plan_date,
-        "reference_price_is_limit": False,
+        "reference_price_is_limit": strategy == "funds",
         "rules": rules,
     }
 
@@ -409,14 +415,14 @@ def _normalize_order(
     if action not in SELL_ACTIONS | BUY_ACTIONS or quantity == 0 or amount <= 0:
         return None
     is_cb = strategy == "cb"
-    code = order.get("bond_code" if is_cb else "stock_code") or ""
-    name = order.get("bond_name" if is_cb else "stock_name") or ""
+    code = order.get("bond_code" if is_cb else "stock_code") or order.get("code") or ""
+    name = order.get("bond_name" if is_cb else "stock_name") or order.get("name") or ""
     price = order.get("price")
-    current_quantity = _quantity_or_none(order.get("current_shares"))
-    target_quantity = _quantity_or_none(order.get("target_shares"))
+    current_quantity = _quantity_or_none(order.get("current_shares", order.get("current_quantity")))
+    target_quantity = _quantity_or_none(order.get("target_shares", order.get("target_quantity")))
     ideal_target_quantity = _quantity_or_none(order.get("ideal_target_shares"))
     executable_target_quantity = _quantity_or_none(
-        order.get("executable_target_shares", order.get("target_shares"))
+        order.get("executable_target_shares", order.get("target_shares", order.get("target_quantity")))
     )
     residual_quantity = _quantity_or_none(order.get("residual_shares"))
     reference_price = round(float(price), 3) if price is not None else None
@@ -432,7 +438,9 @@ def _normalize_order(
         "executable_target_quantity": executable_target_quantity,
         "residual_quantity": residual_quantity,
         "execution_reason": order.get("execution_reason", "frozen_target"),
-        "unit": "张" if is_cb else "股",
+        "unit": "份" if strategy == "funds" else "张" if is_cb else "股",
+        "price_basis": order.get("price_basis"),
+        "limit_price": price if strategy == "funds" else None,
         "reference_price": reference_price,
         "price_basis_date": price_basis_date,
         "current_value": _quantity_value(current_quantity, reference_price),

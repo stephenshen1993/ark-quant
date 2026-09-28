@@ -12,7 +12,9 @@ from app import account_current_state, plan_lifecycle
 from app.plan_execution_read_model import build_execution_read_model
 from datasource import db
 from datasource.youzhiyouxing import TemperatureFetchError, get_or_fetch_market_temperature
-from portfolio_rebalance import PlanValidationError, build_fund_transfer_plan
+from portfolio_rebalance import PlanValidationError
+from stage_allocation import POLICY_ID, build_stage_plan
+from app.fund_orders import blocked_directions, build_fund_orders, reconcile_fund_return
 
 RAW_DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
 
@@ -27,7 +29,7 @@ class PlanServiceError(Exception):
 def build_plan_context(refresh_temperature: bool = False) -> dict:
     market_temperature = _market_temperature(refresh=refresh_temperature)
     return {
-        "plan_date": market_temperature.updated_at[:10],
+        "plan_date": current_plan_date(),
         "market_temperature": market_temperature.to_dict(),
     }
 
@@ -52,13 +54,13 @@ def hydrate_execution_read_model(plan: dict) -> dict:
             fund_transfer=plan.get("fund_transfer"),
             cb=plan.get("cb"),
             stock=plan.get("stock"),
+            funds=plan.get("funds"),
         ),
     }
 
 
 def build_plan_readiness() -> dict:
-    market_temperature = _market_temperature(refresh=False)
-    plan_date = market_temperature.updated_at[:10]
+    plan_date = current_plan_date()
     input_end = account_transfer_window_end(plan_date)
     account = current_account_summary()
     errors = validate_account_inputs(
@@ -106,11 +108,12 @@ def build_plan_readiness() -> dict:
 
 def build_transfer_plan(refresh_temperature: bool = False) -> dict:
     market_temperature = _market_temperature(refresh=refresh_temperature)
-    plan_date = resolve_plan_date(market_temperature.updated_at[:10])
+    plan_date = current_plan_date()
     account = current_account_summary()
     if account:
         account = dict(account)
         account["temperature"] = market_temperature.temperature
+        account["plan_date"] = plan_date
 
     account_errors = validate_account_inputs(
         plan_date,
@@ -156,12 +159,13 @@ def build_transfer_plan(refresh_temperature: bool = False) -> dict:
 
 def build_current_plan(refresh_temperature: bool = False) -> dict:
     market_temperature = _market_temperature(refresh=refresh_temperature)
-    plan_date = market_temperature.updated_at[:10]
+    plan_date = current_plan_date()
 
     account = current_account_summary()
     if account:
         account = dict(account)
         account["temperature"] = market_temperature.temperature
+        account["plan_date"] = plan_date
 
     account_errors = validate_account_inputs(
         plan_date,
@@ -206,8 +210,11 @@ def build_current_plan(refresh_temperature: bool = False) -> dict:
             409,
             {"code": exc.code, "message": exc.message},
         ) from exc
-    targets, deltas, transfer_steps = fund_transfer_compatibility(fund_transfer)
     account_read_model = build_account_read_model(account)
+    funds = build_fund_orders(account, fund_transfer, plan_date)
+    funds["trade_date"] = trade_date_for("stock", plan_date)
+    fund_transfer = reconcile_fund_return(account, fund_transfer, funds)
+    targets, deltas, transfer_steps = fund_transfer_compatibility(fund_transfer)
 
     def order_summary(orders, cash_key: str) -> dict | None:
         if not orders or not account:
@@ -250,9 +257,11 @@ def build_current_plan(refresh_temperature: bool = False) -> dict:
             fund_transfer=fund_transfer,
             cb=cb_section,
             stock=stock_section,
+            funds=funds,
         ),
         "cb": cb_section,
         "stock": stock_section,
+        "funds": funds,
     }
 
 
@@ -318,6 +327,9 @@ def build_generated_plan_response(
     cb_result: dict | None,
     stock_result: dict | None,
 ) -> dict:
+    funds = build_fund_orders(account, fund_transfer, plan_date)
+    funds["trade_date"] = trade_date_for("stock", plan_date)
+    fund_transfer = reconcile_fund_return(account, fund_transfer, funds)
     targets, deltas, transfer_steps = fund_transfer_compatibility(fund_transfer)
     cb_orders = explain_order_targets((cb_result or {}).get("orders", []))
     stock_orders = explain_order_targets((stock_result or {}).get("orders", []))
@@ -373,6 +385,7 @@ def build_generated_plan_response(
             fund_transfer=fund_transfer,
             cb=cb_section,
             stock=stock_section,
+            funds=funds,
         ),
         "generation": {
             "plan_id": plan_id,
@@ -382,6 +395,7 @@ def build_generated_plan_response(
         },
         "cb": cb_section,
         "stock": stock_section,
+        "funds": funds,
     }
 
 
@@ -400,7 +414,8 @@ def build_plan_snapshot(
     """Describe the immutable facts captured for one generated plan version."""
     strategy_trade_dates = strategy_trade_dates or {}
     return {
-        "version": 1,
+        "version": 2,
+        "allocation_policy": POLICY_ID,
         "plan_id": plan_id,
         "data_date": plan_date,
         "execution_date": execution_date,
@@ -592,7 +607,7 @@ def validate_account_inputs(
         account_facts = {
             item["id"]: item for item in (read_model or {}).get("accounts", [])
         }
-        required_accounts = ["stock", "cb", "changqian", "cash"]
+        required_accounts = ["stock", "cb", "pingan", "changqian", "cash"]
         if include_overseas:
             required_accounts.append("overseas")
         for account_id in required_accounts:
@@ -636,20 +651,11 @@ def build_fund_transfer(
 ) -> dict:
     if not account:
         raise PlanValidationError("MISSING_ACCOUNT", "缺少账户快照")
-    context = {
-        "temperature": account["temperature"],
-        "check_type": account.get("check_type", "a_internal"),
-        "new_contribution": account.get("new_contribution", 0),
-        "b_purchase_limit": account.get("b_purchase_limit", 0),
-        "cash_available": account.get("cash_pool", 0),
-    }
-    return build_fund_transfer_plan(
-        account,
-        context,
-        qualified_cb_count,
-        qualified_cb_lot_costs=qualified_cb_lot_costs,
-        include_a_internal=include_a_internal,
-    )
+    blocked = blocked_directions(account, account.get("plan_date") or current_plan_date())
+    if include_a_internal and (qualified_cb_count is None or qualified_cb_count < 20):
+        blocked["bond"] = "转债候选不足20只，保留原目标，等待原策略条件满足"
+    return build_stage_plan(account, blocked=blocked)
+
 
 
 def cb_lot_costs(rankings: list[dict]) -> list[float]:
@@ -668,33 +674,13 @@ def cb_lot_costs(rankings: list[dict]) -> list[float]:
 
 
 def fund_transfer_compatibility(fund_transfer: dict) -> tuple[dict, dict, list[str]]:
-    top = fund_transfer["top_level"]
-    internal = fund_transfer["a_internal"]
-    targets = {"A": top["targets"]["A"], "B": top["targets"]["B"], "C": top["targets"]["C"]}
-    internal_deltas = internal.get("planned_deltas") or {"stock": 0.0, "bond": 0.0, "cash_pool": 0.0}
-    deltas = {**top["executed_deltas"], **internal_deltas}
-    if internal["status"] in {"ready", "within_threshold"}:
-        targets.update(internal["final_targets"])
-    top_actions = [
-        action
-        for action in (top["executed_actions"] + top["outflows"])
-        if action.get("source") != "A" and action.get("target") != "A"
-    ]
-    actions = top_actions + internal.get("actions", [])
-    labels = {
-        "stock": "广发账户",
-        "bond": "华泰账户",
-        "cash_pool": "资金账户",
-        "B": "海外长钱",
-        "C": "国内长钱",
-    }
-    steps = [
-        f"{labels.get(action['source'], action['source'])} → "
-        f"{labels.get(action['target'], action['target'])}："
-        f"{action['amount']:.2f}（{action['reason']}）"
-        for action in actions
-    ]
-    return targets, deltas, steps
+    allocation = fund_transfer["allocation"]
+    deltas = fund_transfer["transfer_deltas"]
+    labels = {"stock": "广发账户", "cb": "华泰账户", "pingan": "平安账户",
+              "cash_pool": "资金池", "changqian": "国内长钱", "overseas": "海外长钱"}
+    steps = [f"{labels.get(a['source'], a['source'])} → {labels.get(a['target'], a['target'])}："
+             f"{a['amount']:.2f}（{a['note']}）" for a in fund_transfer["actions"]]
+    return allocation["targets"], deltas, steps
 
 
 def validate_strategy_inputs(plan_date: str) -> list[dict]:
@@ -747,7 +733,7 @@ def plan_input_warnings(plan_date: str, account: dict | None) -> list[dict]:
             "input": "account.overseas",
             "date": overseas_snapshot_date,
             "expected": f"{plan_date} 至 {account_input_end}",
-            "message": "海外长钱事实日期不在计划输入窗口内；它不参与国内再平衡，本次仅提示。",
+            "message": "海外长钱事实日期不在计划输入窗口内，请更新待迁移资产。",
         })
     return warnings
 
@@ -782,8 +768,9 @@ def is_fact_date_acceptable(fact_date: str | None, plan_date: str, window_end: s
 
 
 def current_plan_date() -> str:
-    market_temperature = get_market_temperature()
-    return market_temperature.updated_at[:10]
+    from app.strategy_runner import freeze_strategy_run_task
+
+    return freeze_strategy_run_task().effective_date_iso
 
 
 def get_market_temperature(*, refresh: bool = False):
@@ -902,10 +889,8 @@ def _market_temperature(*, refresh: bool = False):
     try:
         return get_or_fetch_market_temperature(refresh=refresh)
     except TemperatureFetchError as exc:
-        raise PlanServiceError(
-            503,
-            {
-                "code": "MARKET_TEMPERATURE_UNAVAILABLE",
-                "message": str(exc),
-            },
-        ) from exc
+        from types import SimpleNamespace
+
+        payload = {"temperature": None, "label": "暂不可用（不影响阶段目标）",
+                   "updated_at": current_plan_date(), "error": str(exc)}
+        return SimpleNamespace(**payload, to_dict=lambda: payload)
