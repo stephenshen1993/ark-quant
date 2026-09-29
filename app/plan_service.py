@@ -340,6 +340,7 @@ def build_generated_plan_response(
         "orders": cb_orders,
         "rankings": [],
         "summary": (cb_result or {}).get("summary"),
+        "price_adjustment_notes": price_snapshot.get("adjustment_notes", []),
     }
     stock_section = {
         "data_date": plan_date,
@@ -444,7 +445,8 @@ def build_plan_snapshot(
 
 
 def capture_frozen_plan_prices(plan_date: str, strategy_rankings: dict[str, dict] | None = None) -> dict:
-    """Read the immutable plan-date close prices required by a complete plan."""
+    """Freeze close prices and known ex-interest adjustments for execution."""
+    from app.price_adjustments import adjust_cb_reference_price
 
     input_end = account_input_window_end(plan_date)
     cb_positions = position_snapshot_for_plan("cb", plan_date, input_end) or {}
@@ -479,9 +481,17 @@ def capture_frozen_plan_prices(plan_date: str, strategy_rankings: dict[str, dict
                 "missing": missing,
             },
         )
+    raw_cb = dict(cb_prices)
+    adjustment_notes = []
+    for code, price in raw_cb.items():
+        cb_prices[code], note = adjust_cb_reference_price(code, price, plan_date, input_end)
+        if note:
+            adjustment_notes.append(note)
     return {
         "data_date": plan_date,
         "captured_at": datetime.now().isoformat(),
+        "raw_cb": raw_cb,
+        "adjustment_notes": adjustment_notes,
         "source": {
             "type": "plan_date_close_snapshot",
             "cb": {"ranking_count": len(cb_codes) - len(missing_cb), "raw_snapshot_count": len(cb_raw_prices)},

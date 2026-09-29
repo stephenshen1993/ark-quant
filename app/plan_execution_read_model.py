@@ -399,6 +399,7 @@ def _execution_guardrails(
     return {
         "price_basis_date": section.get("data_date") or plan_date,
         "reference_price_is_limit": strategy == "funds",
+        "price_adjustment_notes": section.get("price_adjustment_notes", []),
         "rules": rules,
     }
 

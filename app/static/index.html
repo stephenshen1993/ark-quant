@@ -3165,6 +3165,9 @@
 	                        <strong>参考价口径</strong>
 	                        <span x-text="plan.execution_guardrails?.reference_price_is_limit ? '本表为已核实限价：买入不高于此价，卖出不低于此价；转入到账后才可下单。' : '参考价（非限价）基于 ' + (plan.execution_guardrails?.price_basis_date || executionReadModel()?.plan_date || '计划基准日') + ' 的计划估值；仅用于估算，不是券商限价。'"></span>
 	                      </div>
+                          <template x-for="note in plan.execution_guardrails?.price_adjustment_notes || []" :key="note">
+                            <div class="plan-execution-guardrail"><strong>除息衔接</strong><span x-text="note"></span></div>
+                          </template>
 	                      <template x-for="rule in plan.execution_guardrails?.rules || []" :key="rule.kind">
 	                        <div class="plan-execution-guardrail">
 	                          <strong>硬约束</strong>

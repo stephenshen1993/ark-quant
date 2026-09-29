@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 from datasource import account_store, db, position_store, strategy_store
 from investment_model import ACCOUNT_DEFINITIONS, account_definition
+from app.price_adjustments import adjust_cb_reference_price
 
 SECURITIES_ACCOUNTS = {"stock", "cb", "pingan"}
 ACCOUNT_ORDER = ("stock", "cb", "pingan", "cash", "changqian", "overseas")
@@ -306,18 +307,11 @@ def _derive_valuation(account_id: str, raw: dict) -> dict:
         quote = quotes.get(position["code"], {})
         price = _positive_finite_or_none(quote.get("price"))
         price_note = None
-        # Verified issuer event, not an edit to historical market data. Apply
-        # only to the exact stale snapshot observed at the ex-interest cutover.
-        # Source: https://paper.cnstock.com/html/2026-09/22/content_2271342.htm
-        if (
-            account_id == "cb"
-            and position["code"] == "127046"
-            and quote.get("quote_date") == "2026-09-28"
-            and datetime.now(LOCAL_TZ).date() >= date(2026, 9, 29)
-            and price == 124.724
-        ):
-            price = round(price - 1.8, 3)
-            price_note = "百润转债：旧报价已按9月29日每张付息1.80元调整估值；新行情到达后自动接替。此价仅用于估值。"
+        if account_id == "cb":
+            price, price_note = adjust_cb_reference_price(
+                position["code"], price, quote.get("quote_date"),
+                datetime.now(LOCAL_TZ).date().isoformat(),
+            )
         market_value = None if price is None else round(price * position["quantity"], 2)
         if market_value is None:
             missing_codes.append(position["code"])

@@ -423,6 +423,20 @@ class TestPlanGeneration(unittest.TestCase):
         self.assertEqual(prices["cb"], {"113062": 126.8})
         self.assertEqual(prices["stock"], {"600051": 5.68})
 
+    def test_frozen_cb_execution_price_excludes_paid_coupon(self):
+        from app import plan_service
+
+        rankings = {"cb": {"items": [{"bond_code": "127046", "cb_price": 124.724}]},
+                    "stock": {"items": []}}
+        with patch.object(plan_service, "position_snapshot_for_plan", return_value={}), \
+             patch.object(plan_service, "account_input_window_end", return_value="2026-09-29"):
+            prices = plan_service.capture_frozen_plan_prices("2026-09-28", rankings)
+        self.assertEqual(prices["cb"]["127046"], 122.924)
+        self.assertEqual(round((124.724 - prices["cb"]["127046"]) * 80, 2), 144)
+        self.assertEqual(prices["raw_cb"]["127046"], 124.724)
+        self.assertEqual(rankings["cb"]["items"][0]["cb_price"], 124.724)
+        self.assertTrue(prices["adjustment_notes"])
+
     def test_complete_plan_blocks_stock_execution_when_fewer_than_twenty_candidates_qualify(self):
         cb_size = Mock(return_value={
             "orders": [],
