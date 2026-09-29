@@ -3098,12 +3098,17 @@
                   <div x-show="plan.funding.state !== 'ready'" class="plan-account-prerequisite" x-text="fundingPrerequisiteText(plan)"></div>
                   <p x-show="plan.funding.blocked_reason" class="plan-account-blocked-reason mt-3 text-xs font-medium text-red-600" x-text="plan.funding.blocked_reason"></p>
                   <div class="plan-account-detail-toggle">
-                    <span class="plan-account-toggle-closed" x-text="'查看 ' + accountTradeOrders(plan).length + ' 笔交易'"></span>
+                    <span class="plan-account-toggle-closed" x-text="accountTradeOrders(plan).length ? '查看 ' + accountTradeOrders(plan).length + ' 笔交易' : '查看待补条件'"></span>
                     <span class="plan-account-toggle-open">收起交易明细</span>
                     <span class="plan-account-toggle-icon" aria-hidden="true">⌄</span>
                   </div>
                 </summary>
                 <div class="plan-account-detail">
+                  <section x-show="plan.direction_conditions?.length" aria-label="基金方向待补条件">
+                    <template x-for="condition in plan.direction_conditions || []" :key="condition.direction">
+                      <p class="plan-account-prerequisite"><strong x-text="condition.name"></strong>：<span x-text="condition.reason"></span>。目标保留，暂不生成该方向订单。</p>
+                    </template>
+                  </section>
 	                  <section class="plan-trade-section">
 	                    <div class="plan-trade-table-scroll">
 	                      <table class="plan-trade-table" aria-label="证券交易明细">
@@ -5499,7 +5504,9 @@
           const readyText = readyCount ? `其余 ${readyCount} 个账户可直接执行。` : ''
           return `先向${transfer.account_name}调入 ${this.fmtMoney(transfer.funding.transfer_in || 0)} 并确认到账；${readyText}`
         }
-        return `${plans.length} 个账户资金已具备，可直接执行证券交易。`
+        const readyCount = plans.filter(plan => plan?.funding?.state === 'ready').length
+        const pendingCount = plans.filter(plan => plan?.funding?.state === 'needs_terms').length
+        return `${readyCount} 个账户资金已具备。` + (pendingCount ? `${pendingCount} 个账户待补交易条件。` : '可核对证券交易。')
       },
       hasExecutionPlans() {
         return Boolean(this.fundingPlan() || this.accountTradingPlans().length)
@@ -5535,6 +5542,7 @@
         return this.accountActionSummary(plan)
       },
       accountActionSummary(plan) {
+        if (plan?.funding?.state === 'needs_terms') return (plan.direction_conditions || []).map(item => item.name).join('、') + '：待补交易条件'
         const groups = this.accountTradeGroups(plan)
         if (!groups.length) return '无需证券交易'
         return groups.map(group => `${group.label} ${group.orders.length} 笔`).join('，')
@@ -5568,6 +5576,7 @@
       },
       fundingPrerequisiteText(plan) {
         const funding = plan?.funding || {}
+        if (funding.state === 'needs_terms') return '两个方向归属平安账户，共用账户现金；补齐对应条件后生成订单。'
         const incoming = funding.incoming_actions || []
         const incomingText = incoming.map(action =>
           `${action.source_account_name} → ${plan.account_name} ${this.fmtMoney(action.amount)}（${action.display_date}可用）`
@@ -5600,6 +5609,7 @@
           needs_same_day_transfer: { text: '待调入', className: 'is-same-day' },
           waits_for_funds: { text: '等待未来资金可用', className: 'is-future' },
           blocked: { text: '资金不足 · 已阻断', className: 'is-blocked' },
+          needs_terms: { text: '待补交易条件', className: 'is-future' },
         }[funding?.state] || { text: '等待资金确认', className: '' }
         const shouldShowDate = Boolean(
           funding?.display_date &&

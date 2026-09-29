@@ -24,6 +24,7 @@ FUNDING_STATE_ORDER = {
     "needs_same_day_transfer": 1,
     "waits_for_funds": 2,
     "blocked": 3,
+    "needs_terms": 4,
 }
 
 SELL_ACTIONS = {"SELL", "TRIM"}
@@ -207,7 +208,13 @@ def _account_trading_plans(
                 )
             ) is not None
         ]
-        if not orders:
+        direction_conditions = [
+            {"direction": direction,
+             "name": "纳指方向" if direction == "nasdaq" else "501312",
+             "reason": reason}
+            for direction, reason in (section.get("blocked") or {}).items()
+        ] if strategy == "funds" else []
+        if not orders and not direction_conditions:
             continue
 
         account = account_by_id.get(account_id) or {}
@@ -268,6 +275,8 @@ def _account_trading_plans(
             incoming_availability,
             expected_ending,
         )
+        if not orders and direction_conditions:
+            state = "needs_terms"
         available_date, display_date = _account_funding_date(
             state=state,
             availability=available_on,
@@ -297,6 +306,7 @@ def _account_trading_plans(
             "account_name": account.get("name") or account_id,
             "portfolio_name": portfolio.get("name") or "",
             "strategy_id": strategy,
+            "direction_conditions": direction_conditions,
             "strategy_name": (account.get("strategy_names") or [strategy])[0],
             "trade_date": section.get("trade_date"),
             "execution_guardrails": _execution_guardrails(

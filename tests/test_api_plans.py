@@ -138,15 +138,15 @@ class TestPlansApi(unittest.TestCase):
         account_plans = data["execution_read_model"]["account_trading_plans"]
         self.assertEqual(
             [plan["account_id"] for plan in account_plans],
-            ["stock", "cb"],
+            ["stock", "cb", "pingan"],
         )
         self.assertEqual(
             [plan["account_name"] for plan in account_plans],
-            ["广发账户", "华泰账户"],
+            ["广发账户", "华泰账户", "平安账户"],
         )
         self.assertEqual(
             [plan["funding"]["state"] for plan in account_plans],
-            ["needs_same_day_transfer", "blocked"],
+            ["needs_same_day_transfer", "blocked", "needs_terms"],
         )
         self.assertEqual(
             account_plans[0]["cash"]["expected_ending"],

@@ -6,6 +6,21 @@ from app.plan_execution_read_model import build_execution_read_model
 
 
 class TestPlanExecutionReadModel(unittest.TestCase):
+    def test_empty_pingan_keeps_blocked_directions_visible(self):
+        model = build_execution_read_model(
+            plan_date="2026-09-28", account_read_model={"accounts": [
+                {"id": "pingan", "name": "平安账户", "available_cash": 0}]},
+            fund_transfer=None, cb=None, stock=None,
+            funds={"orders": [], "blocked": {"nasdaq": "标的待核实", "technology": "费用待核实"}},
+        )
+        plans = model["account_trading_plans"]
+        self.assertEqual(len(plans), 1)
+        self.assertEqual(plans[0]["account_id"], "pingan")
+        self.assertEqual(plans[0]["funding"]["state"], "needs_terms")
+        self.assertEqual(len(plans[0]["direction_conditions"]), 2)
+        self.assertEqual(plans[0]["phases"], [])
+        self.assertEqual(plans[0]["cash"]["transfer_in"], 0)
+
     def setUp(self):
         self.account_read_model = {
             "accounts": [
