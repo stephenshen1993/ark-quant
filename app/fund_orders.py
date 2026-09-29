@@ -1,4 +1,4 @@
-"""场内基金预算换算；使用显式录入的限价、交易单位和券商费用。"""
+"""场内基金预算换算；使用核实限价、交易单位；费用由账户现金区间吸收。"""
 from __future__ import annotations
 
 from datetime import date
@@ -48,8 +48,8 @@ def blocked_directions(account: dict, plan_date: str) -> dict:
         term = by_direction.get(direction)
         if not term:
             blocked[direction] = "请在平安账户明确执行标的及交易条件"
-        elif any(term.get(key) is None for key in ("limit_price", "lot_size", "commission_rate", "minimum_fee")):
-            blocked[direction] = "限价、交易单位或券商费用尚未核实"
+        elif any(term.get(key) is None for key in ("limit_price", "lot_size")):
+            blocked[direction] = "限价或交易单位尚未核实"
         elif term["limit_price"] <= 0 or not term.get("cost_reviewed"):
             blocked[direction] = "尚未确认该限价及溢价成本可接受"
         elif term.get("price_date") != plan_date:
@@ -74,25 +74,18 @@ def build_fund_orders(account: dict, transfer: dict, plan_date: str) -> dict:
         quantity = 0
         fee = 0
         if budget:
-            quantity = max(0, floor(min((budget - term["minimum_fee"]) / price,
-                                        budget / (price * (1 + term["commission_rate"]))) / lot) * lot)
+            quantity = max(0, floor(budget / price / lot) * lot)
         elif sell_budget:
             quantity = -min(floor(sell_budget / price / lot) * lot, current_quantity // lot * lot)
         if quantity:
             amount = money(abs(quantity) * price)
-            fee = money(max(term["minimum_fee"], amount * term["commission_rate"]))
-            # 分位取整也不能让支出超过预算。
-            if quantity > 0 and amount + fee > budget:
-                quantity -= lot
-                amount = money(quantity * price)
-                fee = money(max(term["minimum_fee"], amount * term["commission_rate"])) if quantity else 0
             if quantity:
                 orders.append({
                     "direction": direction, "code": term["code"], "name": "501312" if direction == "technology" else "纳指方向",
                     "action": ("ADD" if current_quantity else "BUY") if quantity > 0 else "TRIM",
                     "shares": quantity, "delta_shares": quantity, "price": price,
                     "amount": amount, "estimated_fee": fee, "price_date": term["price_date"],
-                    "commission_rate": term["commission_rate"], "minimum_fee": term["minimum_fee"],
+                    "commission_rate": term.get("commission_rate"), "minimum_fee": term.get("minimum_fee"),
                     "current_quantity": current_quantity, "target_quantity": current_quantity + quantity,
                     "price_basis": "人工核实限价；买入不高于此价，卖出不低于此价",
                     "funding_state": "needs_same_day_transfer" if any(a["target"] == "pingan" for a in transfer["actions"]) else "ready",
@@ -105,16 +98,7 @@ def build_fund_orders(account: dict, transfer: dict, plan_date: str) -> dict:
 
 
 def reconcile_fund_return(account: dict, transfer: dict, funds: dict) -> dict:
-    """回池不能超过实际整手订单扣费后可释放的金额。保持原预算不二次分配。"""
-    from copy import deepcopy
+    """整手订单后以共享账户现金区间核对回池金额。"""
+    from app.cash_reserve import reconcile_cash_reserves
 
-    result = deepcopy(transfer)
-    incoming = sum(a["amount"] for a in result["actions"] if a["target"] == "pingan")
-    net_orders = sum((1 if o["shares"] < 0 else -1) * o["amount"] - o["estimated_fee"]
-                     for o in funds["orders"])
-    releasable = max(0.0, money(account["pingan_available_cash"] + incoming + net_orders))
-    for action in result["actions"]:
-        if action["source"] == "pingan":
-            action["amount"] = min(action["amount"], releasable)
-    result["actions"] = [a for a in result["actions"] if a["amount"] > 0]
-    return result
+    return reconcile_cash_reserves(account, transfer, {"pingan": funds["orders"]})

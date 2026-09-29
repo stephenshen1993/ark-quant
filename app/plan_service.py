@@ -14,6 +14,7 @@ from datasource import db
 from datasource.youzhiyouxing import TemperatureFetchError, get_or_fetch_market_temperature
 from portfolio_rebalance import PlanValidationError
 from stage_allocation import POLICY_ID, build_stage_plan
+from app.cash_reserve import reconcile_cash_reserves
 from app.fund_orders import blocked_directions, build_fund_orders, reconcile_fund_return
 
 RAW_DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
@@ -330,9 +331,19 @@ def build_generated_plan_response(
     funds = build_fund_orders(account, fund_transfer, plan_date)
     funds["trade_date"] = trade_date_for("stock", plan_date)
     fund_transfer = reconcile_fund_return(account, fund_transfer, funds)
-    targets, deltas, transfer_steps = fund_transfer_compatibility(fund_transfer)
     cb_orders = explain_order_targets((cb_result or {}).get("orders", []))
     stock_orders = explain_order_targets((stock_result or {}).get("orders", []))
+    batches = {}
+    if cb_result is not None:
+        batches["cb"] = cb_orders
+    if stock_result is not None:
+        batches["stock"] = stock_orders
+    fund_transfer = reconcile_cash_reserves(account, fund_transfer, batches)
+    targets, deltas, transfer_steps = fund_transfer_compatibility(fund_transfer)
+    if cb_result is not None:
+        cb_result = {**cb_result, "summary": summarize_order_cash(account.get("bond_available_cash", 0), deltas["bond"], cb_orders)}
+    if stock_result is not None:
+        stock_result = {**stock_result, "summary": summarize_order_cash(account.get("stock_available_cash", 0), deltas["stock"], stock_orders)}
     account_read_model = build_account_read_model(account)
     cb_section = {
         "data_date": plan_date,

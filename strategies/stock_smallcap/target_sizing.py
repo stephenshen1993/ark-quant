@@ -7,6 +7,7 @@ import pandas as pd
 
 from strategies.discrete_target_sizing import (
     DiscreteSizingError,
+    STOCK_FEE_SCHEDULE,
     MAX_SINGLE_WEIGHT as COMMON_MAX_SINGLE_WEIGHT,
     TARGET_COUNT as COMMON_TARGET_COUNT,
 )
@@ -75,6 +76,7 @@ def size_target_state(
     prices: dict[str, float],
     *,
     budget_reduction_context: bool = False,
+    fee_schedule=STOCK_FEE_SCHEDULE,
 ) -> tuple[pd.DataFrame, dict]:
     """Generate one net order per code from the formal Top-20 target-state rules."""
     target = _normalise(rankings, "stock_code").sort_values(["rank", "stock_code"])
@@ -111,6 +113,7 @@ def size_target_state(
             max_single_weight=MAX_SINGLE_WEIGHT,
             ordinary_order_threshold=ordinary_threshold,
             allow_target_sells=True,
+            fee_schedule=fee_schedule,
         )
     except DiscreteSizingError as exc:
         raise SizingError(exc.code, exc.message, **exc.details) from exc

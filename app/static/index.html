@@ -2782,7 +2782,7 @@
 
             <section x-show="selectedId === 'pingan'" class="account-fund-terms" aria-label="场内基金交易条件">
               <h3>两个方向各自的交易条件</h3>
-              <p>填写核实后的执行标的、限价和券商费用。费用使用实际小数费率；空缺将保留目标并暂停该方向订单。此处不记录持仓，实际份额仍在下方维护。</p>
+              <p>填写核实后的执行标的、限价和交易单位。费用由账户现金预留吸收，不阻塞订单。此处不记录持仓，实际份额仍在下方维护。</p>
               <template x-for="term in (draft.fund_terms || [])" :key="term.direction">
                 <fieldset class="border rounded p-3 mt-3">
                   <legend x-text="term.direction === 'nasdaq' ? '纳指方向' : '501312'"></legend>
@@ -2791,8 +2791,6 @@
                     <label>核实限价<input class="w-full border rounded p-2" type="number" min="0" step="0.001" x-model="term.limit_price" @input="term.cost_reviewed = false; markEdited()" aria-label="基金限价"></label>
                     <label>价格基准日<input class="w-full border rounded p-2" type="date" x-model="term.price_date" @input="term.cost_reviewed = false; markEdited()" aria-label="基金价格基准日"></label>
                     <label>最小交易单位（份）<input class="w-full border rounded p-2" type="number" min="1" step="1" x-model="term.lot_size" @input="term.cost_reviewed = false; markEdited()" aria-label="基金交易单位"></label>
-                    <label>佣金费率（小数）<input class="w-full border rounded p-2" type="number" min="0" step="0.00001" x-model="term.commission_rate" @input="term.cost_reviewed = false; markEdited()" aria-label="基金佣金费率"></label>
-                    <label>最低佣金（元）<input class="w-full border rounded p-2" type="number" min="0" step="0.01" x-model="term.minimum_fee" @input="term.cost_reviewed = false; markEdited()" aria-label="基金最低佣金"></label>
                   </div>
                   <label class="block mt-3"><input type="checkbox" x-model="term.cost_reviewed" @change="markEdited()"> 已核实该限价、溢价成本及以上交易条件</label>
                 </fieldset>
@@ -3160,7 +3158,7 @@
                           </tbody>
                         </template>
 	                      </table>
-	                      <p class="workspace-meta mt-2" x-show="plan.execution_guardrails?.reference_price_is_limit">买入不高于表中限价，卖出不低于表中限价；费用已计入资金估算。</p>
+	                      <p class="workspace-meta mt-2" x-show="plan.execution_guardrails?.reference_price_is_limit">买入不高于表中限价，卖出不低于表中限价；手续费从预留现金中扣除。</p>
 	                    </div>
 	                  </section>
 	                  <details class="plan-cash-audit">
@@ -3202,7 +3200,7 @@
 	                        <div class="plan-cash-value" x-text="fmtMoney(plan.cash.expected_buy)"></div>
 	                      </div>
 	                      <div class="plan-cash-term" data-sign="equals">
-	                        <div class="plan-cash-label">计划后预计资金余额</div>
+	                        <div class="plan-cash-label">计划后预计资金余额（未扣费用）</div><p class="workspace-meta">预留300～1,000元，计入原现金配置；扣费后可略低于300元，下次正常计划再处理。</p>
 	                        <div class="plan-cash-value" :class="plan.funding.state === 'blocked' ? 'text-red-600' : ''" x-text="fmtMoney(plan.cash.expected_ending)"></div>
 	                      </div>
 	                    </div>

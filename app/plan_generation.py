@@ -192,6 +192,9 @@ def generate_complete_plan(
             cb_result=cb_result,
             stock_result=stock_result,
         )
+        for strategy in ("cb", "stock"):
+            section = plan[strategy]
+            plan_lifecycle.record_order_batch(plan_id, strategy, section["orders"], section["summary"])
         if not plan_lifecycle.complete(plan_id, plan):
             raise plan_service.PlanServiceError(409, {
                 "stage": "account",

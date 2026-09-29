@@ -98,6 +98,8 @@ class FeeSchedule:
         return float(fee.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
+CASH_BUFFER_FEE_SCHEDULE = FeeSchedule(name="cash_buffer")
+
 STOCK_FEE_SCHEDULE = FeeSchedule(
     name="stock_a_share",
     fixed_per_order=5.0,

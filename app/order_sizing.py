@@ -5,6 +5,7 @@ import pandas as pd
 from app import plan_service
 from app.plan_service import PlanServiceError
 from datasource import db
+from strategies.discrete_target_sizing import CASH_BUFFER_FEE_SCHEDULE
 
 
 def size_strategy_orders(strategy: str) -> dict:
@@ -95,6 +96,7 @@ def size_cb_orders(
             cash,
             prices,
             budget_reduction_context=cash < 0,
+            fee_schedule=CASH_BUFFER_FEE_SCHEDULE,
         )
     except DiscreteSizingError as exc:
         raise PlanServiceError(
@@ -230,6 +232,7 @@ def size_stock_orders(
             cash,
             prices,
             budget_reduction_context=cash < 0,
+            fee_schedule=CASH_BUFFER_FEE_SCHEDULE,
         )
     except SizingError as exc:
         raise PlanServiceError(

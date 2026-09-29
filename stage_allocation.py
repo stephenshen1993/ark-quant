@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 
-POLICY_ID = "growth-2026-09-28"
+POLICY_ID = "growth-2026-09-29-cash-band"
+CASH_MIN = 300.0
+CASH_MAX = 1000.0
 MIN_ADJUSTMENT = 1000.0
 WEIGHTS = {"stock": .35, "nasdaq": .20, "technology": .10, "bond": .25, "cash_pool": .10}
 LABELS = {
@@ -100,15 +102,28 @@ def build_stage_plan(account: dict, *, blocked: dict | None = None) -> dict:
             if key in CARRIERS and delta >= MIN_ADJUSTMENT and key not in blocked}
     # 终态允许本轮释放方案补回现金，但当批买入永不超过已经可用的现金。
     # 只有可生成释放计划的方向计入；任何释放失败都要求更新事实后重算。
-    spendable = min(sum(available.values()), max(0.0, current["cash_pool"] + sum(sells.values()) - targets["cash_pool"]))
+    reserves = {}
+    reserve_topups = {}
+    for carrier in ("stock", "cb", "pingan"):
+        keys = [key for key, c in CARRIERS.items() if c == carrier]
+        active = any(key not in blocked and (current[key] > 0 or (key in gaps and available["cash"] + available[carrier] >= CASH_MIN)) for key in keys)
+        reserve = CASH_MIN if active else min(CASH_MIN, available[carrier])
+        release = sum(sells.get(key, 0) for key in keys)
+        reserves[carrier] = reserve
+        reserve_topups[carrier] = money(max(0, reserve - available[carrier] - release))
+    if sum(reserve_topups.values()) > available["cash"]:
+        raise PlanValidationError("CASH_RESERVE_SHORTFALL", "已有现金不足以预留每账户300元；到账后更新事实再生成")
+    trading_available = {c: max(0, available[c] - reserves[c]) for c in reserves}
+    bank_available = money(available["cash"] - sum(reserve_topups.values()))
+    spendable = min(bank_available + sum(trading_available.values()), max(0.0, current["cash_pool"] + sum(sells.values()) - targets["cash_pool"]))
     allocated = proportional(gaps, spendable)
     carrier_need = {carrier: sum(allocated.get(key, 0) for key, c in CARRIERS.items() if c == carrier)
                     for carrier in ("stock", "cb", "pingan")}
-    bank_need = {carrier: max(0.0, need - available[carrier]) for carrier, need in carrier_need.items()}
+    bank_need = {carrier: max(0.0, need - trading_available[carrier]) for carrier, need in carrier_need.items()}
     bank_total = sum(bank_need.values())
-    bank_scale = min(1.0, available["cash"] / bank_total) if bank_total else 1.0
+    bank_scale = min(1.0, bank_available / bank_total) if bank_total else 1.0
     for carrier, need in carrier_need.items():
-        cap = available[carrier] + bank_need[carrier] * bank_scale
+        cap = trading_available[carrier] + bank_need[carrier] * bank_scale
         if need > cap and need:
             reduced = proportional({key: allocated[key] for key, c in CARRIERS.items() if c == carrier and key in allocated}, cap)
             allocated.update(reduced)
@@ -122,13 +137,15 @@ def build_stage_plan(account: dict, *, blocked: dict | None = None) -> dict:
         release = sum(sells.get(key, 0) for key in keys)
         # 小市值/转债预算必须排除归现金池的券商现金，负值要求原策略释放资金。
         strategy_cash[carrier] = money(buys - release)
-        incoming = money(max(0, buys - available[carrier]))
-        outgoing = money(max(0, available[carrier] - buys) + release)
+        incoming = money(max(0, buys - trading_available[carrier]) + reserve_topups[carrier])
+        outgoing = money(max(0, available[carrier] + incoming + release - buys - reserves[carrier]))
+        if not buys and not release:
+            outgoing = money(max(0, available[carrier] - CASH_MAX))
         for source, target, amount, immediate in (
             ("cash_pool", carrier, incoming, True),
             (carrier, "cash_pool", outgoing, False),
         ):
-            if amount <= 0 or (not immediate and amount < MIN_ADJUSTMENT):
+            if amount <= 0 or (not immediate and not release and available[carrier] - buys <= CASH_MAX):
                 continue
             actions.append({
                 "source": source, "target": target,
@@ -156,6 +173,7 @@ def build_stage_plan(account: dict, *, blocked: dict | None = None) -> dict:
             "allocation": {"total": money(sum(current.values())), "current": current, "targets": targets,
                            "deltas": deltas, "planned_deltas": planned, "rows": rows},
             "actions": actions, "strategy_cash": strategy_cash,
+            "cash_reserves": reserves, "cash_band": {"lower": CASH_MIN, "upper": CASH_MAX},
             "transfer_deltas": {"stock": money(strategy_cash["stock"] - available["stock"]),
                                 "bond": money(strategy_cash["cb"] - available["cb"])},
             "buy_budgets": allocated,

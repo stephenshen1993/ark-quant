@@ -68,6 +68,7 @@ def size_rebalance(
     max_single_weight: float = MAX_SINGLE_WEIGHT,
     *,
     budget_reduction_context: bool = False,
+    fee_schedule=CB_FEE_SCHEDULE,
 ) -> tuple[pd.DataFrame, dict]:
     """Return frozen net orders under the shared Top-20 sizing policy."""
     target = target.copy()
@@ -85,7 +86,7 @@ def size_rebalance(
         cash=cash,
         lot=lot,
         max_single_weight=max_single_weight,
-        fee_schedule=CB_FEE_SCHEDULE,
+        fee_schedule=fee_schedule,
         allow_target_sells=True,
     )
     rows = []

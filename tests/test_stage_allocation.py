@@ -28,16 +28,17 @@ def terms(direction='nasdaq', code='161130', price=10):
 
 
 class TestStageAllocation(unittest.TestCase):
-    def test_at_target_has_no_action(self):
+    def test_at_target_only_funds_account_cash_reserves(self):
         plan = build_stage_plan(facts())
-        self.assertEqual(plan['actions'], [])
+        self.assertEqual(sum(a['amount'] for a in plan['actions']), 900)
+        self.assertTrue(all(a['source'] == 'cash_pool' for a in plan['actions']))
         self.assertEqual(plan['buy_budgets'], {})
         self.assertEqual(sum(plan['allocation']['targets'].values()), 1000000)
 
     def test_new_money_only_changes_facts_then_follows_unified_targets(self):
         plan = build_stage_plan(facts(cash=107500))
         self.assertEqual(plan['buy_budgets'], {'stock': 2625, 'nasdaq': 1500, 'bond': 1875})
-        self.assertEqual(plan['cash']['immediate_outflow'], 6000)
+        self.assertEqual(plan['cash']['immediate_outflow'], 6900)
         self.assertEqual(plan['cash']['terminal_estimate'], 101500)
         self.assertEqual(plan['allocation']['deltas']['technology'], 750)
 
@@ -47,7 +48,7 @@ class TestStageAllocation(unittest.TestCase):
         plan = build_stage_plan(account)
         self.assertEqual(plan['allocation']['total'], 1007500)
         self.assertEqual(plan['allocation']['current']['stock'], 350000)
-        self.assertEqual(plan['cash']['immediate_outflow'], 3375)
+        self.assertEqual(plan['cash']['immediate_outflow'], 3975)
         self.assertEqual(plan['strategy_cash']['stock'], 2625)
         self.assertEqual(plan['transfer_deltas']['stock'], -375)
 
@@ -81,7 +82,7 @@ class TestStageAllocation(unittest.TestCase):
         plan = build_stage_plan(account)
         fund_buys = sum(plan['buy_budgets'].get(k, 0) for k in ('nasdaq','technology'))
         transfer = sum(a['amount'] for a in plan['actions'] if a['target'] == 'pingan')
-        self.assertAlmostEqual(transfer + 10000, fund_buys, places=2)
+        self.assertAlmostEqual(transfer + 10000, fund_buys + 300, places=2)
         self.assertLessEqual(plan['cash']['immediate_outflow'], 100000)
 
     def test_opposing_pingan_orders_do_not_spend_unfilled_sell_proceeds(self):
@@ -90,7 +91,7 @@ class TestStageAllocation(unittest.TestCase):
         self.assertIn({'source': 'cash_pool', 'target': 'pingan'},
                       [{k: a[k] for k in ('source', 'target')} for a in plan['actions']])
         self.assertEqual(plan['buy_budgets']['technology'], 50000)
-        self.assertEqual(plan['cash']['immediate_outflow'], 50000)
+        self.assertEqual(plan['cash']['immediate_outflow'], 50600)
 
     def test_randomized_shared_cash_and_target_conservation(self):
         rng = random.Random(87)
@@ -153,7 +154,7 @@ class TestFundBudgetOrders(unittest.TestCase):
         self.assertIn('nasdaq', blocked_directions(account, '2026-09-25'))
         account['fund_terms'][0]['cost_reviewed'] = True
         account['fund_terms'][0]['minimum_fee'] = None
-        self.assertIn('nasdaq', blocked_directions(account, '2026-09-25'))
+        self.assertNotIn('nasdaq', blocked_directions(account, '2026-09-25'))
 
     def test_wrong_direction_or_duplicate_code_rejected(self):
         with self.assertRaises(ValueError):
