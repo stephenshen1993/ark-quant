@@ -109,7 +109,7 @@ class TestTradingPageInteraction(unittest.TestCase):
 
     def test_plan_scenarios_use_plain_language_and_hide_exceptions(self):
         self.assertIn("先用现有现金配置海外增长", self.html)
-        self.assertIn("本期只分配已有现金，不一次性减持或赎回到目标", self.html)
+        self.assertIn("本期只用已有现金买入", self.html)
         self.assertNotIn("同时进行组合间再平衡", self.html)
         self.assertNotIn("新增资金分配", self.html)
         self.assertNotIn("海外长钱恢复申购", self.html)

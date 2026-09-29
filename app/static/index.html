@@ -3028,9 +3028,14 @@
         <section id="plan-funding-step" class="plan-funding-plan plan-run-step" aria-label="资金调拨计划">
           <header class="plan-step-header">
             <span class="plan-step-number">01</span>
-            <h2 class="plan-step-title">先完成资金安排</h2>
+            <h2 class="plan-step-title">资金安排：先调入，成交后分批赎回</h2>
           </header>
           <div class="plan-step-body plan-funding-table-scroll">
+            <p class="workspace-meta mb-3" x-show="plan?.fund_transfer?.cash">
+              资金池已有 <strong x-text="fmtMoney(plan?.fund_transfer?.cash?.available)"></strong>；
+              本期立即调出 <strong x-text="fmtMoney(plan?.fund_transfer?.cash?.immediate_outflow)"></strong>；
+              调出后余款 <strong x-text="fmtMoney(plan?.fund_transfer?.cash?.remaining)"></strong>。下列待回池款均未计入本期购买力。
+            </p>
             <table class="plan-funding-table" aria-label="资金调拨动作">
               <colgroup>
                 <col class="plan-funding-route-col">
@@ -3053,7 +3058,7 @@
                         <span class="mx-2 text-gray-300" aria-hidden="true">→</span>
                         <span x-text="action.target_account_name"></span>
                       </td>
-                      <td class="plan-funding-amount" data-label="调拨金额" x-text="fmtMoney(action.amount)"></td>
+                      <td class="plan-funding-amount" data-label="调拨金额" x-text="(action.conditional ? '参考上限 ' : '') + fmtMoney(action.amount)"></td>
                       <td class="plan-funding-window" data-label="资金可用时间">
                         <span class="plan-funding-window-label" x-text="group.label"></span>
                         <span class="plan-funding-window-date" x-text="action.display_date || group.display_date"></span>
@@ -3254,7 +3259,7 @@
 
     <section x-show="!isSelectedHistoricalPlan()" class="ark-panel plan-conditions-panel px-5 py-3 mb-4" aria-label="计划条件">
       <strong>本阶段：先用现有现金配置海外增长</strong>
-      <p class="workspace-meta">目标比例用于计算缺口；本期只分配已有现金，不一次性减持或赎回到目标。原有换股换债照常，后续回流到账再分配。</p>
+      <p class="workspace-meta">本期只用已有现金买入；成交后按实际净新增投入分批赎回，国内长钱优先，海外长钱随后。少买少赎、未买不赎；到账更新后生成下一批，无需等周度轮动。原换股换债照常。</p>
       <details class="mt-2" x-show="Object.keys(plan?.fund_transfer?.deferred_reductions || {}).length">
         <summary class="text-sm cursor-pointer">后续目标减配（不属于本期操作）</summary>
         <template x-for="row in (plan?.fund_transfer?.allocation?.rows || []).filter(row => (plan?.fund_transfer?.deferred_reductions || {})[row.id])" :key="row.id">

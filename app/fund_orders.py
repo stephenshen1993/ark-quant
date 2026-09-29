@@ -109,5 +109,32 @@ def reconcile_fund_return(account: dict, transfer: dict, funds: dict) -> dict:
     """整手订单后以共享账户现金区间核对回池金额。"""
     from app.cash_reserve import reconcile_cash_reserves
 
-    return reconcile_cash_reserves(account, transfer, {"pingan": funds["orders"]},
-                                   pending_budgets={"pingan": funds.get("pending_buy_budget", 0)})
+    result = reconcile_cash_reserves(account, transfer, {"pingan": funds["orders"]},
+                                     pending_budgets={"pingan": funds.get("pending_buy_budget", 0)})
+    return add_migration_redemption(account, result, funds["orders"])
+
+
+def add_migration_redemption(account: dict, transfer: dict, orders: list[dict]) -> dict:
+    """有条件的赎回草案：成交后按实际净新增投入申请，不能视作已到账现金。"""
+    from copy import deepcopy
+
+    result = deepcopy(transfer)
+    result["actions"] = [a for a in result["actions"] if a.get("reason") != "matched_migration_redemption"]
+    # 基金内部卖出换入不是新增投入；整手余款、现金预留也不是投入。
+    net_buy = money(max(0, sum((1 if o.get("delta_shares", 0) > 0 else -1) * o["amount"]
+                              for o in orders if o.get("delta_shares", 0))))
+    pending = money(account.get("changqian_pending", 0) + account.get("overseas_pending", 0))
+    source = "changqian" if account.get("changqian_total", 0) > 0 else "overseas"
+    holding = max(0, account.get(source + "_total", 0) - account.get(source + "_pending", 0))
+    amount = money(min(holding, max(0, net_buy - pending)))
+    result["migration_redemption"] = dict(source=source, reference_amount=amount,
+        planned_net_investment=net_buy, existing_pending=pending, conditional=True)
+    if amount > 0:
+        result["actions"].append(dict(source=source, target="cash_pool", amount=amount,
+            reason="matched_migration_redemption", immediate=False, available_on="deferred",
+            cash_effect="deferred_cash_return", conditional=True,
+            note="有条件赎回参考上限：本轮实际净新增买入确认后，再扣除已有赎回在途申请；少买少赎、未买不赎。到账更新后重算下一批，不计本期购买力。"))
+        # 已列本轮条件安排的部分不再重复展示成未安排目标。
+        if source in result.get("deferred_reductions", {}):
+            result["deferred_reductions"][source] = money(max(0, holding - amount))
+    return result

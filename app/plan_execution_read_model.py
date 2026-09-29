@@ -14,6 +14,7 @@ AVAILABILITY_LABELS = {
 
 REASON_LABELS = {
     "stage_target_rebalance": "阶段目标调整",
+    "matched_migration_redemption": "成交后按新增投入分批赎回",
     "a_internal_rebalance": "主动组合内部再平衡",
     "half_band_repair": "组合偏离修复",
     "monthly_soft_repair": "新增资金柔性补偏",
@@ -123,6 +124,7 @@ def _funding_plan(
             "available_date": available_date,
             "display_date": available_date or "日期待确认",
             "cash_effect": action.get("cash_effect"),
+            "conditional": bool(action.get("conditional")),
             "note": action.get("note"),
         })
 

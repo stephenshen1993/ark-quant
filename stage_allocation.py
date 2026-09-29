@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 
-POLICY_ID = "growth-2026-09-29-existing-cash-first"
+POLICY_ID = "growth-2026-09-29-matched-redemption"
 CASH_MIN = 300.0
 CASH_MAX = 1000.0
 MIN_ADJUSTMENT = 1000.0
@@ -182,4 +182,4 @@ def build_stage_plan(account: dict, *, blocked: dict | None = None) -> dict:
             "cash": {"available": available["cash"], "immediate_outflow": used_bank,
                      "remaining": money(available["cash"] - used_bank),
                      "terminal_estimate": money(current["cash_pool"] + planned["cash_pool"]),
-                     "note": "当前先用已有现金；高配减持和投顾赎回仅列后续目标，不是本期调拨。现金目标允许迁移中暂时偏离。"}}
+                     "note": "当前先用已有现金；高配减持列后续目标，基金订单生成后再按新增投入列条件赎回。现金目标允许迁移中暂时偏离。"}}
