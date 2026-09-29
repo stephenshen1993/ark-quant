@@ -706,6 +706,11 @@ def _invalidate_plans_with_different_valuation(summary: dict) -> None:
                 captured = plan.get("account")
                 if not isinstance(captured, dict):
                     continue
+                # 完整冻结计划不因读取时行情跳动而失效；原始账户修改仍由
+                # _invalidate_derived_plans 统一失效。缺失估值恢复须重算。
+                if (plan.get("snapshot", {}).get("version", 0) >= 2
+                        and all(captured.get(field) is not None for field in total_fields)):
+                    continue
                 if any(captured.get(field) != summary.get(field) for field in total_fields):
                     stale_plan_ids.append(row["plan_id"])
             if not stale_plan_ids:

@@ -13,6 +13,9 @@ from datasource.youzhiyouxing import DATA_URL
 
 class TestPlansApi(unittest.TestCase):
     def setUp(self):
+        reference_quotes = patch("app.fund_reference.fetch_reference_quotes", return_value={})
+        reference_quotes.start()
+        self.addCleanup(reference_quotes.stop)
         calendar = patch("app.strategy_runner.resolve_effective_trading_date", return_value=date(2026, 6, 29))
         calendar.start()
         self.addCleanup(calendar.stop)
@@ -133,7 +136,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertIsNotNone(funding_plan)
         self.assertEqual(
             [group["availability"] for group in funding_plan["groups"]],
-            ["same_day", "deferred"],
+            ["same_day"],
         )
         account_plans = data["execution_read_model"]["account_trading_plans"]
         self.assertEqual(
@@ -150,11 +153,11 @@ class TestPlansApi(unittest.TestCase):
         )
         self.assertEqual(
             account_plans[0]["cash"]["expected_ending"],
-            46028.45,
+            18990.08,
         )
         self.assertEqual(
             account_plans[1]["cash"]["expected_ending"],
-            -63506.55,
+            -11280.3,
         )
 
     def test_plan_service_builds_current_plan_without_http_route(self):
@@ -287,7 +290,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         data = r.json()
         self.assertTrue({"allocation", "actions", "cash"} <= set(data["fund_transfer"]))
-        self.assertEqual(data["fund_transfer"]["policy_id"], "growth-2026-09-29-cash-band")
+        self.assertEqual(data["fund_transfer"]["policy_id"], "growth-2026-09-29-existing-cash-first")
         self.assertNotEqual(data["transfer_deltas"]["stock"], 0)
         self.assertNotEqual(data["transfer_deltas"]["bond"], 0)
         self.assertTrue(data["transfer_steps"])
@@ -298,8 +301,8 @@ class TestPlansApi(unittest.TestCase):
             "app.order_sizing.size_cb_orders",
             return_value={
                 "orders": [{
-                    "action": "BUY", "bond_code": "113062", "bond_name": "常银转债",
-                    "price": 126.80, "delta_shares": 10, "amount": 1268.0,
+                    "action": "SELL", "bond_code": "113062", "bond_name": "常银转债",
+                    "price": 126.80, "delta_shares": -10, "amount": 1268.0,
                 }],
                 "summary": {
                     "starting_cash": 110.0,
@@ -385,8 +388,8 @@ class TestPlansApi(unittest.TestCase):
 
     def test_generate_plan_records_failed_plan_when_order_stage_fails(self):
         cb_orders = [{
-            "action": "BUY", "bond_code": "113062", "bond_name": "常银转债",
-            "price": 126.80, "delta_shares": 10, "amount": 1268.0,
+            "action": "SELL", "bond_code": "113062", "bond_name": "常银转债",
+            "price": 126.80, "delta_shares": -10, "amount": 1268.0,
         }]
         with patch(
             "app.order_sizing.size_cb_orders",
@@ -417,7 +420,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(saved["error"]["code"], "STOCK_SIZING_FAILED")
         self.assertEqual(
             saved["plan"]["cb"]["orders"],
-            [{**cb_orders[0], "execution_reason": "frozen_target"}],
+            [{**cb_orders[0], "execution_reason": "mandatory_exit"}],
         )
 
     def test_generate_plan_reports_stock_stage_after_empty_cb_order_batch(self):
@@ -641,7 +644,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(data["plan_date"], "2026-06-29")
         self.assertIn("transfer_steps", data)
         self.assertIn("transfer_deltas", data)
-        self.assertEqual(data["fund_transfer"]["policy_id"], "growth-2026-09-29-cash-band")
+        self.assertEqual(data["fund_transfer"]["policy_id"], "growth-2026-09-29-existing-cash-first")
         self.assertEqual(data["fund_transfer"]["allocation"]["targets"]["changqian"], 0)
         self.assertEqual(
             data["account_read_model"]["portfolios"][0]["account_ids"],

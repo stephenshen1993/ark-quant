@@ -55,11 +55,8 @@ class TestStageAllocation(unittest.TestCase):
     def test_pending_receivable_never_supplies_immediate_buying_power(self):
         account = facts(stock=400000, nasdaq=0, technology=0, bond=300000, cash=0)
         account.update(changqian_total=300000, changqian_pending=300000)
-        plan = build_stage_plan(account)
-        self.assertEqual(plan['allocation']['total'], 1000000)
-        self.assertEqual(plan['allocation']['current']['changqian'], 0)
-        self.assertEqual(plan['cash']['immediate_outflow'], 0)
-        self.assertTrue(all(value == 0 for value in plan['buy_budgets'].values()))
+        with self.assertRaises(PlanValidationError):
+            build_stage_plan(account)  # 在途不能支付缺失的账户现金预留
         account.update(changqian_total=0, changqian_pending=0, cash_pool=300000)
         self.assertEqual(build_stage_plan(account)['allocation']['total'], 1000000)
 
@@ -91,7 +88,7 @@ class TestStageAllocation(unittest.TestCase):
         self.assertIn({'source': 'cash_pool', 'target': 'pingan'},
                       [{k: a[k] for k in ('source', 'target')} for a in plan['actions']])
         self.assertEqual(plan['buy_budgets']['technology'], 50000)
-        self.assertEqual(plan['cash']['immediate_outflow'], 50600)
+        self.assertEqual(plan['cash']['immediate_outflow'], 50900)
 
     def test_randomized_shared_cash_and_target_conservation(self):
         rng = random.Random(87)
@@ -121,7 +118,7 @@ class TestStageAllocation(unittest.TestCase):
 
 
 class TestFundBudgetOrders(unittest.TestCase):
-    def test_return_uses_actual_whole_lot_sales_less_fees(self):
+    def test_overweight_fund_is_deferred_without_a_current_sell(self):
         account = facts(nasdaq=255555, technology=44445)
         account.update(fund_terms=normalize_terms([terms(), terms('technology','501312',7)]),
                        fund_positions=[dict(code='161130', quantity=25555), dict(code='501312', quantity=6349)])
@@ -131,9 +128,12 @@ class TestFundBudgetOrders(unittest.TestCase):
         incoming = sum(a['amount'] for a in reconciled['actions'] if a['target'] == 'pingan')
         outgoing = sum(a['amount'] for a in reconciled['actions'] if a['source'] == 'pingan')
         net = sum((1 if o['shares'] < 0 else -1) * o['amount'] - o['estimated_fee'] for o in funds['orders'])
-        self.assertGreater(outgoing, 0)
+        self.assertEqual(outgoing, 0)
+        self.assertGreater(transfer['deferred_reductions']['nasdaq'], 0)
+        self.assertFalse(transfer['sell_budgets'])
+        self.assertTrue(all(o['shares'] > 0 for o in funds['orders']))
         self.assertGreaterEqual(round(incoming + net - outgoing, 2), 0)
-        self.assertLess(outgoing, sum(a['amount'] for a in transfer['actions'] if a['source'] == 'pingan'))
+        self.assertLessEqual(incoming + net - outgoing, 1000)
 
     def test_lots_fees_and_two_orders_stay_inside_shared_budget(self):
         account = facts(nasdaq=0, technology=0, cash=400000)

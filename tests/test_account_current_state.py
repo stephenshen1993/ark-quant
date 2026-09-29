@@ -188,6 +188,31 @@ class TestAccountCurrentState(unittest.TestCase):
         self.assertEqual(db.get_generated_plan("plan-1")["status"], "stale")
 
     @patch("datasource.market.fetch_tencent_snapshot")
+    def test_frozen_complete_plan_survives_quote_change_but_not_raw_edit(self, fetch):
+        fetch.return_value = pd.DataFrame([{
+            "stock_code": "000001", "stock_name_q": "平安银行", "price": 10.0,
+        }])
+        response = self.client.put("/api/accounts/stock", json={
+            "expected_version": None, "available_cash": 100, "frozen_cash": 0,
+            "positions": [{"code": "1", "quantity": 10}],
+        })
+        db.insert_generated_plan("frozen", "2026-08-08", "complete", {
+            "snapshot": {"version": 2},
+            "account": {"stock_total": 200, "bond_total": 0, "pingan_total": 0,
+                        "nasdaq_total": 0, "technology_total": 0},
+        })
+        fetch.return_value = pd.DataFrame([{
+            "stock_code": "000001", "stock_name_q": "平安银行", "price": 20.0,
+        }])
+        account_current_state.build_current_account_summary()
+        self.assertEqual(db.get_generated_plan("frozen")["status"], "complete")
+        self.client.put("/api/accounts/stock", json={
+            "expected_version": response.json()["version"], "available_cash": 110,
+            "frozen_cash": 0, "positions": [{"code": "1", "quantity": 10}],
+        })
+        self.assertEqual(db.get_generated_plan("frozen")["status"], "stale")
+
+    @patch("datasource.market.fetch_tencent_snapshot")
     def test_running_plan_without_captured_inputs_is_not_staled_by_initial_refresh(self, fetch):
         fetch.return_value = pd.DataFrame([{
             "stock_code": "000001", "stock_name_q": "平安银行", "price": 10.0,

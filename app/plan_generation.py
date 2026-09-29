@@ -277,6 +277,8 @@ def prepare_complete_plan_generation(plan_date: str | None = None) -> tuple[str,
     account = dict(account)
     account["temperature"] = market_temperature.temperature
     account["plan_date"] = plan_date
+    from app.fund_reference import with_reference_terms
+    account = with_reference_terms(account, plan_date, plan_service.trade_date_for("stock", plan_date))
     cb_rankings = db.get_rankings("cb", plan_date)
     try:
         fund_transfer = plan_service.build_fund_transfer(

@@ -108,8 +108,8 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("class=\"plan-generate-action", self.html)
 
     def test_plan_scenarios_use_plain_language_and_hide_exceptions(self):
-        self.assertIn("周度统一检查，按目标调整", self.html)
-        self.assertIn("各投资方向净差额不足1000元暂不调整", self.html)
+        self.assertIn("先用现有现金配置海外增长", self.html)
+        self.assertIn("本期只分配已有现金，不一次性减持或赎回到目标", self.html)
         self.assertNotIn("同时进行组合间再平衡", self.html)
         self.assertNotIn("新增资金分配", self.html)
         self.assertNotIn("海外长钱恢复申购", self.html)
@@ -756,7 +756,7 @@ class TestTradingPageInteraction(unittest.TestCase):
         )
 
     def test_plan_conditions_collapse_after_plan_exists(self):
-        self.assertIn("本阶段：周度统一检查", self.html)
+        self.assertIn("本阶段：先用现有现金配置海外增长", self.html)
         self.assertIn("计划条件", self.html)
 
     def test_plan_page_uses_server_states_and_puts_actions_before_readiness(self):

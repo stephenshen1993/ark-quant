@@ -2484,7 +2484,7 @@
         <section class="ark-panel overview-section" aria-label="顶层组合配置">
           <div class="overview-section-heading">
             <div>
-              <h2>顶层组合</h2>
+              <h2>投资方向与承载账户</h2>
               <p>按统一长期资产计算阶段目标；账户现金单独归入直接现金。</p>
             </div>
             <strong class="overview-total" x-text="fmtMoney(totalAssets())"></strong>
@@ -2492,7 +2492,8 @@
           <table class="overview-matrix">
             <thead>
               <tr>
-                <th>组合</th>
+                <th>投资方向</th>
+                <th>承载账户</th>
                 <th class="num">当前占比</th>
                 <th class="num">当前金额</th>
                 <th>数据状态</th>
@@ -2505,6 +2506,7 @@
                     <strong x-text="portfolioLabel(portfolio)"></strong>
                     <small x-text="portfolio.description || dataTimeText(portfolio)"></small>
                   </td>
+                  <td x-text="(portfolio.account_names || []).join('、')"></td>
                   <td class="num">
                     <span class="overview-bar" aria-hidden="true"><i :style="`width: ${percentValue(portfolio.current_amount)}%`"></i></span>
                     <span x-text="percentText(portfolio.current_amount)"></span>
@@ -3158,7 +3160,8 @@
                           </tbody>
                         </template>
 	                      </table>
-	                      <p class="workspace-meta mt-2" x-show="plan.execution_guardrails?.reference_price_is_limit">买入不高于表中限价，卖出不低于表中限价；手续费从预留现金中扣除。</p>
+	                      <p class="workspace-meta mt-2" x-show="plan.execution_guardrails?.review_required" x-text="plan.execution_guardrails?.review_required"></p>
+<p class="workspace-meta mt-2" x-show="plan.execution_guardrails?.reference_price_is_limit">买入不高于表中限价，卖出不低于表中限价；手续费从预留现金中扣除。</p>
 	                    </div>
 	                  </section>
 	                  <details class="plan-cash-audit">
@@ -3200,7 +3203,7 @@
 	                        <div class="plan-cash-value" x-text="fmtMoney(plan.cash.expected_buy)"></div>
 	                      </div>
 	                      <div class="plan-cash-term" data-sign="equals">
-	                        <div class="plan-cash-label">计划后预计资金余额（未扣费用）</div><p class="workspace-meta">预留300～1,000元，计入原现金配置；扣费后可略低于300元，下次正常计划再处理。</p>
+	                        <div class="plan-cash-label">计划后预计资金余额（未扣费用）</div><p class="workspace-meta" x-show="!plan.cash.pending_buy_budget">预留300～1,000元，计入原现金配置；扣费后可略低于300元，下次正常计划再处理。</p><p class="workspace-meta" x-show="plan.cash.pending_buy_budget" x-text="`其中 ${fmtMoney(plan.cash.pending_buy_budget)} 为已分配、待生成买单的预算；尚未买入，不能当作多余现金回池。`"></p>
 	                        <div class="plan-cash-value" :class="plan.funding.state === 'blocked' ? 'text-red-600' : ''" x-text="fmtMoney(plan.cash.expected_ending)"></div>
 	                      </div>
 	                    </div>
@@ -3250,8 +3253,14 @@
     </details>
 
     <section x-show="!isSelectedHistoricalPlan()" class="ark-panel plan-conditions-panel px-5 py-3 mb-4" aria-label="计划条件">
-      <strong>本阶段：周度统一检查，按目标调整</strong>
-      <p class="workspace-meta">各投资方向净差额不足1000元暂不调整；其余向目标附近修复。新钱统一入池；未到账资金不支持买入。</p>
+      <strong>本阶段：先用现有现金配置海外增长</strong>
+      <p class="workspace-meta">目标比例用于计算缺口；本期只分配已有现金，不一次性减持或赎回到目标。原有换股换债照常，后续回流到账再分配。</p>
+      <details class="mt-2" x-show="Object.keys(plan?.fund_transfer?.deferred_reductions || {}).length">
+        <summary class="text-sm cursor-pointer">后续目标减配（不属于本期操作）</summary>
+        <template x-for="row in (plan?.fund_transfer?.allocation?.rows || []).filter(row => (plan?.fund_transfer?.deferred_reductions || {})[row.id])" :key="row.id">
+          <p class="text-sm mt-1"><span x-text="row.label"></span>：<span x-text="fmtMoney(plan.fund_transfer.deferred_reductions[row.id])"></span></p>
+        </template>
+      </details>
       <template x-for="(reason, direction) in (plan?.fund_transfer?.blocked || {})" :key="direction">
         <p class="text-sm text-amber-700 mt-2"><strong x-text="direction === 'nasdaq' ? '纳指方向' : direction === 'technology' ? '501312' : '转债'"></strong>：<span x-text="reason"></span>。目标保留。</p>
       </template>
@@ -3885,7 +3894,7 @@
       },
       percentText(amount, base = this.totalAssets()) {
         const value = this.percentValue(amount, base)
-        return value ? `${value.toFixed(1)}%` : '暂不可算'
+        return Number.isFinite(Number(amount)) && amount != null && Number(this.totalAssets()) > 0 ? `${value.toFixed(1)}%` : '暂不可算'
       },
       activePercentValue(amount) {
         return this.percentValue(amount, this.activePortfolio()?.current_amount)
@@ -5503,8 +5512,8 @@
           return `先向${transfer.account_name}调入 ${this.fmtMoney(transfer.funding.transfer_in || 0)} 并确认到账；${readyText}`
         }
         const readyCount = plans.filter(plan => plan?.funding?.state === 'ready').length
-        const pendingCount = plans.filter(plan => plan?.funding?.state === 'needs_terms').length
-        return `${readyCount} 个账户资金已具备。` + (pendingCount ? `${pendingCount} 个账户待补交易条件。` : '可核对证券交易。')
+        const pendingCount = plans.filter(plan => ['needs_terms', 'needs_price_review'].includes(plan?.funding?.state)).length
+        return `${readyCount} 个账户资金已具备。` + (pendingCount ? `${pendingCount} 个账户为参考草案，委托前需核价。` : '可核对证券交易。')
       },
       hasExecutionPlans() {
         return Boolean(this.fundingPlan() || this.accountTradingPlans().length)
@@ -5540,7 +5549,7 @@
         return this.accountActionSummary(plan)
       },
       accountActionSummary(plan) {
-        if (plan?.funding?.state === 'needs_terms') return (plan.direction_conditions || []).map(item => item.name).join('、') + '：待补交易条件'
+        if (plan?.funding?.state === 'needs_terms') return (plan.direction_conditions || []).map(item => item.name).join('、') + '：等待公开行情更新'
         const groups = this.accountTradeGroups(plan)
         if (!groups.length) return '无需证券交易'
         return groups.map(group => `${group.label} ${group.orders.length} 笔`).join('，')
@@ -5574,7 +5583,8 @@
       },
       fundingPrerequisiteText(plan) {
         const funding = plan?.funding || {}
-        if (funding.state === 'needs_terms') return '两个方向归属平安账户，共用账户现金；补齐对应条件后生成订单。'
+        if (funding.state === 'needs_price_review') return `先确认 ${this.fmtMoney(funding.transfer_in || 0)} 已调入；以下为参考订单，委托前核对最新价格与溢价。`
+        if (funding.state === 'needs_terms') return '两个方向归属平安账户，共用账户现金；资金预算已独立计算，核价完成后生成订单。'
         const incoming = funding.incoming_actions || []
         const incomingText = incoming.map(action =>
           `${action.source_account_name} → ${plan.account_name} ${this.fmtMoney(action.amount)}（${action.display_date}可用）`
@@ -5607,7 +5617,8 @@
           needs_same_day_transfer: { text: '待调入', className: 'is-same-day' },
           waits_for_funds: { text: '等待未来资金可用', className: 'is-future' },
           blocked: { text: '资金不足 · 已阻断', className: 'is-blocked' },
-          needs_terms: { text: '待补交易条件', className: 'is-future' },
+          needs_price_review: { text: '参考订单 · 委托前核价', className: 'is-future' },
+          needs_terms: { text: '等待公开行情更新', className: 'is-future' },
         }[funding?.state] || { text: '等待资金确认', className: '' }
         const shouldShowDate = Boolean(
           funding?.display_date &&
@@ -5966,7 +5977,7 @@
         if (stage === '调后') {
           return amount > 0
             ? `调后仍需转入 ${this.fmtMoney(amount)}`
-            : `调后暂可转出 ${this.fmtMoney(Math.abs(amount))}`
+            : `后续目标减配 ${this.fmtMoney(Math.abs(amount))}`
         }
         if (stage === '本次') return `本次${amount > 0 ? '转入' : '转出'} ${this.fmtMoney(Math.abs(amount))}`
         return `当前${amount > 0 ? '需转入' : '可转出'} ${this.fmtMoney(Math.abs(amount))}`

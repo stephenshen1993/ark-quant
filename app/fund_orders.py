@@ -50,7 +50,7 @@ def blocked_directions(account: dict, plan_date: str) -> dict:
             blocked[direction] = "请在平安账户明确执行标的及交易条件"
         elif any(term.get(key) is None for key in ("limit_price", "lot_size")):
             blocked[direction] = "限价或交易单位尚未核实"
-        elif term["limit_price"] <= 0 or not term.get("cost_reviewed"):
+        elif term["limit_price"] <= 0 or (not term.get("cost_reviewed") and not term.get("reference_only")):
             blocked[direction] = "尚未确认该限价及溢价成本可接受"
         elif term.get("price_date") != plan_date:
             blocked[direction] = f"交易条件日期须与计划基准日{plan_date}一致"
@@ -62,6 +62,7 @@ def build_fund_orders(account: dict, transfer: dict, plan_date: str) -> dict:
     positions = {item["code"]: item["quantity"] for item in account.get("fund_positions", [])}
     blocked = blocked_directions(account, plan_date)
     orders = []
+    reference_only = any(t.get("reference_only") for t in terms.values())
     remainders = {}
     for direction in ("nasdaq", "technology"):
         if direction in blocked:
@@ -87,13 +88,20 @@ def build_fund_orders(account: dict, transfer: dict, plan_date: str) -> dict:
                     "amount": amount, "estimated_fee": fee, "price_date": term["price_date"],
                     "commission_rate": term.get("commission_rate"), "minimum_fee": term.get("minimum_fee"),
                     "current_quantity": current_quantity, "target_quantity": current_quantity + quantity,
-                    "price_basis": "人工核实限价；买入不高于此价，卖出不低于此价",
+                    "price_basis": ("计划日参考价，仅计算预算份额；执行前核对盘口与溢价" if term.get("reference_only")
+                                    else "人工核实限价；买入不高于此价，卖出不低于此价"),
+                    "reference_only": bool(term.get("reference_only")),
+                    "quote_timestamp": term.get("quote_timestamp"),
+                    "source_url": term.get("source_url"),
                     "funding_state": "needs_same_day_transfer" if any(a["target"] == "pingan" for a in transfer["actions"]) else "ready",
                 })
         remainders[direction] = money(budget - (quantity * price + fee if quantity > 0 else 0))
     spent = money(sum(o["amount"] + o["estimated_fee"] for o in orders if o["shares"] > 0))
     assert spent <= money(sum(transfer["buy_budgets"].get(k, 0) for k in ("nasdaq", "technology")))
     return {"data_date": plan_date, "orders": orders, "blocked": blocked, "unused_budget": remainders,
+            "reference_only": reference_only,
+            "review_required": "参考工具及收盘价用于预算草案，实际委托前核对盘口、最新净值日期和溢价；不要求用户提供公开行情。" if reference_only else None,
+            "pending_buy_budget": money(sum(transfer["buy_budgets"].get(k, 0) for k in blocked)),
             "summary": {"buy_cost": spent, "estimated_fees": money(sum(o["estimated_fee"] for o in orders))}}
 
 
@@ -101,4 +109,5 @@ def reconcile_fund_return(account: dict, transfer: dict, funds: dict) -> dict:
     """整手订单后以共享账户现金区间核对回池金额。"""
     from app.cash_reserve import reconcile_cash_reserves
 
-    return reconcile_cash_reserves(account, transfer, {"pingan": funds["orders"]})
+    return reconcile_cash_reserves(account, transfer, {"pingan": funds["orders"]},
+                                   pending_budgets={"pingan": funds.get("pending_buy_budget", 0)})

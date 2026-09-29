@@ -1,14 +1,18 @@
 """在原订单之外调整现金调拨，不为现金区间新增证券交易。"""
+from __future__ import annotations
+
 from copy import deepcopy
 
 from portfolio_rebalance import PlanValidationError
 from stage_allocation import CASH_MAX, money
 
 
-def reconcile_cash_reserves(account: dict, transfer: dict, batches: dict) -> dict:
+def reconcile_cash_reserves(account: dict, transfer: dict, batches: dict, *, pending_budgets: dict | None = None) -> dict:
     result = deepcopy(transfer)
     for carrier, orders in batches.items():
-        reserve = result.get("cash_reserves", {}).get(carrier, 0)
+        pending = (pending_budgets or {}).get(carrier, 0)
+        reserve = result.get("cash_reserves", {}).get(carrier, 0) + pending
+        upper = CASH_MAX + pending
         prefix = {"stock": "stock", "cb": "bond", "pingan": "pingan"}[carrier]
         actions = result["actions"]
         incoming = sum(a["amount"] for a in actions if a["target"] == carrier)
@@ -22,8 +26,13 @@ def reconcile_cash_reserves(account: dict, transfer: dict, batches: dict) -> dic
             outgoing = money(outgoing - reduction)
             ending = money(ending + reduction)
             incoming = money(incoming + max(0, reserve - ending))
-        elif ending > CASH_MAX:
-            outgoing = money(outgoing + ending - CASH_MAX)
+        elif ending > upper:
+            outgoing = money(outgoing + ending - upper)
+        if carrier != "pingan":
+            # 同一账户原轮动已产生余款时，取消不必要的双向银证调拨。
+            offset = min(incoming, outgoing)
+            incoming = money(incoming - offset)
+            outgoing = money(outgoing - offset)
         actions[:] = [a for a in actions if a["source"] != carrier and a["target"] != carrier]
         for source, target, amount, immediate in (
             ("cash_pool", carrier, incoming, True), (carrier, "cash_pool", outgoing, False),

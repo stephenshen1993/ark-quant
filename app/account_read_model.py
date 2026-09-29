@@ -111,6 +111,15 @@ def build_account_read_model(summary: dict | None) -> dict | None:
                        "target_amount": targets[key], "target_weight": WEIGHTS.get(key, 0),
                        "description": f"阶段目标 {WEIGHTS.get(key, 0):.0%}"}
                       for key, value in current.items()]
+        carriers = {"stock": ["stock"], "bond": ["cb"], "nasdaq": ["pingan"],
+                    "technology": ["pingan"], "unclassified": ["pingan"],
+                    "cash_pool": ["cash", "stock", "cb", "pingan"],
+                    "changqian": ["changqian"], "overseas": ["overseas"],
+                    "pending": ["changqian", "overseas"]}
+        names = {a["id"]: a["name"] for a in account_facts}
+        for row in allocation:
+            row["account_ids"] = carriers[row["id"]]
+            row["account_names"] = [names[key] for key in row["account_ids"]]
         allocation_error = None
     except PlanValidationError as exc:
         allocation = []

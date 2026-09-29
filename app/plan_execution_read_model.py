@@ -25,6 +25,7 @@ FUNDING_STATE_ORDER = {
     "waits_for_funds": 2,
     "blocked": 3,
     "needs_terms": 4,
+    "needs_price_review": 4,
 }
 
 SELL_ACTIONS = {"SELL", "TRIM"}
@@ -277,6 +278,8 @@ def _account_trading_plans(
         )
         if not orders and direction_conditions:
             state = "needs_terms"
+        elif strategy == "funds" and section.get("reference_only"):
+            state = "needs_price_review"
         available_date, display_date = _account_funding_date(
             state=state,
             availability=available_on,
@@ -345,6 +348,7 @@ def _account_trading_plans(
                 "expected_buy": expected_buy,
                 "estimated_fees": estimated_fees,
                 "expected_ending": expected_ending,
+                **({"pending_buy_budget": _money(section.get("pending_buy_budget"))} if strategy == "funds" else {}),
             },
             "phases": phases,
         })
@@ -408,7 +412,8 @@ def _execution_guardrails(
         })
     return {
         "price_basis_date": section.get("data_date") or plan_date,
-        "reference_price_is_limit": strategy == "funds",
+        "reference_price_is_limit": strategy == "funds" and not section.get("reference_only"),
+        "review_required": section.get("review_required"),
         "price_adjustment_notes": section.get("price_adjustment_notes", []),
         "rules": rules,
     }

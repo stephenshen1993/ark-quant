@@ -672,10 +672,13 @@ def build_fund_transfer(
 ) -> dict:
     if not account:
         raise PlanValidationError("MISSING_ACCOUNT", "缺少账户快照")
-    blocked = blocked_directions(account, account.get("plan_date") or current_plan_date())
+    order_blocked = blocked_directions(account, account.get("plan_date") or current_plan_date())
+    blocked = {}
     if include_a_internal and (qualified_cb_count is None or qualified_cb_count < 20):
         blocked["bond"] = "转债候选不足20只，保留原目标，等待原策略条件满足"
-    return build_stage_plan(account, blocked=blocked)
+    transfer = build_stage_plan(account, blocked=blocked)
+    transfer["order_blocked"] = order_blocked
+    return transfer
 
 
 

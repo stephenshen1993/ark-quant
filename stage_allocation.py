@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 
-POLICY_ID = "growth-2026-09-29-cash-band"
+POLICY_ID = "growth-2026-09-29-existing-cash-first"
 CASH_MIN = 300.0
 CASH_MAX = 1000.0
 MIN_ADJUSTMENT = 1000.0
@@ -96,12 +96,12 @@ def build_stage_plan(account: dict, *, blocked: dict | None = None) -> dict:
         if available[carrier] > account[f"{prefix}_cash"]:
             raise PlanValidationError("INVALID_AVAILABLE_CASH", "可用现金超过现金余额")
 
-    sells = {key: -delta for key, delta in deltas.items()
+    deferred_reductions = {key: -delta for key, delta in deltas.items()
              if key in (*CARRIERS, "changqian", "overseas") and delta <= -MIN_ADJUSTMENT and key not in blocked}
+    sells = {}  # 当前迁移阶段：目标减配只列后续缺口，不生成本期释放任务。
     gaps = {key: delta for key, delta in deltas.items()
             if key in CARRIERS and delta >= MIN_ADJUSTMENT and key not in blocked}
-    # 终态允许本轮释放方案补回现金，但当批买入永不超过已经可用的现金。
-    # 只有可生成释放计划的方向计入；任何释放失败都要求更新事实后重算。
+    # 本期只分配现有现金；后续目标回流不计即时或终态购买力。
     reserves = {}
     reserve_topups = {}
     for carrier in ("stock", "cb", "pingan"):
@@ -115,7 +115,7 @@ def build_stage_plan(account: dict, *, blocked: dict | None = None) -> dict:
         raise PlanValidationError("CASH_RESERVE_SHORTFALL", "已有现金不足以预留每账户300元；到账后更新事实再生成")
     trading_available = {c: max(0, available[c] - reserves[c]) for c in reserves}
     bank_available = money(available["cash"] - sum(reserve_topups.values()))
-    spendable = min(bank_available + sum(trading_available.values()), max(0.0, current["cash_pool"] + sum(sells.values()) - targets["cash_pool"]))
+    spendable = bank_available + sum(trading_available.values())
     allocated = proportional(gaps, spendable)
     carrier_need = {carrier: sum(allocated.get(key, 0) for key, c in CARRIERS.items() if c == carrier)
                     for carrier in ("stock", "cb", "pingan")}
@@ -177,8 +177,9 @@ def build_stage_plan(account: dict, *, blocked: dict | None = None) -> dict:
             "transfer_deltas": {"stock": money(strategy_cash["stock"] - available["stock"]),
                                 "bond": money(strategy_cash["cb"] - available["cb"])},
             "buy_budgets": allocated,
-            "sell_budgets": sells, "blocked": blocked,
+            "sell_budgets": sells, "deferred_reductions": deferred_reductions, "blocked": blocked,
+            "phase": "existing_cash_first",
             "cash": {"available": available["cash"], "immediate_outflow": used_bank,
                      "remaining": money(available["cash"] - used_bank),
                      "terminal_estimate": money(current["cash_pool"] + planned["cash_pool"]),
-                     "note": "终态为全部计划动作完成后、未扣交易费用的估计；即时买入只使用已有现金。"}}
+                     "note": "当前先用已有现金；高配减持和投顾赎回仅列后续目标，不是本期调拨。现金目标允许迁移中暂时偏离。"}}

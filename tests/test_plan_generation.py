@@ -17,6 +17,9 @@ from datasource.youzhiyouxing import DATA_URL
 
 class TestPlanGeneration(unittest.TestCase):
     def setUp(self):
+        reference_quotes = patch("app.fund_reference.fetch_reference_quotes", return_value={})
+        reference_quotes.start()
+        self.addCleanup(reference_quotes.stop)
         calendar = patch("app.strategy_runner.resolve_effective_trading_date", return_value=date(2026, 6, 29))
         calendar.start()
         self.addCleanup(calendar.stop)
@@ -299,7 +302,7 @@ class TestPlanGeneration(unittest.TestCase):
         snapshot = plan["snapshot"]
         plan_id = plan["generation"]["plan_id"]
         self.assertEqual(snapshot["version"], 2)
-        self.assertEqual(snapshot["allocation_policy"], "growth-2026-09-29-cash-band")
+        self.assertEqual(snapshot["allocation_policy"], "growth-2026-09-29-existing-cash-first")
         self.assertEqual(snapshot["plan_id"], plan_id)
         self.assertEqual(snapshot["data_date"], "2026-06-29")
         self.assertEqual(snapshot["execution_date"], "2026-06-30")
@@ -516,7 +519,7 @@ class TestPlanGeneration(unittest.TestCase):
         self.assertEqual(saved["status"], plan_lifecycle.STALE)
         self.assertEqual(saved["error"]["code"], "PLAN_INPUTS_CHANGED")
 
-    def test_market_change_during_generation_stales_the_captured_plan(self):
+    def test_market_change_during_generation_preserves_frozen_inputs(self):
         def cb_size(*_args, **_kwargs):
             running = plan_lifecycle.get_running_plan_status("2026-06-29")
             captured = plan_lifecycle.get_plan(running["plan_id"])
@@ -547,17 +550,12 @@ class TestPlanGeneration(unittest.TestCase):
             },
         })
 
-        with self.assertRaises(PlanServiceError) as caught:
-            plan_generation.generate_complete_plan(
-                size_cb_orders=cb_size,
-                size_stock_orders=stock_size,
-            )
-
-        detail = caught.exception.detail
-        saved = plan_lifecycle.get_plan(detail["plan_id"])
-        self.assertEqual(caught.exception.status_code, 409)
-        self.assertEqual(detail["code"], "PLAN_INPUTS_CHANGED")
-        self.assertEqual(saved["status"], plan_lifecycle.STALE)
+        result = plan_generation.generate_complete_plan(
+            size_cb_orders=cb_size, size_stock_orders=stock_size,
+        )
+        saved = plan_lifecycle.get_plan(result["generation"]["plan_id"])
+        self.assertEqual(saved["status"], plan_lifecycle.COMPLETE)
+        self.assertEqual(saved["plan"]["account"]["stock_total"], 209555)
 
     def test_strategy_ranking_date_mismatch_has_plan_generation_stage(self):
         self._clear_strategy_outputs()
