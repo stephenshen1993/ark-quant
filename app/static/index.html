@@ -2804,6 +2804,9 @@
                 <div>
                   <h3>当前持仓</h3>
                   <p>默认保留现有持仓；列表按持仓市值从高到低排列，行情暂缺的证券排在最后。</p>
+                  <template x-for="item in (selected?.valuation?.items || []).filter(item => item.price_note)" :key="item.code">
+                    <p x-text="item.price_note"></p>
+                  </template>
                 </div>
               </div>
               <div x-ref="holdingsTable" class="account-current-holding-table" role="table" aria-label="持仓编辑表">

@@ -320,7 +320,16 @@ def fetch_cb_quotes_tencent(codes: list[str], batch_size: int = 50) -> dict[str,
             code = "".join(ch for ch in fields[2] if ch.isdigit())[-6:].zfill(6)
             price = pd.to_numeric(fields[3], errors="coerce")
             if code and pd.notna(price) and price > 0:
-                quotes[code] = {"name": fields[1], "price": float(price)}
+                timestamp = fields[30] if len(fields) > 30 else ""
+                quote_date = None
+                if len(timestamp) >= 8 and timestamp[:8].isdigit():
+                    try:
+                        quote_date = date(int(timestamp[:4]), int(timestamp[4:6]),
+                                          int(timestamp[6:8])).isoformat()
+                    except ValueError:
+                        pass
+                quotes[code] = {"name": fields[1], "price": float(price),
+                                "quote_date": quote_date}
     return quotes
 
 

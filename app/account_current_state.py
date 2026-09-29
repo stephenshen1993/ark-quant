@@ -305,6 +305,19 @@ def _derive_valuation(account_id: str, raw: dict) -> dict:
     for position in positions:
         quote = quotes.get(position["code"], {})
         price = _positive_finite_or_none(quote.get("price"))
+        price_note = None
+        # Verified issuer event, not an edit to historical market data. Apply
+        # only to the exact stale snapshot observed at the ex-interest cutover.
+        # Source: https://paper.cnstock.com/html/2026-09/22/content_2271342.htm
+        if (
+            account_id == "cb"
+            and position["code"] == "127046"
+            and quote.get("quote_date") == "2026-09-28"
+            and datetime.now(LOCAL_TZ).date() >= date(2026, 9, 29)
+            and price == 124.724
+        ):
+            price = round(price - 1.8, 3)
+            price_note = "百润转债：旧报价已按9月29日每张付息1.80元调整估值；新行情到达后自动接替。此价仅用于估值。"
         market_value = None if price is None else round(price * position["quantity"], 2)
         if market_value is None:
             missing_codes.append(position["code"])
@@ -317,6 +330,8 @@ def _derive_valuation(account_id: str, raw: dict) -> dict:
                 "quantity": position["quantity"],
                 "price": price,
                 "market_value": market_value,
+                **({"price_note": price_note, "raw_price": quote.get("price")}
+                   if price_note else {}),
             }
         )
 

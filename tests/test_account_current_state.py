@@ -2,8 +2,9 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pandas as pd
 from fastapi.testclient import TestClient
@@ -24,6 +25,50 @@ class TestAccountCurrentState(unittest.TestCase):
     def tearDown(self):
         db._TEST_CONN.close()
         db._TEST_CONN = None
+
+    @patch("app.account_current_state.datetime")
+    @patch("datasource.market.fetch_cb_quotes_tencent")
+    def test_paid_coupon_adjusts_only_the_verified_pre_ex_date_quote(self, fetch, clock):
+        clock.now.return_value = datetime(2026, 9, 29, 8, 30)
+        raw = {"available_cash": 195.57, "frozen_cash": 0,
+               "positions": [{"code": "127046", "quantity": 80}]}
+        quote = {"name": "百润转债", "price": 124.724,
+                 "quote_date": "2026-09-28"}
+        fetch.return_value = {"127046": quote}
+        valuation = account_current_state._derive_valuation("cb", raw)
+        self.assertEqual(valuation["items"][0]["price"], 122.924)
+        self.assertEqual(valuation["items"][0]["market_value"], 9833.92)
+        self.assertEqual(valuation["total"], 10029.49)
+        self.assertEqual(quote["price"], 124.724)  # Historical quote is untouched.
+        self.assertEqual(raw["available_cash"], 195.57)
+
+        # A fresh quote, even at the same price, must never lose another coupon.
+        quote["quote_date"] = "2026-09-29"
+        self.assertEqual(account_current_state._derive_valuation("cb", raw)
+                         ["items"][0]["price"], 124.724)
+        quote["price"] = 122.924
+        self.assertEqual(account_current_state._derive_valuation("cb", raw)
+                         ["items"][0]["price"], 122.924)
+
+        clock.now.return_value = datetime(2026, 9, 28, 16, 30)
+        quote.update(price=124.724, quote_date="2026-09-28")
+        self.assertEqual(account_current_state._derive_valuation("cb", raw)
+                         ["items"][0]["price"], 124.724)
+
+    @patch("requests.get")
+    def test_cb_quote_preserves_raw_price_and_quote_date(self, get):
+        from datasource.market import fetch_cb_quotes_tencent
+
+        fields = [""] * 31
+        fields[1:4] = ["百润转债", "127046", "124.724"]
+        for timestamp, expected in [("20260928161500", "2026-09-28"),
+                                    ("20261328161500", None), ("", None)]:
+            with self.subTest(timestamp=timestamp):
+                fields[30] = timestamp
+                get.return_value = Mock(text='v_sz127046="' + "~".join(fields) + '";')
+                quote = fetch_cb_quotes_tencent(["127046"])["127046"]
+                self.assertEqual(quote["price"], 124.724)
+                self.assertEqual(quote["quote_date"], expected)
 
     def test_account_list_starts_with_independent_missing_states(self):
         response = self.client.get("/api/accounts")
