@@ -3067,7 +3067,7 @@
                       <h3 class="plan-account-title" x-text="plan.account_name"></h3>
                       <p class="plan-account-subtitle"><span x-text="plan.strategy_name"></span> <span x-text="accountTradeDateText(plan)"></span></p>
                     </div>
-                    <span class="plan-account-funding-state" :class="fundingStateClass(plan.funding)" x-text="fundingStateText(plan.funding)"></span>
+                    <span x-show="fundingStateText(plan.funding)" class="plan-account-funding-state" :class="fundingStateClass(plan.funding)" x-text="fundingStateText(plan.funding)"></span>
                   </div>
                   <p x-show="fundingPrerequisiteText(plan)" class="plan-account-prerequisite" x-text="fundingPrerequisiteText(plan)"></p>
                 </header>
@@ -3130,16 +3130,18 @@
                           </tbody>
                         </template>
 	                      </table>
-	                      <p class="workspace-meta mt-2" x-show="plan.execution_guardrails?.review_required">实时价格、净值与溢价待核验；委托前按最新价格重新核算数量。</p>
+
 <p class="workspace-meta mt-2" x-show="plan.execution_guardrails?.reference_price_is_limit">买入不高于表中限价，卖出不低于表中限价；手续费从预留现金中扣除。</p>
 	                    </div>
 	                  </section>
                   <div class="plan-account-result">
-                    <span class="workspace-meta" x-text="'参考价日期：' + (plan.execution_guardrails?.price_basis_date || executionReadModel()?.plan_date || '待确认') + (plan.execution_guardrails?.reference_price_is_limit ? '' : '（非下单限价）')"></span>
+
                     <span>预计剩余现金 <strong x-text="fmtMoney(plan.cash.expected_ending)"></strong><small> 未扣费用</small></span>
                   </div>
                   <details class="plan-cash-audit">
                     <summary>查看计算与执行依据</summary>
+                    <p class="workspace-meta mt-2">下单前核对可用资金和最新价格；价格变化时按预算重新核算数量。</p>
+                    <p class="workspace-meta mt-2" x-show="plan.execution_guardrails?.review_required" x-text="plan.execution_guardrails?.review_required"></p>
 	                    <div class="plan-cash-equation" aria-label="账户交易计划资金闭合">
 	                      <div class="plan-cash-term">
 	                        <div class="plan-cash-label">起始可用资金</div>
@@ -5502,15 +5504,7 @@
         if (blocked) return `${blocked.account_name}资金不足，暂不可执行；先处理资金缺口。`
         const waiting = plans.find(plan => plan?.funding?.state === 'waits_for_funds')
         if (waiting) return `${waiting.account_name}需等待资金可用；到账前不要执行该账户交易。`
-        const transfer = plans.find(plan => plan?.funding?.state === 'needs_same_day_transfer')
-        if (transfer) {
-          const readyCount = plans.filter(plan => plan?.funding?.state === 'ready').length
-          const readyText = readyCount ? `其余 ${readyCount} 个账户可直接执行。` : ''
-          return `先向${transfer.account_name}调入 ${this.fmtMoney(transfer.funding.transfer_in || 0)} 并确认到账；${readyText}`
-        }
-        const readyCount = plans.filter(plan => plan?.funding?.state === 'ready').length
-        const pendingCount = plans.filter(plan => ['needs_terms', 'needs_price_review'].includes(plan?.funding?.state)).length
-        return `${readyCount} 个账户资金已具备。` + (pendingCount ? `${pendingCount} 个账户为参考草案，委托前需核价。` : '可核对证券交易。')
+        return '先按资金安排完成调拨，再按各账户清单交易。'
       },
       hasExecutionPlans() {
         return Boolean(this.fundingPlan() || this.accountTradingPlans().length)
@@ -5558,9 +5552,6 @@
             ? `等待资金可用：${incomingText}；此前不可执行。`
             : `等待资金于 ${funding.display_date || '待确认日期'} 可用；此前不可执行。`
         }
-        if (Number(funding.transfer_in || plan?.cash?.transfer_in || 0) > 0) {
-          return `先确认 ${this.fmtMoney(funding.transfer_in || plan.cash.transfer_in)} 已调入，再执行该账户交易。`
-        }
         return ''
       },
       guardrailText(rule) {
@@ -5573,14 +5564,16 @@
         return '执行前必须再次核对本策略硬约束。'
       },
       fundingStateDescriptor(funding) {
+        const state = funding?.state !== 'blocked' && ['next_trading_day', 'deferred'].includes(funding?.available_on)
+          ? 'waits_for_funds' : funding?.state
         const descriptor = {
-          ready: { text: '可直接执行', className: 'is-ready' },
-          needs_same_day_transfer: { text: '待调入', className: 'is-same-day' },
+          ready: { text: '', className: '' },
+          needs_same_day_transfer: { text: '', className: '' },
           waits_for_funds: { text: '等待未来资金可用', className: 'is-future' },
           blocked: { text: '资金不足 · 已阻断', className: 'is-blocked' },
-          needs_price_review: { text: '参考订单 · 委托前核价', className: 'is-future' },
+          needs_price_review: { text: '', className: '' },
           needs_terms: { text: '等待公开行情更新', className: 'is-future' },
-        }[funding?.state] || { text: '等待资金确认', className: '' }
+        }[state] || { text: '等待资金确认', className: '' }
         const shouldShowDate = Boolean(
           funding?.display_date &&
           ['waits_for_funds', 'blocked'].includes(funding?.state) &&

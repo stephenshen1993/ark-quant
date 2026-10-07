@@ -733,7 +733,7 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn('x-show="fundingPrerequisiteText(plan)"', self.html)
         self.assertIn("Number(plan?.cash?.expected_ending) < 0", self.html)
         self.assertIn("['next_trading_day', 'deferred'].includes(funding.available_on)", self.html)
-        self.assertIn("Number(funding.transfer_in || plan?.cash?.transfer_in || 0) > 0", self.html)
+        self.assertNotIn("先确认 ${this.fmtMoney(funding.transfer_in", self.html)
         self.assertIn("${group.label} ${group.orders.length} 笔", self.html)
 
     def test_new_account_trade_rows_remain_compact_mobile_records(self):
@@ -829,3 +829,18 @@ class TestTradingPageInteraction(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestUniformSecuritiesPlanPresentation(unittest.TestCase):
+    def test_normal_accounts_share_presentation_and_review_notes_are_folded(self):
+        html = INDEX_HTML.read_text(encoding="utf-8")
+        self.assertNotIn("参考订单 · 委托前核价", html)
+        self.assertNotIn("个账户为参考草案", html)
+        self.assertNotIn("text: '可直接执行'", html)
+        self.assertIn("needs_price_review: { text: '', className: '' }", html)
+        self.assertIn("needs_same_day_transfer: { text: '', className: '' }", html)
+        audit = html.index('<summary>查看计算与执行依据</summary>')
+        review = html.index('x-text="plan.execution_guardrails?.review_required"')
+        self.assertLess(audit, review)
+        self.assertIn("['next_trading_day', 'deferred'].includes(funding?.available_on)", html)
+        self.assertIn("Number(plan?.cash?.expected_ending) < 0", html)
