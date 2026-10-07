@@ -463,7 +463,7 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("仅供追溯，不应据此执行交易", self.html)
 
     def test_execution_copy_keeps_same_day_inflow_and_next_day_return_separate(self):
-        self.assertIn("fundingPlan().groups", self.html)
+        self.assertIn("currentFundingGroups()", self.html)
         self.assertIn("group.label", self.html)
         self.assertIn("action.source_account_name", self.html)
         self.assertIn("action.target_account_name", self.html)
@@ -520,7 +520,7 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("plan.cash.expected_ending", self.html)
         self.assertIn("计划后预计资金余额", self.html)
         self.assertIn('class="plan-cash-audit"', self.html)
-        self.assertIn("执行说明", self.html)
+        self.assertIn("查看计算与执行依据", self.html)
         self.assertIn('class="plan-account-card"', self.html)
         self.assertNotIn('class="ark-panel plan-transfer-panel', self.html)
         self.assertNotIn('class="ark-panel plan-order-panel', self.html)
@@ -531,27 +531,32 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn('class="plan-cash-equation"', account_summary)
         self.assertNotIn("起始可用资金", account_summary)
 
-    def test_funding_plan_precedes_collapsed_account_plans(self):
+    def test_account_selection_is_resolved_outside_nested_plan_scope(self):
+        self.assertIn('x-effect="if (accountTradingPlans().length) expandedAccountId = selectedPlanAccountId()"', self.html)
+        self.assertNotIn('selectedPlanAccountId() === plan.account_id', self.html)
+        self.assertIn('x-show="expandedAccountId === plan.account_id"', self.html)
+
+    def test_funding_precedes_single_account_workspace(self):
         funding = self.html.index('aria-label="资金调拨计划"')
         accounts = self.html.index('aria-label="账户交易计划"')
         self.assertLess(funding, accounts)
-        self.assertIn('name="account-trading-plan"', self.html)
-        self.assertIn(':open="expandedAccountId === plan.account_id"', self.html)
-        self.assertIn('@toggle="handleAccountPlanToggle($event, plan.account_id)"', self.html)
-        self.assertNotIn('<details class="plan-account-card" open', self.html)
+        self.assertIn('x-show="expandedAccountId === plan.account_id"', self.html)
+        self.assertNotIn('name="account-trading-plan"', self.html)
+        self.assertIn('aria-label="账户交易切换"', self.html)
 
-    def test_funding_index_keeps_plan_route_while_scrolling_to_funding_section(self):
-        self.assertNotIn('href="#plan-funding-step"', self.html)
-        self.assertIn('@click="focusFundingPlan()"', self.html)
-        self.assertIn('focusFundingPlan() {', self.html)
-        self.assertIn("document.getElementById('plan-funding-step')", self.html)
+    def test_conditional_redemptions_are_separate_from_current_funding(self):
+        self.assertIn('x-for="group in currentFundingGroups()"', self.html)
+        self.assertIn('action => !action.conditional', self.html)
+        self.assertIn('aria-label="成交后赎回安排"', self.html)
+        self.assertIn('action => action.conditional', self.html)
+        self.assertIn('以上不是立即赎回指令', self.html)
 
     def test_expanded_account_plan_keeps_context_and_execution_guardrails(self):
         self.assertNotIn('class="plan-account-folio"', self.html)
-        self.assertIn('x-show="expandedAccountId"', self.html)
-        self.assertIn('aria-label="账户交易明细导航"', self.html)
+        self.assertIn('x-show="expandedAccountId === plan.account_id"', self.html)
+        self.assertIn('aria-label="账户交易切换"', self.html)
         self.assertIn('position: sticky;', self.html)
-        self.assertIn("closeAccountPlan(plan.account_id)", self.html)
+        self.assertNotIn("closeAccountPlan(plan.account_id)", self.html)
         self.assertIn("plan.execution_guardrails?.price_basis_date", self.html)
         self.assertIn("plan.execution_guardrails?.rules", self.html)
         self.assertIn("guardrailText(rule)", self.html)
@@ -570,7 +575,7 @@ class TestTradingPageInteraction(unittest.TestCase):
         cash_equation = self.html.index('class="plan-cash-equation"', trade_table)
         self.assertLess(trade_table, cash_audit)
         self.assertLess(cash_audit, guardrails)
-        self.assertLess(cash_equation, cash_audit)
+        self.assertLess(cash_audit, cash_equation)
 
     def test_funding_plan_is_one_compact_table_with_amount_next_to_route(self):
         self.assertIn('class="plan-funding-table"', self.html)
@@ -709,7 +714,7 @@ class TestTradingPageInteraction(unittest.TestCase):
 
     def test_execution_document_puts_account_identity_on_one_desktop_line(self):
         self.assertIn("@media (min-width: 761px)", self.html)
-        self.assertIn('class="plan-account-subtitle-separator"', self.html)
+        self.assertIn('class="plan-account-header"', self.html)
         self.assertIn(".plan-account-heading-copy {\n      display: flex;", self.html)
         self.assertIn(".plan-account-heading .plan-step-number { grid-row: auto; }", self.html)
         self.assertIn(".plan-account-card[open] > summary { padding: 10px 18px; }", self.html)
@@ -722,23 +727,14 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn(".plan-execution-index-item.is-current {", self.html)
         self.assertNotIn("资金安排阶段", self.html)
 
-    def test_account_plan_summary_exposes_the_trade_detail_toggle(self):
+    def test_account_workspace_keeps_prerequisites_visible(self):
         self.assertIn("plan.account_name + '交易计划'", self.html)
-        self.assertIn('class="plan-account-detail-toggle"', self.html)
-        self.assertIn("'查看 ' + accountTradeOrders(plan).length + ' 笔交易'", self.html)
-        self.assertIn("收起交易明细", self.html)
-        self.assertIn('.plan-account-card[open] .plan-account-toggle-open', self.html)
-        self.assertIn(".plan-account-card[open] .plan-account-detail-toggle { display: none; }", self.html)
-        self.assertNotIn('class="plan-account-open-summary"', self.html)
-        self.assertIn("accountExecutionSummary(plan)", self.html)
-        self.assertIn("先确认 ${this.fmtMoney(funding.transfer_in)} 已调入", self.html)
+        self.assertNotIn('class="plan-account-detail-toggle"', self.html)
+        self.assertIn('x-show="fundingPrerequisiteText(plan)"', self.html)
+        self.assertIn("Number(plan?.cash?.expected_ending) < 0", self.html)
+        self.assertIn("['next_trading_day', 'deferred'].includes(funding.available_on)", self.html)
+        self.assertIn("Number(funding.transfer_in || plan?.cash?.transfer_in || 0) > 0", self.html)
         self.assertIn("${group.label} ${group.orders.length} 笔", self.html)
-        self.assertNotIn("计划后资金", self.html)
-        self.assertNotIn("accountPlanFolioTitle(plan)", self.html)
-        self.assertNotIn("display_ordinal: `${index + 1}/${plans.length}`", self.html)
-        self.assertNotIn("accountPlanFolioMeta(plan)", self.html)
-        self.assertNotIn("plan-account-folio-meta", self.html)
-        self.assertNotIn("截图模式", self.html)
 
     def test_new_account_trade_rows_remain_compact_mobile_records(self):
         self.assertIn('class="plan-trade-row"', self.html)
@@ -812,10 +808,10 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("正在生成完整计划…", self.html)
         self.assertNotIn("generationStage + '…'", self.html)
 
-    def test_plan_page_has_restorable_focus_view_and_stable_loading_state(self):
-        self.assertIn("planFocus", self.html)
-        self.assertIn("toggleFocusMode()", self.html)
-        self.assertIn("plan-focus-mode", self.html)
+    def test_plan_page_has_one_view_and_stable_loading_state(self):
+        self.assertNotIn("planFocus", self.html)
+        self.assertNotIn("toggleFocusMode()", self.html)
+        self.assertNotIn("plan-focus-mode", self.html)
         self.assertIn("正在确认最新计划…", self.html)
         self.assertIn('x-show="planReady && !isReviewableExecutionPlan()"', self.html)
         self.assertIn("await this.loadWorkStatus()", self.html)

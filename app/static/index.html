@@ -1174,22 +1174,6 @@
   }
   .plan-trade-quantity { color: var(--ark-text); font-weight: 800; }
   .plan-trade-amount { font-weight: 700; }
-  html.plan-focus-mode .app-nav,
-  html.plan-focus-mode .global-status-shell,
-  html.plan-focus-mode .plan-history-panel,
-  html.plan-focus-mode .plan-conditions-panel,
-  html.plan-focus-mode .plan-readiness-panel,
-  html.plan-focus-mode .plan-advanced-panel { display: none !important; }
-  html.plan-focus-mode .app-main {
-    min-height: 100vh;
-    padding-bottom: 40px;
-  }
-  html.plan-focus-mode .plan-workbench {
-    max-width: 1240px;
-    padding: 24px 30px 64px;
-  }
-  html.plan-focus-mode .plan-account-card > summary { padding: 16px 18px; }
-  html.plan-focus-mode .plan-trade-table { font-size: 15px; }
   @media (min-width: 761px) {
     .plan-step-header {
       grid-template-columns: 24px minmax(0, 1fr);
@@ -2273,8 +2257,6 @@
     .plan-trade-position { grid-area: position; }
     .plan-trade-price { grid-area: price; }
     .plan-trade-amount { grid-area: amount; text-align: right !important; }
-    html.plan-focus-mode .app-main { min-height: 100vh; }
-    html.plan-focus-mode .plan-workbench { padding: 18px 14px 54px; }
     .plan-order-table-scroll { overflow: visible; }
     .plan-order-table-scroll .order-plan-table,
     .plan-order-table-scroll .order-plan-table tbody {
@@ -2384,6 +2366,29 @@
   .account-fund-grid label { display: block; min-width: 0; font-size: 13px; line-height: 1.6; }
   .account-fund-grid input { display: block; min-width: 0; margin-top: 5px; color: var(--ark-text); height: 42px; }
   @media (max-width: 600px) { .account-fund-grid { grid-template-columns: minmax(0, 1fr); } }
+  .plan-account-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 255px; gap: 20px; margin-top: 20px; align-items: start; }
+  .plan-execution-sheet { background: transparent; border: 0; overflow: visible; }
+  .plan-funding-plan, .plan-account-workspace > section, .plan-redemption-panel { background: var(--ark-panel); border: 1px solid var(--ark-line); border-radius: 12px; overflow: hidden; }
+  .plan-funding-plan .plan-step-header { display: block; }
+  .plan-account-tabs { display: flex; border-bottom: 1px solid var(--ark-line); background: var(--ark-paper); }
+  .plan-account-tabs button { flex: 1; min-width: 0; padding: 15px 8px; text-align: center; }
+  .plan-account-tabs button.is-current { background: var(--ark-accent-soft); color: var(--ark-accent-deep); box-shadow: inset 0 -3px var(--ark-accent); }
+  .plan-account-tabs small { display: block; margin-top: 5px; color: var(--ark-muted); font-size: 12px; }
+  .plan-account-tabs button:focus-visible { outline: 2px solid var(--ark-accent); outline-offset: -3px; }
+  .plan-account-workspace .plan-account-card { border-top: 0; }
+  .plan-account-header { padding: 20px 22px 0; }
+  .plan-account-workspace .plan-account-detail { padding: 0 22px 20px; }
+  .plan-account-header .plan-account-heading { grid-template-columns: minmax(0,1fr) auto; }
+  .plan-account-header .plan-account-prerequisite { display: block; margin-top: 12px; }
+  .plan-account-result { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin: 14px 0; font-size: 13px; }
+  .plan-account-result small, .plan-position-evidence { color: var(--ark-muted); font-size: 12px; }
+  .plan-position-evidence { margin: 14px 0; }
+  .plan-redemption-panel { padding: 20px; }
+  .plan-redemption-row { display: grid; gap: 5px; margin-top: 18px; font-size: 13px; }
+  .plan-redemption-row strong { font-variant-numeric: tabular-nums; }
+  .plan-account-workspace .plan-trade-table { min-width: 560px; }
+  @media(max-width: 760px) { .plan-account-workspace .plan-trade-table { min-width: 0; } .plan-account-workspace .plan-account-detail { padding: 0 16px 16px; } }
+  @media(max-width: 1150px) { .plan-account-workspace { grid-template-columns: minmax(0, 1fr); } }
 </style>
 </head>
 <body class="bg-gray-50 text-gray-900 flex h-screen antialiased">
@@ -2915,15 +2920,8 @@
         </p>
       </div>
       <div class="plan-masthead-side">
-        <button
-          x-show="hasSavedGeneratedPlan()"
-          x-cloak
-          type="button"
-          class="plan-focus-toggle"
-          :aria-pressed="focusMode ? 'true' : 'false'"
-          @click="toggleFocusMode()"
-          x-text="focusMode ? '退出专注视图' : '进入专注视图'">
-        </button>
+        <button x-show="hasCurrentGeneratedPlan() && !isSelectedHistoricalPlan()" x-cloak type="button"
+          class="plan-focus-toggle" @click="generateCompletePlan()" :disabled="!canGenerateCompletePlan()">更新计划</button>
       </div>
     </div>
 
@@ -2993,44 +2991,20 @@
     <!-- 执行计划必须紧跟今日决策 -->
     <template x-if="isReviewableExecutionPlan() || (isHistoricalPlanSnapshot() && snapshotExpanded)">
     <div class="plan-execution-dossier" aria-label="计划执行卷宗">
-      <nav x-show="expandedAccountId" x-cloak class="plan-execution-index" aria-label="账户交易明细导航">
-        <div class="plan-execution-index-list">
-          <button
-            x-show="fundingPlan()"
-            type="button"
-            @click="focusFundingPlan()"
-            class="plan-execution-index-item">
-            <span class="plan-execution-index-number">01</span>
-            <span class="plan-execution-index-copy">资金安排</span>
-          </button>
-          <template x-for="(plan, accountIndex) in accountTradingPlans()" :key="'index-' + plan.account_id">
-            <button
-              type="button"
-              class="plan-execution-index-item"
-              :class="expandedAccountId === plan.account_id ? 'is-current' : ''"
-              :aria-pressed="expandedAccountId === plan.account_id ? 'true' : 'false'"
-              :aria-label="expandedAccountId === plan.account_id ? '收起' + plan.account_name + '交易明细' : '查看' + plan.account_name + '交易明细'"
-              @click="expandedAccountId === plan.account_id ? closeAccountPlan(plan.account_id) : switchAccountPlan(plan.account_id)">
-              <span class="plan-execution-index-number" x-text="plan.display_sequence"></span>
-              <span class="plan-execution-index-copy" x-text="plan.account_name"></span>
-            </button>
-          </template>
-        </div>
-      </nav>
       <div class="plan-execution-sheet">
       <template x-if="fundingPlan()">
         <section id="plan-funding-step" class="plan-funding-plan plan-run-step" aria-label="资金调拨计划">
           <header class="plan-step-header">
-            <span class="plan-step-number">01</span>
-            <h2 class="plan-step-title">资金安排：先调入，成交后分批赎回</h2>
+            <h2 class="plan-step-title">本期资金安排</h2>
           </header>
           <div class="plan-step-body plan-funding-table-scroll">
             <p class="workspace-meta mb-3" x-show="plan?.fund_transfer?.cash">
               资金池已有 <strong x-text="fmtMoney(plan?.fund_transfer?.cash?.available)"></strong>；
               本期立即调出 <strong x-text="fmtMoney(plan?.fund_transfer?.cash?.immediate_outflow)"></strong>；
-              调出后余款 <strong x-text="fmtMoney(plan?.fund_transfer?.cash?.remaining)"></strong>。下列待回池款均未计入本期购买力。
+              调出后余款 <strong x-text="fmtMoney(plan?.fund_transfer?.cash?.remaining)"></strong>。
             </p>
-            <table class="plan-funding-table" aria-label="资金调拨动作">
+            <p x-show="!currentFundingGroups().length" class="workspace-meta">本期无需立即调拨资金。</p>
+            <table x-show="currentFundingGroups().length" class="plan-funding-table" aria-label="资金调拨动作">
               <colgroup>
                 <col class="plan-funding-route-col">
                 <col class="plan-funding-amount-col">
@@ -3044,7 +3018,7 @@
                 </tr>
               </thead>
               <tbody>
-                <template x-for="group in fundingPlan().groups" :key="group.availability">
+                <template x-for="group in currentFundingGroups()" :key="group.availability">
                   <template x-for="(action, actionIndex) in group.actions" :key="`${group.availability}-${action.source_account_id}-${action.target_account_id}-${actionIndex}`">
                     <tr class="plan-funding-action">
                       <td class="plan-funding-direction" data-label="调拨路线">
@@ -3066,42 +3040,37 @@
           </div>
         </section>
       </template>
+      <div class="plan-account-workspace">
       <template x-if="accountTradingPlans().length">
         <section aria-label="账户交易计划">
-          <div class="plan-account-list" :class="fundingPlan() ? 'has-funding-step' : ''">
+          <nav class="plan-account-tabs" aria-label="账户交易切换" x-effect="if (accountTradingPlans().length) expandedAccountId = selectedPlanAccountId()">
+            <template x-for="plan in accountTradingPlans()" :key="'tab-' + plan.account_id">
+              <button type="button" :class="expandedAccountId === plan.account_id ? 'is-current' : ''"
+                :aria-pressed="expandedAccountId === plan.account_id" :aria-controls="'plan-account-' + plan.account_id"
+                @click="switchAccountPlan(plan.account_id)">
+                <strong x-text="plan.account_name"></strong><small x-text="accountActionSummary(plan)"></small>
+              </button>
+            </template>
+          </nav>
+          <div class="plan-account-list">
 	            <template x-for="(plan, accountIndex) in accountTradingPlans()" :key="plan.account_id">
-              <details
-                name="account-trading-plan"
+              <article
+                x-show="expandedAccountId === plan.account_id"
                 class="plan-account-card"
                 :id="'plan-account-' + plan.account_id"
-                :open="expandedAccountId === plan.account_id"
-                @toggle="handleAccountPlanToggle($event, plan.account_id)"
                 :data-plan-account-id="plan.account_id"
                 :data-state="plan.funding.state"
                 :aria-label="plan.account_name + '交易计划'">
-                <summary>
+                <header class="plan-account-header">
                   <div class="plan-account-heading">
-                    <span class="plan-step-number" x-text="plan.display_sequence"></span>
                     <div class="plan-account-heading-copy">
                       <h3 class="plan-account-title" x-text="plan.account_name"></h3>
-                      <p class="plan-account-subtitle">
-                        <span class="plan-account-subtitle-separator" aria-hidden="true">·</span>
-                        <span x-text="plan.strategy_name"></span>
-                        <span x-show="accountTradeDateText(plan)" aria-hidden="true"> · </span>
-                        <span x-show="accountTradeDateText(plan)" x-text="accountTradeDateText(plan)"></span>
-                      </p>
+                      <p class="plan-account-subtitle"><span x-text="plan.strategy_name"></span> <span x-text="accountTradeDateText(plan)"></span></p>
                     </div>
                     <span class="plan-account-funding-state" :class="fundingStateClass(plan.funding)" x-text="fundingStateText(plan.funding)"></span>
                   </div>
-                  <div class="plan-account-command plan-account-toggle-closed" x-text="accountExecutionSummary(plan)"></div>
-                  <div x-show="plan.funding.state !== 'ready'" class="plan-account-prerequisite" x-text="fundingPrerequisiteText(plan)"></div>
-                  <p x-show="plan.funding.blocked_reason" class="plan-account-blocked-reason mt-3 text-xs font-medium text-red-600" x-text="plan.funding.blocked_reason"></p>
-                  <div class="plan-account-detail-toggle">
-                    <span class="plan-account-toggle-closed" x-text="accountTradeOrders(plan).length ? '查看 ' + accountTradeOrders(plan).length + ' 笔交易' : '查看待补条件'"></span>
-                    <span class="plan-account-toggle-open">收起交易明细</span>
-                    <span class="plan-account-toggle-icon" aria-hidden="true">⌄</span>
-                  </div>
-                </summary>
+                  <p x-show="fundingPrerequisiteText(plan)" class="plan-account-prerequisite" x-text="fundingPrerequisiteText(plan)"></p>
+                </header>
                 <div class="plan-account-detail">
                   <section x-show="plan.direction_conditions?.length" aria-label="基金方向待补条件">
                     <template x-for="condition in plan.direction_conditions || []" :key="condition.direction">
@@ -3149,11 +3118,11 @@
                                   class="plan-trade-quantity"
                                   x-text="formatQuantity(order.quantity) + ' ' + order.unit">
                                 </div>
-                                <small class="block text-xs font-normal text-gray-500 mt-1" x-show="order.current_quantity != null && order.target_quantity != null" x-text="`持仓 ${formatQuantity(order.current_quantity)} → ${formatQuantity(order.target_quantity)}`"></small>
+
                               </td>
                               <td class="plan-trade-price" :data-label="plan.execution_guardrails?.reference_price_is_limit ? '限价' : '参考价'" data-label="参考价">
                                 <span x-text="order.reference_price == null ? '-' : Number(order.reference_price).toFixed(3)"></span>
-                                <small x-show="plan.account_id === 'pingan'" class="block text-xs font-normal text-gray-500 mt-1" x-text="order.price_basis_date"></small>
+
                               </td>
                               <td class="plan-trade-amount" data-label="预计金额" x-text="fmtMoney(order.estimated_amount)"></td>
                             </tr>
@@ -3161,10 +3130,16 @@
                           </tbody>
                         </template>
 	                      </table>
-	                      <p class="workspace-meta mt-2" x-show="plan.execution_guardrails?.review_required" x-text="plan.execution_guardrails?.review_required"></p>
+	                      <p class="workspace-meta mt-2" x-show="plan.execution_guardrails?.review_required">实时价格、净值与溢价待核验；委托前按最新价格重新核算数量。</p>
 <p class="workspace-meta mt-2" x-show="plan.execution_guardrails?.reference_price_is_limit">买入不高于表中限价，卖出不低于表中限价；手续费从预留现金中扣除。</p>
 	                    </div>
 	                  </section>
+                  <div class="plan-account-result">
+                    <span class="workspace-meta" x-text="'参考价日期：' + (plan.execution_guardrails?.price_basis_date || executionReadModel()?.plan_date || '待确认') + (plan.execution_guardrails?.reference_price_is_limit ? '' : '（非下单限价）')"></span>
+                    <span>预计剩余现金 <strong x-text="fmtMoney(plan.cash.expected_ending)"></strong><small> 未扣费用</small></span>
+                  </div>
+                  <details class="plan-cash-audit">
+                    <summary>查看计算与执行依据</summary>
 	                    <div class="plan-cash-equation" aria-label="账户交易计划资金闭合">
 	                      <div class="plan-cash-term">
 	                        <div class="plan-cash-label">起始可用资金</div>
@@ -3191,8 +3166,11 @@
 	                        <div class="plan-cash-value" :class="plan.funding.state === 'blocked' ? 'text-red-600' : ''" x-text="fmtMoney(plan.cash.expected_ending)"></div>
 	                      </div>
 	                    </div>
-	                  <details class="plan-cash-audit">
-	                    <summary>执行说明</summary>
+                    <div class="plan-position-evidence">
+                      <template x-for="order in accountTradeOrders(plan)" :key="order.action + order.code">
+                        <p x-text="order.name + '（' + order.code + '）：' + positionRouteText(order)"></p>
+                      </template>
+                    </div>
 	                    <section class="plan-execution-guardrails" aria-label="执行保护">
 	                      <div class="plan-execution-guardrail">
 	                        <strong>参考价口径</strong>
@@ -3210,11 +3188,28 @@
 	                    </section>
 	                  </details>
                 </div>
-              </details>
+              </article>
             </template>
           </div>
         </section>
       </template>
+      <aside class="plan-redemption-panel" x-show="conditionalFundingActions().length" aria-label="成交后赎回安排">
+        <h2 class="plan-step-title">成交后再安排赎回</h2>
+        <p class="workspace-meta mt-2">按实际净买入补回现金池，少买少赎、未买不赎。</p>
+        <template x-for="(action, index) in conditionalFundingActions()" :key="action.source_account_id + '-' + action.target_account_id">
+          <div class="plan-redemption-row">
+            <span x-text="(index ? '不足再用' : '优先使用') + action.source_account_name"></span>
+            <strong x-text="'参考上限 ' + fmtMoney(action.amount)"></strong>
+          </div>
+        </template>
+        <details class="plan-cash-audit"><summary>查看赎回依据</summary>
+          <p class="workspace-meta">以上不是立即赎回指令。成交后扣除已有赎回在途，再按国内长钱、海外长钱顺序安排；未到账款不计入本期购买力。</p>
+          <template x-for="action in conditionalFundingActions()" :key="action.source_account_id">
+            <p class="workspace-meta mt-2" x-text="action.note"></p>
+          </template>
+        </details>
+      </aside>
+      </div>
       </div>
     </div>
     </template>
@@ -3253,19 +3248,6 @@
       </div>
     </details>
 
-    <section x-show="!isSelectedHistoricalPlan()" class="ark-panel plan-conditions-panel px-5 py-3 mb-4" aria-label="计划条件">
-      <strong>本阶段：先用现有现金配置海外增长</strong>
-      <p class="workspace-meta">本期只用已有现金买入；成交后按实际净新增投入分批赎回，扣除已有赎回在途，国内长钱优先、不足再赎海外长钱。少买少赎、未买不赎；到账更新后生成下一批，无需等周度轮动。原换股换债照常。</p>
-      <details class="mt-2" x-show="Object.keys(plan?.fund_transfer?.deferred_reductions || {}).length">
-        <summary class="text-sm cursor-pointer">后续目标减配（不属于本期操作）</summary>
-        <template x-for="row in (plan?.fund_transfer?.allocation?.rows || []).filter(row => (plan?.fund_transfer?.deferred_reductions || {})[row.id])" :key="row.id">
-          <p class="text-sm mt-1"><span x-text="row.label"></span>：<span x-text="fmtMoney(plan.fund_transfer.deferred_reductions[row.id])"></span></p>
-        </template>
-      </details>
-      <template x-for="(reason, direction) in (plan?.fund_transfer?.blocked || {})" :key="direction">
-        <p class="text-sm text-amber-700 mt-2"><strong x-text="direction === 'nasdaq' ? '纳指方向' : direction === 'technology' ? '501312' : '转债'"></strong>：<span x-text="reason"></span>。目标保留。</p>
-      </template>
-    </section>
 
     <div x-show="planError" class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-sm text-red-700 whitespace-pre-line" x-text="planError"></div>
 
@@ -3288,12 +3270,25 @@
     <details x-show="!isSelectedHistoricalPlan()" class="ark-panel plan-advanced-panel px-4 py-3 mb-4 text-sm">
       <summary class="cursor-pointer text-xs text-gray-500 select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">高级操作</summary>
       <div class="flex flex-wrap items-center gap-2 mt-3">
-        <button x-show="hasCurrentGeneratedPlan()" @click="generateCompletePlan()" :disabled="!canGenerateCompletePlan()" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">重新生成完整计划</button>
         <button @click="refreshFullPlan(true)" :disabled="loadingPlan" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">更新市场温度</button>
         <button @click="runStrategy('cb')" :disabled="running.cb || loadingPlan" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">生成转债榜单</button>
         <button @click="runStrategy('stock')" :disabled="running.stock || loadingPlan" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">生成股票榜单</button>
         <span class="text-xs text-gray-400">这些操作只准备计划数据，不会执行交易。</span>
       </div>
+    <details class="plan-conditions-panel mt-4" aria-label="计划条件"><summary>阶段规则与后续目标</summary>
+      <strong>本阶段：先用现有现金配置海外增长</strong>
+      <p class="workspace-meta">本期只用已有现金买入；成交后按实际净新增投入分批赎回，扣除已有赎回在途，国内长钱优先、不足再赎海外长钱。少买少赎、未买不赎；到账更新后生成下一批，无需等周度轮动。原换股换债照常。</p>
+      <details class="mt-2" x-show="Object.keys(plan?.fund_transfer?.deferred_reductions || {}).length">
+        <summary class="text-sm cursor-pointer">后续目标减配（不属于本期操作）</summary>
+        <template x-for="row in (plan?.fund_transfer?.allocation?.rows || []).filter(row => (plan?.fund_transfer?.deferred_reductions || {})[row.id])" :key="row.id">
+          <p class="text-sm mt-1"><span x-text="row.label"></span>：<span x-text="fmtMoney(plan.fund_transfer.deferred_reductions[row.id])"></span></p>
+        </template>
+      </details>
+      <template x-for="(reason, direction) in (plan?.fund_transfer?.blocked || {})" :key="direction">
+        <p class="text-sm text-amber-700 mt-2"><strong x-text="direction === 'nasdaq' ? '纳指方向' : direction === 'technology' ? '501312' : '转债'"></strong>：<span x-text="reason"></span>。目标保留。</p>
+      </template>
+    </details>
+
       <template x-for="strategy in ['cb', 'stock']" :key="strategy">
         <div x-show="componentErrors[strategy]" class="text-xs text-red-600 mt-2" x-text="componentErrors[strategy]"></div>
       </template>
@@ -3661,7 +3656,6 @@
       return
     }
     Alpine.store('page', page)
-    if (page !== 'today') document.documentElement.classList.remove('plan-focus-mode')
     const nextHash = page === 'today' ? '#plan' : `#${page}`
     if (window.location.hash !== nextHash) {
       history.pushState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`)
@@ -3687,10 +3681,6 @@
       return
     }
     Alpine.store('page', page)
-    document.documentElement.classList.toggle(
-      'plan-focus-mode',
-      page === 'today' && new URL(window.location.href).searchParams.get('planFocus') === '1',
-    )
   }
 
   function navigateToAccount(accountId) {
@@ -4807,7 +4797,6 @@
       planError: '', readinessError: '', lifecycleError: '', loadingPlan: false, generatingPlan: false, planReady: false, snapshotExpanded: false,
       generationStage: '', componentErrors: { cb: '', stock: '' },
       expandedAccountId: new URL(window.location.href).searchParams.get('planAccount') || '',
-      focusMode: new URL(window.location.href).searchParams.get('planFocus') === '1',
       funding: { snapshot_date: '', temperature: null, check_type: 'a_internal', new_contribution: 0, b_purchase_status: 'unchecked', b_purchase_limit: 0 },
       basisExpanded: { A: true },
       sizingCb: false, sizingStock: false,
@@ -4819,7 +4808,6 @@
       cbTradeDate: '', stockTradeDate: '',
       showCbRank: false, showStockRank: false,
       async init() {
-        this.applyFocusMode()
         try {
           const summary = await fetch('/api/account/summary').then(r => r.json().catch(() => null))
           if (summary) {
@@ -5492,13 +5480,21 @@
       fundingPlan() {
         return this.executionReadModel()?.funding_plan || null
       },
+      currentFundingGroups() {
+        return (this.fundingPlan()?.groups || []).map(group => ({
+          ...group, actions: group.actions.filter(action => !action.conditional),
+        })).filter(group => group.actions.length)
+      },
+      conditionalFundingActions() {
+        return (this.fundingPlan()?.groups || []).flatMap(group => group.actions).filter(action => action.conditional)
+      },
       accountTradingPlans() {
-        const plans = this.executionReadModel()?.account_trading_plans || []
-        const firstAccountStep = this.fundingPlan() ? 2 : 1
-        return plans.map((plan, index) => ({
-          ...plan,
-          display_sequence: String(index + firstAccountStep).padStart(2, '0'),
-        }))
+        return this.executionReadModel()?.account_trading_plans || []
+      },
+      selectedPlanAccountId() {
+        const plans = this.accountTradingPlans()
+        return plans.some(plan => plan.account_id === this.expandedAccountId)
+          ? this.expandedAccountId : (plans[0]?.account_id || '')
       },
       executionBriefText() {
         const plans = this.accountTradingPlans()
@@ -5521,18 +5517,6 @@
       },
       isReviewableExecutionPlan() {
         return ['action', 'future-action'].includes(this.planState()) && this.hasExecutionPlans()
-      },
-      handleAccountPlanToggle(event, accountId) {
-        if (event.currentTarget.open) {
-          this.expandedAccountId = accountId
-        } else if (this.expandedAccountId === accountId) {
-          this.expandedAccountId = ''
-        }
-        this.syncExpandedAccountUrl()
-      },
-      closeAccountPlan(accountId) {
-        if (this.expandedAccountId === accountId) this.expandedAccountId = ''
-        this.syncExpandedAccountUrl()
       },
       syncExpandedAccountUrl() {
         const url = new URL(window.location.href)
@@ -5559,47 +5543,23 @@
         if (!accountId) return
         this.expandedAccountId = accountId
         this.syncExpandedAccountUrl()
-        this.$nextTick(() => {
-          const target = Array.from(document.querySelectorAll('[data-plan-account-id]'))
-            .find(item => item.dataset.planAccountId === accountId)
-          const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-          target?.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' })
-        })
-      },
-      focusFundingPlan() {
-        const target = document.getElementById('plan-funding-step')
-        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        target?.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' })
-      },
-      applyFocusMode() {
-        document.documentElement.classList.toggle('plan-focus-mode', this.focusMode)
-      },
-      toggleFocusMode() {
-        this.focusMode = !this.focusMode
-        this.applyFocusMode()
-        const url = new URL(window.location.href)
-        if (this.focusMode) url.searchParams.set('planFocus', '1')
-        else url.searchParams.delete('planFocus')
-        history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
       },
       fundingPrerequisiteText(plan) {
         const funding = plan?.funding || {}
-        if (funding.state === 'needs_price_review') return `先确认 ${this.fmtMoney(funding.transfer_in || 0)} 已调入；以下为参考订单，委托前核对最新价格与溢价。`
-        if (funding.state === 'needs_terms') return '两个方向归属平安账户，共用账户现金；资金预算已独立计算，核价完成后生成订单。'
         const incoming = funding.incoming_actions || []
         const incomingText = incoming.map(action =>
           `${action.source_account_name} → ${plan.account_name} ${this.fmtMoney(action.amount)}（${action.display_date}可用）`
         ).join('；')
-        if (funding.state === 'blocked') {
+        if (funding.state === 'blocked' || Number(plan?.cash?.expected_ending) < 0) {
           return funding.blocked_reason || '资金条件未闭合，当前不可执行。'
         }
-        if (funding.state === 'waits_for_funds') {
+        if (funding.state === 'waits_for_funds' || ['next_trading_day', 'deferred'].includes(funding.available_on)) {
           return incomingText
             ? `等待资金可用：${incomingText}；此前不可执行。`
             : `等待资金于 ${funding.display_date || '待确认日期'} 可用；此前不可执行。`
         }
-        if (funding.state === 'needs_same_day_transfer') {
-          return `先确认 ${this.fmtMoney(funding.transfer_in)} 已调入，再执行该账户交易。`
+        if (Number(funding.transfer_in || plan?.cash?.transfer_in || 0) > 0) {
+          return `先确认 ${this.fmtMoney(funding.transfer_in || plan.cash.transfer_in)} 已调入，再执行该账户交易。`
         }
         return ''
       },
