@@ -124,9 +124,7 @@ def add_migration_redemption(account: dict, transfer: dict, orders: list[dict]) 
     net_buy = money(max(0, sum((1 if o.get("delta_shares", 0) > 0 else -1) * o["amount"]
                               for o in orders if o.get("delta_shares", 0))))
     pending = money(account.get("changqian_pending", 0) + account.get("overseas_pending", 0))
-    broker_returns = money(sum(a["amount"] for a in result["actions"]
-        if a["source"] in {"stock", "cb", "pingan"} and a["target"] == "cash_pool"))
-    remaining = money(max(0, net_buy - pending - broker_returns))
+    remaining = money(max(0, net_buy - pending))
     amounts = {}
     for source in ("changqian", "overseas"):
         holding = max(0, account.get(source + "_total", 0) - account.get(source + "_pending", 0))
@@ -137,10 +135,10 @@ def add_migration_redemption(account: dict, transfer: dict, orders: list[dict]) 
             result["actions"].append(dict(source=source, target="cash_pool", amount=amount,
                 reason="matched_migration_redemption", immediate=False, available_on="deferred",
                 cash_effect="deferred_cash_return", conditional=True,
-                note="成交后按实际净新增投入，扣除券商实际回池余款及已有赎回在途；国内长钱优先，不足再赎海外长钱。少买少赎、未买不赎，不计本期购买力。"))
+                note="成交后按实际净新增投入，扣除已有赎回在途；国内长钱优先，不足再赎海外长钱。少买少赎、未买不赎，不计本期购买力。"))
         if source in result.get("deferred_reductions", {}):
             result["deferred_reductions"][source] = money(max(0, holding - amount))
     result["migration_redemption"] = dict(reference_amount=money(sum(amounts.values())),
         amounts=amounts, planned_net_investment=net_buy, existing_pending=pending,
-        broker_returns=broker_returns, conditional=True)
+        conditional=True)
     return result

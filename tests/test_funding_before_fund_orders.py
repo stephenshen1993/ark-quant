@@ -43,3 +43,17 @@ class TestFundingBeforeFundOrders(unittest.TestCase):
         self.assertFalse(any(a['source'] in ('changqian','overseas') for a in transfer['actions']))
         self.assertEqual(transfer['strategy_cash']['stock'], 0)
         self.assertEqual(transfer['strategy_cash']['cb'], 0)
+
+    def test_migration_keeps_broker_cash_in_strategy_budget(self):
+        account = self.account()
+        account.update(stock_total=293831.23, stock_cash=16008.23,
+                       stock_available_cash=16008.23, bond_total=193779.80,
+                       bond_cash=897.62, bond_available_cash=897.62)
+        transfer = build_fund_transfer(account, qualified_cb_count=20)
+        self.assertEqual(transfer['strategy_cash']['stock'], 15708.23)
+        self.assertEqual(transfer['strategy_cash']['cb'], 597.62)
+        self.assertFalse(any(a['source'] in ('stock', 'cb') for a in transfer['actions']))
+        from app.cash_reserve import reconcile_cash_reserves
+        result = reconcile_cash_reserves(account, transfer, {'stock': [], 'cb': []})
+        self.assertFalse(any(a['source'] in ('stock', 'cb') for a in result['actions']))
+        self.assertEqual(result['transfer_deltas']['stock'], 0)

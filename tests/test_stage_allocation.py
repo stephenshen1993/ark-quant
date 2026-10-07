@@ -49,8 +49,8 @@ class TestStageAllocation(unittest.TestCase):
         self.assertEqual(plan['allocation']['total'], 1007500)
         self.assertEqual(plan['allocation']['current']['stock'], 350000)
         self.assertEqual(plan['cash']['immediate_outflow'], 3975)
-        self.assertEqual(plan['strategy_cash']['stock'], 2625)
-        self.assertEqual(plan['transfer_deltas']['stock'], -375)
+        self.assertEqual(plan['strategy_cash']['stock'], 2700)  # 本账户现金扣除订单预留
+        self.assertEqual(plan['transfer_deltas']['stock'], -300)
 
     def test_pending_receivable_never_supplies_immediate_buying_power(self):
         account = facts(stock=400000, nasdaq=0, technology=0, bond=300000, cash=0)

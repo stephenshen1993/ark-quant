@@ -3253,7 +3253,7 @@
 
     <section x-show="!isSelectedHistoricalPlan()" class="ark-panel plan-conditions-panel px-5 py-3 mb-4" aria-label="计划条件">
       <strong>本阶段：先用现有现金配置海外增长</strong>
-      <p class="workspace-meta">本期只用已有现金买入；成交后按实际净新增投入分批赎回，扣除券商回池余款及已有在途，国内长钱优先、不足再赎海外长钱。少买少赎、未买不赎；到账更新后生成下一批，无需等周度轮动。原换股换债照常。</p>
+      <p class="workspace-meta">本期只用已有现金买入；成交后按实际净新增投入分批赎回，扣除已有赎回在途，国内长钱优先、不足再赎海外长钱。少买少赎、未买不赎；到账更新后生成下一批，无需等周度轮动。原换股换债照常。</p>
       <details class="mt-2" x-show="Object.keys(plan?.fund_transfer?.deferred_reductions || {}).length">
         <summary class="text-sm cursor-pointer">后续目标减配（不属于本期操作）</summary>
         <template x-for="row in (plan?.fund_transfer?.allocation?.rows || []).filter(row => (plan?.fund_transfer?.deferred_reductions || {})[row.id])" :key="row.id">

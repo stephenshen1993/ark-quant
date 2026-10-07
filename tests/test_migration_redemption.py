@@ -54,9 +54,9 @@ class TestMigrationRedemption(unittest.TestCase):
         second = add_migration_redemption(self.account, first, [dict(delta_shares=100, amount=64504.30)])
         self.assertEqual(first, second)
 
-    def test_broker_returns_reduce_redemption_without_becoming_buying_power(self):
+    def test_broker_cash_does_not_replace_adviser_migration(self):
         self.transfer['actions'].append(dict(source='stock', target='cash_pool',
             amount=15000, immediate=False))
         result = self.apply()
-        self.assertEqual(result['migration_redemption']['reference_amount'], 49504.30)
+        self.assertEqual(result['migration_redemption']['reference_amount'], 64504.30)
         self.assertEqual(result['cash'], self.transfer['cash'])

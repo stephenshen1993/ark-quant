@@ -26,7 +26,7 @@ def reconcile_cash_reserves(account: dict, transfer: dict, batches: dict, *, pen
             outgoing = money(outgoing - reduction)
             ending = money(ending + reduction)
             incoming = money(incoming + max(0, reserve - ending))
-        elif ending > upper:
+        elif ending > upper and not (carrier in {"stock", "cb"} and result.get("phase") == "existing_cash_first"):
             outgoing = money(outgoing + ending - upper)
         if carrier != "pingan":
             # 同一账户原轮动已产生余款时，取消不必要的双向银证调拨。

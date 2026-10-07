@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 
-POLICY_ID = "growth-2026-10-07-sequential-redemption"
+POLICY_ID = "growth-2026-10-08-preserve-strategy-cash"
 CASH_MIN = 300.0
 CASH_MAX = 1000.0
 MIN_ADJUSTMENT = 1000.0
@@ -135,12 +135,15 @@ def build_stage_plan(account: dict, *, blocked: dict | None = None) -> dict:
         keys = [key for key, c in CARRIERS.items() if c == carrier]
         buys = sum(allocated.get(key, 0) for key in keys)
         release = sum(sells.get(key, 0) for key in keys)
-        # 小市值/转债预算必须排除归现金池的券商现金，负值要求原策略释放资金。
+        # 平安按新增配置预算买入；原策略保留本账户现金，预留仅约束订单预算。
         strategy_cash[carrier] = money(buys - release)
         incoming = money(max(0, buys - trading_available[carrier]) + reserve_topups[carrier])
         outgoing = money(max(0, available[carrier] + incoming + release - buys - reserves[carrier]))
         if not buys and not release:
             outgoing = money(max(0, available[carrier] - CASH_MAX))
+        if carrier in {"stock", "cb"}:
+            outgoing = 0.0
+            strategy_cash[carrier] = money(max(0, available[carrier] + incoming - reserves[carrier]))
         for source, target, amount, immediate in (
             ("cash_pool", carrier, incoming, True),
             (carrier, "cash_pool", outgoing, False),
