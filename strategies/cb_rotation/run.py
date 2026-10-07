@@ -8,7 +8,7 @@ import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from time import perf_counter
 from typing import Iterable
@@ -43,7 +43,7 @@ from datasource.market_history import (
     reconcile_corporate_actions,
 )
 from datasource.stock_history import fetch_stock_history_with_adjustment
-from datasource.trade_calendar import is_market_hours, load_exchange_trading_days
+from datasource.trade_calendar import is_market_hours, load_exchange_trading_days, resolve_effective_trading_date
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -145,22 +145,19 @@ def latest_dated_cache(name: str, max_age_days: int) -> Path | None:
 
 
 def latest_completed_market_data_date(now: datetime | None = None) -> date:
-    current = now or datetime.now()
-    candidate = current.date()
-    if current.weekday() >= 5 or current.time() < time(15, 10):
-        candidate = candidate - timedelta(days=1)
-    while candidate.weekday() >= 5:
-        candidate = candidate - timedelta(days=1)
-    return candidate
+    return resolve_effective_trading_date(now=now)
 
 
-def require_fresh_dates(df: pd.DataFrame, column: str, max_age_days: int, stage: str) -> None:
+def require_fresh_dates(
+    df: pd.DataFrame, column: str, max_age_days: int, stage: str, *, as_of: date,
+) -> None:
     if column not in df.columns:
         raise RuntimeError(f"{stage} 缺少数据日期字段 {column}。本次停止运行。")
     values = pd.to_datetime(df[column], errors="coerce")
     if values.isna().any():
         raise RuntimeError(f"{stage} 存在无法识别的数据日期。 本次停止运行。")
-    cutoff = pd.Timestamp(date.today() - timedelta(days=max_age_days))
+    # Anchor freshness to the task's completed trading day, including long holidays.
+    cutoff = pd.Timestamp(as_of - timedelta(days=max_age_days))
     stale = values < cutoff
     if stale.any():
         oldest = values.min().date()
@@ -1838,6 +1835,7 @@ def run(
             "turnover_trade_date",
             int(config.get("data", {}).get("max_market_data_age_days", 4)),
             "可转债成交额过滤",
+            as_of=data_date,
         )
         require_single_trade_date(cb, "turnover_trade_date", "可转债收盘行情")
     assert_required_fields(cb, ["turnover_yuan"], "可转债成交额过滤")
@@ -1871,6 +1869,7 @@ def run(
             "stock_factor_trade_date",
             int(config.get("data", {}).get("max_market_data_age_days", 4)),
             "正股动量与波动率",
+            as_of=data_date,
         )
         require_single_trade_date(filtered, "stock_factor_trade_date", "正股收盘行情")
         require_fresh_dates(
@@ -1878,6 +1877,7 @@ def run(
             "market_cap_as_of_date",
             int(config.get("data", {}).get("max_market_data_age_days", 4)),
             "正股总市值",
+            as_of=data_date,
         )
     enforce_factor_fields(filtered, config)
     data_notes = build_data_notes(filtered, config)

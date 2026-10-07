@@ -134,10 +134,42 @@ class ConvertibleBondRotationTests(unittest.TestCase):
             run.enforce_cb_filter_coverage(cb, config)
 
     def test_require_fresh_dates_rejects_stale_market_data(self) -> None:
-        stale = pd.DataFrame({"trade_date": [(date.today() - timedelta(days=5)).isoformat()]})
+        stale = pd.DataFrame({"trade_date": ["2026-09-25"]})
 
         with self.assertRaisesRegex(RuntimeError, "包含过期数据"):
-            run.require_fresh_dates(stale, "trade_date", 4, "测试行情")
+            run.require_fresh_dates(stale, "trade_date", 4, "测试行情", as_of=date(2026, 9, 30))
+
+    def test_holiday_freshness_uses_frozen_trading_date_for_all_inputs(self) -> None:
+        with patch.object(run, "date") as clock:
+            clock.today.return_value = date(2026, 10, 7)
+            for column in ("turnover_trade_date", "stock_factor_trade_date", "market_cap_as_of_date"):
+                with self.subTest(column=column):
+                    run.require_fresh_dates(
+                        pd.DataFrame({column: ["2026-09-30"]}), column, 4, "测试行情",
+                        as_of=date(2026, 9, 30),
+                    )
+            clock.today.assert_not_called()
+
+    def test_freshness_preserves_boundary_and_invalid_date_checks(self) -> None:
+        for value, error in (("2026-09-26", None), ("invalid", "无法识别"), (None, "无法识别")):
+            with self.subTest(value=value):
+                frame = pd.DataFrame({"trade_date": [value]})
+                if error:
+                    with self.assertRaisesRegex(RuntimeError, error):
+                        run.require_fresh_dates(frame, "trade_date", 4, "测试行情", as_of=date(2026, 9, 30))
+                else:
+                    run.require_fresh_dates(frame, "trade_date", 4, "测试行情", as_of=date(2026, 9, 30))
+        with self.assertRaisesRegex(RuntimeError, "缺少数据日期"):
+            run.require_fresh_dates(pd.DataFrame(), "trade_date", 4, "测试行情", as_of=date(2026, 9, 30))
+
+    def test_cli_market_date_uses_exchange_calendar_during_holiday(self) -> None:
+        with patch("datasource.trade_calendar.load_exchange_trading_days", return_value=[
+            date(2026, 9, 30), date(2026, 10, 8),
+        ]):
+            self.assertEqual(
+                run.latest_completed_market_data_date(datetime(2026, 10, 7, 16)),
+                date(2026, 9, 30),
+            )
 
     def test_require_single_trade_date_rejects_mixed_dates(self) -> None:
         mixed = pd.DataFrame({"trade_date": ["2026-05-27", "2026-05-28"]})
