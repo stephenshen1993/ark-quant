@@ -2481,22 +2481,33 @@
     </section>
     <div class="overview-layout" x-show="!loadError">
       <div>
+        <section class="ark-panel overview-section" aria-label="账户总览">
+          <div class="overview-section-heading"><div><h2>账户总览</h2><p>各账户资产及占比；包含账户内现金。</p></div><strong class="overview-total" x-text="fmtMoney(totalAssets())"></strong></div>
+          <table class="overview-matrix">
+            <thead><tr><th>账户</th><th class="num">资产金额</th><th class="num">占总资产</th></tr></thead>
+            <tbody><template x-for="account in (readModel().accounts || [])" :key="account.id"><tr>
+              <td><strong x-text="account.name"></strong></td>
+              <td class="num" x-text="fmtMoney(account.total)"></td>
+              <td class="num" x-text="percentText(account.total)"></td>
+            </tr></template></tbody>
+          </table>
+        </section>
         <section class="ark-panel overview-section" aria-label="顶层组合配置">
           <div class="overview-section-heading">
             <div>
-              <h2>投资方向与承载账户</h2>
-              <p>按统一长期资产计算阶段目标；账户现金单独归入直接现金。</p>
+              <h2>配置进度</h2>
+              <p>当前比例与阶段目标对照。待迁移投顾仍计入总资产，因此五项当前占比暂不合计为100%。</p>
             </div>
-            <strong class="overview-total" x-text="fmtMoney(totalAssets())"></strong>
+
           </div>
           <table class="overview-matrix">
             <thead>
               <tr>
                 <th>投资方向</th>
-                <th>承载账户</th>
+
                 <th class="num">当前占比</th>
                 <th class="num">当前金额</th>
-                <th>数据状态</th>
+                <th class="num">目标占比</th>
               </tr>
             </thead>
             <tbody>
@@ -2504,15 +2515,15 @@
                 <tr>
                   <td>
                     <strong x-text="portfolioLabel(portfolio)"></strong>
-                    <small x-text="portfolio.description || dataTimeText(portfolio)"></small>
+
                   </td>
-                  <td x-text="(portfolio.account_names || []).join('、')"></td>
+
                   <td class="num">
                     <span class="overview-bar" aria-hidden="true"><i :style="`width: ${percentValue(portfolio.current_amount)}%`"></i></span>
                     <span x-text="percentText(portfolio.current_amount)"></span>
                   </td>
                   <td class="num" x-text="fmtMoney(portfolio.current_amount)"></td>
-                  <td x-text="dataStateText(portfolio)"></td>
+                  <td class="num" x-text="`${(portfolio.target_weight * 100).toFixed(0)}%`"></td>
                 </tr>
               </template>
             </tbody>
@@ -2780,23 +2791,6 @@
                 <strong x-text="fmtMoney(selected?.valuation?.total)"></strong>
                 <small>系统派生，不手工填写</small>
               </div>
-            </section>
-
-            <section x-show="selectedId === 'pingan'" class="account-fund-terms" aria-label="场内基金交易条件">
-              <h3>两个方向各自的交易条件</h3>
-              <p>填写核实后的执行标的、限价和交易单位。费用由账户现金预留吸收，不阻塞订单。此处不记录持仓，实际份额仍在下方维护。</p>
-              <template x-for="term in (draft.fund_terms || [])" :key="term.direction">
-                <fieldset class="border rounded p-3 mt-3">
-                  <legend x-text="term.direction === 'nasdaq' ? '纳指方向' : '501312'"></legend>
-                  <div class="account-fund-grid">
-                    <label>代码<input class="w-full border rounded p-2" x-model="term.code" :readonly="term.direction === 'technology'" @input="term.cost_reviewed = false; markEdited()" maxlength="6" aria-label="基金代码"></label>
-                    <label>核实限价<input class="w-full border rounded p-2" type="number" min="0" step="0.001" x-model="term.limit_price" @input="term.cost_reviewed = false; markEdited()" aria-label="基金限价"></label>
-                    <label>价格基准日<input class="w-full border rounded p-2" type="date" x-model="term.price_date" @input="term.cost_reviewed = false; markEdited()" aria-label="基金价格基准日"></label>
-                    <label>最小交易单位（份）<input class="w-full border rounded p-2" type="number" min="1" step="1" x-model="term.lot_size" @input="term.cost_reviewed = false; markEdited()" aria-label="基金交易单位"></label>
-                  </div>
-                  <label class="block mt-3"><input type="checkbox" x-model="term.cost_reviewed" @change="markEdited()"> 已核实该限价、溢价成本及以上交易条件</label>
-                </fieldset>
-              </template>
             </section>
 
             <section class="account-current-holdings" aria-label="当前持仓">
@@ -3259,7 +3253,7 @@
 
     <section x-show="!isSelectedHistoricalPlan()" class="ark-panel plan-conditions-panel px-5 py-3 mb-4" aria-label="计划条件">
       <strong>本阶段：先用现有现金配置海外增长</strong>
-      <p class="workspace-meta">本期只用已有现金买入；成交后按实际净新增投入分批赎回，国内长钱优先，海外长钱随后。少买少赎、未买不赎；到账更新后生成下一批，无需等周度轮动。原换股换债照常。</p>
+      <p class="workspace-meta">本期只用已有现金买入；成交后按实际净新增投入分批赎回，扣除券商回池余款及已有在途，国内长钱优先、不足再赎海外长钱。少买少赎、未买不赎；到账更新后生成下一批，无需等周度轮动。原换股换债照常。</p>
       <details class="mt-2" x-show="Object.keys(plan?.fund_transfer?.deferred_reductions || {}).length">
         <summary class="text-sm cursor-pointer">后续目标减配（不属于本期操作）</summary>
         <template x-for="row in (plan?.fund_transfer?.allocation?.rows || []).filter(row => (plan?.fund_transfer?.deferred_reductions || {})[row.id])" :key="row.id">
@@ -3856,7 +3850,7 @@
         return this.context().total_assets ?? this.summary?.total_assets ?? null
       },
       topPortfolios() {
-        return this.readModel().allocation || []
+        return (this.readModel().allocation || []).filter(item => ['stock', 'bond', 'nasdaq', 'technology', 'cash_pool'].includes(item.id))
       },
       activePortfolio() {
         return this.topPortfolios().find(item => item.id === 'A') || null
@@ -3865,7 +3859,7 @@
         return (this.readModel().portfolio_nodes || []).filter(item => item.portfolio_id === 'A')
       },
       portfolioLabel(portfolio) {
-        return portfolio.name
+        return portfolio.id === 'technology' ? '海外科技（501312）' : portfolio.name
       },
       nodeName(node) {
         return node.id === 'a_cash_pool' ? '资金余额' : node.name

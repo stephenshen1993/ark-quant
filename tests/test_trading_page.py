@@ -76,7 +76,7 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("openBEditor()", self.html)
         self.assertIn("saveBPurchaseStatus()", self.html)
         self.assertIn("fetch('/api/account/context'", self.html)
-        self.assertIn("按统一长期资产计算阶段目标", self.html)
+        self.assertIn("当前比例与阶段目标对照", self.html)
         overview_start = self.html.index("function overviewWorkspace()")
         overview_end = self.html.index("function changelogPage()", overview_start)
         overview_body = self.html[overview_start:overview_end]
@@ -269,9 +269,9 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("tDate: localDate()", self.html)
         self.assertNotIn("factDateInputValue", self.html)
 
-    def test_fund_conditions_live_with_the_shared_pingan_account(self):
-        self.assertIn('aria-label="场内基金交易条件"', self.html)
-        self.assertIn('x-model="term.cost_reviewed"', self.html)
+    def test_pingan_account_only_maintains_cash_and_positions(self):
+        self.assertNotIn('aria-label="场内基金交易条件"', self.html)
+        self.assertNotIn('x-model="term.cost_reviewed"', self.html)
         self.assertNotIn('x-model="funding.b_purchase_status"', self.html)
 
     def test_complete_plan_uses_the_only_frozen_server_endpoint(self):

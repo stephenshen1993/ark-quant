@@ -15,7 +15,7 @@ from datasource.youzhiyouxing import TemperatureFetchError, get_or_fetch_market_
 from portfolio_rebalance import PlanValidationError
 from stage_allocation import POLICY_ID, build_stage_plan
 from app.cash_reserve import reconcile_cash_reserves
-from app.fund_orders import blocked_directions, build_fund_orders, reconcile_fund_return
+from app.fund_orders import add_migration_redemption, blocked_directions, build_fund_orders, reconcile_fund_return
 
 RAW_DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
 
@@ -339,6 +339,7 @@ def build_generated_plan_response(
     if stock_result is not None:
         batches["stock"] = stock_orders
     fund_transfer = reconcile_cash_reserves(account, fund_transfer, batches)
+    fund_transfer = add_migration_redemption(account, fund_transfer, funds["orders"])
     targets, deltas, transfer_steps = fund_transfer_compatibility(fund_transfer)
     if cb_result is not None:
         cb_result = {**cb_result, "summary": summarize_order_cash(account.get("bond_available_cash", 0), deltas["bond"], cb_orders)}

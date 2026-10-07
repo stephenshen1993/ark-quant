@@ -39,11 +39,11 @@ class TestMigrationRedemption(unittest.TestCase):
         self.account['changqian_pending'] = 50000
         self.assertEqual(self.apply()['migration_redemption']['reference_amount'], 14504.30)
 
-    def test_domestic_remainder_caps_batch_without_spilling_into_overseas(self):
+    def test_domestic_remainder_then_overseas_same_batch(self):
         self.account['changqian_total'] = 5000
         result = self.apply()
-        self.assertEqual(result['migration_redemption']['reference_amount'], 5000)
-        self.assertFalse(any(a['source'] == 'overseas' for a in result['actions']))
+        self.assertEqual(result['migration_redemption']['reference_amount'], 64504.30)
+        self.assertEqual([(a['source'], a['amount']) for a in result['actions'] if a.get('conditional')], [('changqian', 5000), ('overseas', 59504.30)])
 
     def test_overseas_only_after_domestic_exits(self):
         self.account['changqian_total'] = 0
@@ -53,3 +53,10 @@ class TestMigrationRedemption(unittest.TestCase):
         first = self.apply()
         second = add_migration_redemption(self.account, first, [dict(delta_shares=100, amount=64504.30)])
         self.assertEqual(first, second)
+
+    def test_broker_returns_reduce_redemption_without_becoming_buying_power(self):
+        self.transfer['actions'].append(dict(source='stock', target='cash_pool',
+            amount=15000, immediate=False))
+        result = self.apply()
+        self.assertEqual(result['migration_redemption']['reference_amount'], 49504.30)
+        self.assertEqual(result['cash'], self.transfer['cash'])

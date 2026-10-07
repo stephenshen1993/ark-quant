@@ -85,7 +85,7 @@ def build_current_account_summary() -> dict | None:
             terms = account["raw_data"].get("fund_terms", [])
             result["fund_terms"] = terms
             result["fund_positions"] = account["valuation"].get("items", [])
-            by_code = {item["code"]: item["direction"] for item in terms}
+            by_code = {"161130": "nasdaq", **{item["code"]: item["direction"] for item in terms}}
             by_code["501312"] = "technology"
             amounts = {"nasdaq": 0.0, "technology": 0.0, "unclassified": 0.0}
             for item in result["fund_positions"]:

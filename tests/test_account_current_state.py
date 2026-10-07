@@ -26,6 +26,18 @@ class TestAccountCurrentState(unittest.TestCase):
         db._TEST_CONN.close()
         db._TEST_CONN = None
 
+    @patch("app.account_current_state._derive_valuation")
+    def test_known_nasdaq_holding_classifies_without_execution_terms(self, derive):
+        derive.return_value = {"status": "available", "total": 41369.89, "items": [
+            {"code": "161130", "market_value": 41245.60, "price": 4.796}],
+            "missing_codes": []}
+        self.client.put("/api/accounts/pingan", json={
+            "expected_version": None, "available_cash": 124.29, "frozen_cash": 0,
+            "positions": [{"code": "161130", "quantity": 8600}]})
+        summary = account_current_state.build_current_account_summary()
+        self.assertEqual(summary["nasdaq_total"], 41245.60)
+        self.assertEqual(summary["unclassified_total"], 0)
+
     @patch("app.account_current_state.datetime")
     @patch("datasource.market.fetch_cb_quotes_tencent")
     def test_paid_coupon_adjusts_only_the_verified_pre_ex_date_quote(self, fetch, clock):

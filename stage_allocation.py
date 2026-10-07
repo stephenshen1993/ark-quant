@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 
-POLICY_ID = "growth-2026-09-29-matched-redemption"
+POLICY_ID = "growth-2026-10-07-sequential-redemption"
 CASH_MIN = 300.0
 CASH_MAX = 1000.0
 MIN_ADJUSTMENT = 1000.0
