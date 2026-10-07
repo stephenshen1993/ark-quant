@@ -8,7 +8,7 @@ from time import perf_counter
 
 from datasource import db
 from datasource.market_data_bundle import PreparationMetadata
-from datasource.trade_calendar import resolve_effective_trading_date
+from datasource.trade_calendar import resolve_effective_trading_date, resolve_next_trading_date
 
 Strategy = str
 LOGGER = logging.getLogger(__name__)
@@ -86,7 +86,8 @@ def ensure_rankings(
     started = perf_counter()
     _validate_strategy(strategy)
     existing = db.get_strategy_run_meta(strategy, plan_date)
-    if existing:
+    expected_trade_date = resolve_next_trading_date(date.fromisoformat(plan_date)).isoformat()
+    if existing and existing.get("trade_date") == expected_trade_date:
         items = db.get_rankings_by_run_id(strategy, existing["id"])
         elapsed = int((perf_counter() - started) * 1000)
         preparation = {

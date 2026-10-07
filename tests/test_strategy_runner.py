@@ -73,6 +73,33 @@ class TestStrategyRunner(unittest.TestCase):
         self.assertTrue(result.generated)
         self.assertEqual(result.item_count, 1)
 
+    def test_plan_generation_does_not_reuse_legacy_holiday_execution_date(self):
+        from app import strategy_runner
+
+        for strategy in ("cb", "stock"):
+            with self.subTest(strategy=strategy):
+                rankings = pd.DataFrame([{"bond_code": "113062", "stock_code": "600051"}])
+                old_id = db.create_complete_strategy_run(
+                    strategy, date(2026, 9, 30), date(2026, 10, 1), rankings,
+                )
+
+                def generate_rankings(selected, task):
+                    self.assertEqual(selected, strategy)
+                    self.assertEqual(task.effective_date, date(2026, 9, 30))
+                    new_id = db.create_complete_strategy_run(
+                        selected, task.effective_date, date(2026, 10, 8), rankings,
+                    )
+                    return SimpleNamespace(run_id=new_id)
+
+                with patch("app.strategy_runner._run_strategy_impl", side_effect=generate_rankings) as run_impl:
+                    result = strategy_runner.ensure_rankings(strategy, "2026-09-30")
+
+                run_impl.assert_called_once()
+                self.assertTrue(result.generated)
+                self.assertEqual(result.trade_date, "2026-10-08")
+                self.assertNotEqual(result.run_id, old_id)
+                self.assertEqual(db.get_strategy_run(old_id, strategy)["trade_date"], "2026-10-01")
+
     def test_run_task_freezes_started_at_and_effective_date(self):
         from app import strategy_runner
 
