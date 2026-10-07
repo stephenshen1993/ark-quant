@@ -71,6 +71,30 @@ class TestPlanExecutionReadModel(unittest.TestCase):
             },
         }
 
+    def test_all_accounts_support_both_transfer_directions(self):
+        names = {"stock": "广发账户", "cb": "华泰账户", "pingan": "平安账户",
+                 "changqian": "国内长钱", "overseas": "海外长钱"}
+        accounts = [{"id": key, "name": name} for key, name in names.items()]
+        accounts.append({"id": "cash", "name": "资金账户"})
+        for key, name in names.items():
+            for incoming in (True, False):
+                with self.subTest(account=key, incoming=incoming):
+                    source, target = ("cash_pool", key) if incoming else (key, "cash_pool")
+                    model = build_execution_read_model(
+                        plan_date="2026-09-30",
+                        account_read_model={"accounts": accounts, "legacy_adapter": {
+                            "strategy_to_account_id": {"cash_pool": "cash", **{k: k for k in names}}}},
+                        fund_transfer={"actions": [{
+                            "source": source, "target": target, "amount": 1234.56,
+                            "available_on": "same_day" if incoming else "deferred",
+                        }]}, cb=None, stock=None,
+                    )
+                    actions = [a for group in model["funding_plan"]["groups"] for a in group["actions"]]
+                    self.assertEqual(len(actions), 1)
+                    self.assertEqual(actions[0]["source_account_name"], "资金账户" if incoming else name)
+                    self.assertEqual(actions[0]["target_account_name"], name if incoming else "资金账户")
+                    self.assertEqual(actions[0]["amount"], 1234.56)
+
     def test_groups_single_leg_funding_actions_by_availability(self):
         fund_transfer = {
             "top_level": {

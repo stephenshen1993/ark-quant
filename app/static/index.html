@@ -3018,7 +3018,7 @@
             </table>
             <details class="plan-funding-basis mt-3">
               <summary class="workspace-meta cursor-pointer">查看调拨依据</summary>
-              <p class="workspace-meta mt-2">转入按资金账户现有可用余额安排；回流目标不计入本期买入预算。投顾回流按计划净买入测算，实际少买则相应少赎，国内长钱优先、不足再用海外长钱。</p>
+              <p class="workspace-meta mt-2">各账户按本期配置及交易预算，经资金账户统一调入或调出；资金账户的调出总额不超过当前可用余额，回流目标不计入本期买入预算。</p>
             </details>
           </div>
         </section>
@@ -3075,7 +3075,7 @@
                             <th>证券代码</th>
                             <th>证券名称</th>
                             <th>委托数量</th>
-                            <th x-text="plan.execution_guardrails?.reference_price_is_limit ? '限价' : '参考价'">参考价</th>
+                            <th>参考价</th>
                             <th>预计金额</th>
                           </tr>
                         </thead>
@@ -3103,7 +3103,7 @@
                                 </div>
 
                               </td>
-                              <td class="plan-trade-price" :data-label="plan.execution_guardrails?.reference_price_is_limit ? '限价' : '参考价'" data-label="参考价">
+                              <td class="plan-trade-price" data-label="参考价">
                                 <span x-text="order.reference_price == null ? '-' : Number(order.reference_price).toFixed(3)"></span>
 
                               </td>
@@ -3114,7 +3114,6 @@
                         </template>
 	                      </table>
 
-<p class="workspace-meta mt-2" x-show="plan.execution_guardrails?.reference_price_is_limit">买入不高于表中限价，卖出不低于表中限价；手续费从预留现金中扣除。</p>
 	                    </div>
 	                  </section>
                   <div class="plan-account-result">
@@ -3123,8 +3122,7 @@
                   </div>
                   <details class="plan-cash-audit">
                     <summary>查看计算与执行依据</summary>
-                    <p class="workspace-meta mt-2">下单前核对可用资金和最新价格；价格变化时按预算重新核算数量。</p>
-                    <p class="workspace-meta mt-2" x-show="plan.execution_guardrails?.review_required" x-text="plan.execution_guardrails?.review_required"></p>
+                    <p class="workspace-meta mt-2">按计划基准日收盘价计算数量与金额，费用由账户预留现金承担。</p>
 	                    <div class="plan-cash-equation" aria-label="账户交易计划资金闭合">
 	                      <div class="plan-cash-term">
 	                        <div class="plan-cash-label">起始可用资金</div>
@@ -3147,7 +3145,7 @@
 	                        <div class="plan-cash-value" x-text="fmtMoney(plan.cash.expected_buy)"></div>
 	                      </div>
 	                      <div class="plan-cash-term" data-sign="equals">
-	                        <div class="plan-cash-label">计划后预计资金余额（未扣费用）</div><p class="workspace-meta" x-show="plan.account_id === 'pingan' && !plan.cash.pending_buy_budget">预留300～1,000元，计入原现金配置；扣费后可略低于300元，下次正常计划再处理。</p><p class="workspace-meta" x-show="plan.cash.pending_buy_budget" x-text="`其中 ${fmtMoney(plan.cash.pending_buy_budget)} 为已分配、待生成买单的预算；尚未买入，不能当作多余现金回池。`"></p>
+	                        <div class="plan-cash-label">计划后预计资金余额（未扣费用）</div>
 	                        <div class="plan-cash-value" :class="plan.funding.state === 'blocked' ? 'text-red-600' : ''" x-text="fmtMoney(plan.cash.expected_ending)"></div>
 	                      </div>
 	                    </div>
@@ -3156,11 +3154,7 @@
                         <p x-text="order.name + '（' + order.code + '）：' + positionRouteText(order)"></p>
                       </template>
                     </div>
-	                    <section class="plan-execution-guardrails" aria-label="执行保护">
-	                      <div class="plan-execution-guardrail">
-	                        <strong>参考价口径</strong>
-	                        <span x-text="plan.execution_guardrails?.reference_price_is_limit ? '本表为已核实限价：买入不高于此价，卖出不低于此价；转入到账后才可下单。' : '参考价（非限价）基于 ' + (plan.execution_guardrails?.price_basis_date || executionReadModel()?.plan_date || '计划基准日') + ' 的计划估值；仅用于估算，不是券商限价。'"></span>
-	                      </div>
+	                    <section class="plan-execution-guardrails" aria-label="执行保护" x-show="plan.execution_guardrails?.rules?.length || plan.execution_guardrails?.price_adjustment_notes?.length">
                           <template x-for="note in plan.execution_guardrails?.price_adjustment_notes || []" :key="note">
                             <div class="plan-execution-guardrail"><strong>除息衔接</strong><span x-text="note"></span></div>
                           </template>
