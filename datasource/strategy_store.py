@@ -2,16 +2,11 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 import pandas as pd
 
-
-def next_weekday(d: date) -> date:
-    d = d + timedelta(days=1)
-    while d.weekday() >= 5:
-        d += timedelta(days=1)
-    return d
+from datasource.trade_calendar import resolve_next_trading_date
 
 
 def validate_strategy(strategy: str) -> str:
@@ -27,7 +22,7 @@ def ranking_table(strategy: str) -> str:
 
 def insert_strategy_run(conn: sqlite3.Connection, strategy: str, data_date: date) -> int:
     validate_strategy(strategy)
-    trade_date = next_weekday(data_date)
+    trade_date = resolve_next_trading_date(data_date)
     cur = conn.execute(
         """INSERT INTO strategy_runs
            (strategy, data_date, trade_date, created_at, status)
@@ -139,7 +134,7 @@ def create_complete_strategy_run(
     validate_strategy(strategy)
     if rankings.empty:
         raise ValueError("A complete strategy run requires at least one ranking")
-    resolved_trade_date = trade_date or next_weekday(data_date)
+    resolved_trade_date = trade_date or resolve_next_trading_date(data_date)
 
     conn.execute("SAVEPOINT create_complete_strategy_run")
     try:

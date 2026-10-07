@@ -4,10 +4,28 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from datasource.trade_calendar import load_exchange_trading_days, resolve_effective_trading_date
+from datasource.trade_calendar import load_exchange_trading_days, resolve_effective_trading_date, resolve_next_trading_date
 
 
 class EffectiveTradingDateTests(unittest.TestCase):
+    def test_next_trading_date_skips_holidays_and_weekends(self) -> None:
+        days = [date(2026, 9, 30), date(2026, 10, 8), date(2026, 10, 9), date(2026, 10, 12)]
+        for current, expected in zip(days, days[1:]):
+            with self.subTest(current=current):
+                self.assertEqual(resolve_next_trading_date(current, trading_days=days), expected)
+
+    def test_next_trading_date_requires_future_calendar_coverage(self) -> None:
+        for days in ([], [date(2026, 9, 30)]):
+            with self.subTest(days=days), self.assertRaisesRegex(RuntimeError, "之后的有效交易日"):
+                resolve_next_trading_date(date(2026, 9, 30), trading_days=days)
+
+    def test_next_trading_date_requests_coverage_beyond_weekend(self) -> None:
+        with patch("datasource.trade_calendar.load_exchange_trading_days", return_value=[
+            date(2026, 10, 9), date(2026, 10, 12),
+        ]) as load_days:
+            self.assertEqual(resolve_next_trading_date(date(2026, 10, 9)), date(2026, 10, 12))
+        load_days.assert_called_once_with(as_of=date(2026, 10, 12))
+
     def test_pre_open_and_after_close_can_resolve_different_dates(self) -> None:
         trading_days = [date(2026, 2, 13), date(2026, 2, 18)]
 

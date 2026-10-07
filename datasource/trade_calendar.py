@@ -57,6 +57,24 @@ def resolve_effective_trading_date(
     return completed[-1]
 
 
+def resolve_next_trading_date(
+    data_date: date, *, trading_days: Iterable[date] | None = None,
+) -> date:
+    """Resolve the first exchange session strictly after the data date."""
+    required_horizon = data_date + timedelta(days=1)
+    # Ask for coverage beyond a weekend so a Friday-only cache gets refreshed.
+    while required_horizon.weekday() >= 5:
+        required_horizon += timedelta(days=1)
+    days = (
+        load_exchange_trading_days(as_of=required_horizon)
+        if trading_days is None else trading_days
+    )
+    upcoming = sorted(day for day in set(days) if day > data_date)
+    if not upcoming:
+        raise RuntimeError(f"交易日历不覆盖 {data_date.isoformat()} 之后的有效交易日")
+    return upcoming[0]
+
+
 def load_exchange_trading_days(
     *,
     as_of: date | None = None,
