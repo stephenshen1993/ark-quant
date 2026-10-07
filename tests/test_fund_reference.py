@@ -35,3 +35,16 @@ class TestReferenceQuotes(unittest.TestCase):
         self.assertTrue(term['reference_only'])
         self.assertFalse(term['cost_reviewed'])
         self.assertEqual(term['lot_size'], 100)
+
+    def test_reference_orders_have_security_names_and_keep_budget_quantities(self):
+        from app.fund_orders import build_fund_orders
+        account = {'fund_terms': [dict(direction='nasdaq', code='161130',
+            limit_price=4.796, lot_size=100, price_date='2026-09-30', reference_only=True)],
+            'fund_positions': [dict(code='161130', quantity=8600)]}
+        funds = build_fund_orders(account, {'buy_budgets': {'nasdaq': 46041.60},
+            'sell_budgets': {}, 'actions': []}, '2026-09-30')
+        order = funds['orders'][0]
+        self.assertEqual(order['name'], '纳斯达克100LOF')
+        self.assertEqual((order['current_quantity'], order['target_quantity']), (8600, 18200))
+        self.assertEqual(order['price_date'], '2026-09-30')
+        self.assertIn('未核验', funds['review_required'])

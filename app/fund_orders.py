@@ -47,7 +47,7 @@ def blocked_directions(account: dict, plan_date: str) -> dict:
     for direction in ("nasdaq", "technology"):
         term = by_direction.get(direction)
         if not term:
-            blocked[direction] = "请在平安账户明确执行标的及交易条件"
+            blocked[direction] = "系统尚未取得执行标的的参考价格与交易单位"
         elif any(term.get(key) is None for key in ("limit_price", "lot_size")):
             blocked[direction] = "限价或交易单位尚未核实"
         elif term["limit_price"] <= 0 or (not term.get("cost_reviewed") and not term.get("reference_only")):
@@ -60,6 +60,8 @@ def blocked_directions(account: dict, plan_date: str) -> dict:
 def build_fund_orders(account: dict, transfer: dict, plan_date: str) -> dict:
     terms = {item["direction"]: item for item in account.get("fund_terms", [])}
     positions = {item["code"]: item["quantity"] for item in account.get("fund_positions", [])}
+    names = {"161130": "纳斯达克100LOF", "501312": "海外科技LOF"}
+    names.update({item["code"]: item["name"] for item in account.get("fund_positions", []) if item.get("name")})
     blocked = blocked_directions(account, plan_date)
     orders = []
     reference_only = any(t.get("reference_only") for t in terms.values())
@@ -82,7 +84,7 @@ def build_fund_orders(account: dict, transfer: dict, plan_date: str) -> dict:
             amount = money(abs(quantity) * price)
             if quantity:
                 orders.append({
-                    "direction": direction, "code": term["code"], "name": "501312" if direction == "technology" else "纳指方向",
+                    "direction": direction, "code": term["code"], "name": names.get(term["code"], term["code"]),
                     "action": ("ADD" if current_quantity else "BUY") if quantity > 0 else "TRIM",
                     "shares": quantity, "delta_shares": quantity, "price": price,
                     "amount": amount, "estimated_fee": fee, "price_date": term["price_date"],
@@ -100,7 +102,7 @@ def build_fund_orders(account: dict, transfer: dict, plan_date: str) -> dict:
     assert spent <= money(sum(transfer["buy_budgets"].get(k, 0) for k in ("nasdaq", "technology")))
     return {"data_date": plan_date, "orders": orders, "blocked": blocked, "unused_budget": remainders,
             "reference_only": reference_only,
-            "review_required": "参考工具及收盘价用于预算草案，实际委托前核对盘口、最新净值日期和溢价；不要求用户提供公开行情。" if reference_only else None,
+            "review_required": "实时价格、净值与溢价未核验；表中为收盘参考价，不是下单限价。价格变化后须按可用预算重新核算数量。" if reference_only else None,
             "pending_buy_budget": money(sum(transfer["buy_budgets"].get(k, 0) for k in blocked)),
             "summary": {"buy_cost": spent, "estimated_fees": money(sum(o["estimated_fee"] for o in orders))}}
 

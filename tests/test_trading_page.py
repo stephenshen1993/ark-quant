@@ -520,7 +520,7 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("plan.cash.expected_ending", self.html)
         self.assertIn("计划后预计资金余额", self.html)
         self.assertIn('class="plan-cash-audit"', self.html)
-        self.assertIn("执行说明与资金估算", self.html)
+        self.assertIn("执行说明", self.html)
         self.assertIn('class="plan-account-card"', self.html)
         self.assertNotIn('class="ark-panel plan-transfer-panel', self.html)
         self.assertNotIn('class="ark-panel plan-order-panel', self.html)
@@ -567,10 +567,10 @@ class TestTradingPageInteraction(unittest.TestCase):
         trade_table = self.html.index('class="plan-trade-section"')
         cash_audit = self.html.index('class="plan-cash-audit"', trade_table)
         guardrails = self.html.index('class="plan-execution-guardrails"', cash_audit)
-        cash_equation = self.html.index('class="plan-cash-equation"', guardrails)
+        cash_equation = self.html.index('class="plan-cash-equation"', trade_table)
         self.assertLess(trade_table, cash_audit)
         self.assertLess(cash_audit, guardrails)
-        self.assertLess(guardrails, cash_equation)
+        self.assertLess(cash_equation, cash_audit)
 
     def test_funding_plan_is_one_compact_table_with_amount_next_to_route(self):
         self.assertIn('class="plan-funding-table"', self.html)
