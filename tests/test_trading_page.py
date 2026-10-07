@@ -462,8 +462,8 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn("async loadHistoricalPlan(planId)", self.html)
         self.assertIn("仅供追溯，不应据此执行交易", self.html)
 
-    def test_execution_copy_keeps_same_day_inflow_and_next_day_return_separate(self):
-        self.assertIn("currentFundingGroups()", self.html)
+    def test_funding_targets_keep_source_and_destination_accounts(self):
+        self.assertIn("fundingTargetActions()", self.html)
         self.assertIn("group.label", self.html)
         self.assertIn("action.source_account_name", self.html)
         self.assertIn("action.target_account_name", self.html)
@@ -478,8 +478,7 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn("个步骤", self.html)
         self.assertNotIn("今日动作摘要", self.html)
 
-    def test_execution_plans_show_server_supplied_funding_dates(self):
-        self.assertIn("group.display_date", self.html)
+    def test_exceptional_funding_prerequisites_keep_server_dates(self):
         self.assertIn("action.display_date", self.html)
         self.assertIn("funding.display_date", self.html)
 
@@ -544,12 +543,17 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertNotIn('name="account-trading-plan"', self.html)
         self.assertIn('aria-label="账户交易切换"', self.html)
 
-    def test_conditional_redemptions_are_separate_from_current_funding(self):
-        self.assertIn('x-for="group in currentFundingGroups()"', self.html)
-        self.assertIn('action => !action.conditional', self.html)
-        self.assertIn('aria-label="成交后赎回安排"', self.html)
-        self.assertIn('action => action.conditional', self.html)
-        self.assertIn('以上不是立即赎回指令', self.html)
+    def test_funding_targets_include_returns_without_a_second_panel(self):
+        self.assertIn('in fundingTargetActions()', self.html)
+        self.assertIn('flatMap(group => group.actions)', self.html)
+        self.assertNotIn('currentFundingGroups()', self.html)
+        self.assertNotIn('class="plan-redemption-panel"', self.html)
+        self.assertIn('回流目标不计入本期买入预算', self.html)
+        self.assertIn('实际少买则相应少赎', self.html)
+        funding = self.html.split('aria-label="资金调拨计划"', 1)[1].split('</section>', 1)[0]
+        self.assertNotIn('available_date', funding)
+        self.assertNotIn('display_date', funding)
+        self.assertNotIn('action.conditional', funding)
 
     def test_expanded_account_plan_keeps_context_and_execution_guardrails(self):
         self.assertNotIn('class="plan-account-folio"', self.html)
@@ -582,16 +586,14 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn('class="plan-funding-action"', self.html)
         self.assertNotIn('class="plan-funding-group"', self.html)
         self.assertIn(">调拨路线<", self.html)
-        self.assertIn(">调拨金额<", self.html)
-        self.assertIn(">资金可用时间<", self.html)
+        self.assertIn(">目标金额<", self.html)
+        self.assertNotIn(">资金可用时间<", self.html)
         self.assertNotIn(">用途与影响<", self.html)
         self.assertNotIn('class="plan-funding-impact"', self.html)
         self.assertNotIn("fundingGroupInstruction(group)", self.html)
         route = self.html.index(">调拨路线<")
-        amount = self.html.index(">调拨金额<")
-        available = self.html.index(">资金可用时间<")
+        amount = self.html.index(">目标金额<")
         self.assertLess(route, amount)
-        self.assertLess(amount, available)
 
     def test_account_plan_expansion_is_single_and_restorable_from_url(self):
         self.assertIn("expandedAccountId: new URL(window.location.href).searchParams.get('planAccount')", self.html)

@@ -2366,9 +2366,9 @@
   .account-fund-grid label { display: block; min-width: 0; font-size: 13px; line-height: 1.6; }
   .account-fund-grid input { display: block; min-width: 0; margin-top: 5px; color: var(--ark-text); height: 42px; }
   @media (max-width: 600px) { .account-fund-grid { grid-template-columns: minmax(0, 1fr); } }
-  .plan-account-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 255px; gap: 20px; margin-top: 20px; align-items: start; }
+  .plan-account-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; margin-top: 20px; align-items: start; }
   .plan-execution-sheet { background: transparent; border: 0; overflow: visible; }
-  .plan-funding-plan, .plan-account-workspace > section, .plan-redemption-panel { background: var(--ark-panel); border: 1px solid var(--ark-line); border-radius: 12px; overflow: hidden; }
+  .plan-funding-plan, .plan-account-workspace > section { background: var(--ark-panel); border: 1px solid var(--ark-line); border-radius: 12px; overflow: hidden; }
   .plan-funding-plan .plan-step-header { display: block; }
   .plan-account-tabs { display: flex; border-bottom: 1px solid var(--ark-line); background: var(--ark-paper); }
   .plan-account-tabs button { flex: 1; min-width: 0; padding: 15px 8px; text-align: center; }
@@ -2383,9 +2383,6 @@
   .plan-account-result { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin: 14px 0; font-size: 13px; }
   .plan-account-result small, .plan-position-evidence { color: var(--ark-muted); font-size: 12px; }
   .plan-position-evidence { margin: 14px 0; }
-  .plan-redemption-panel { padding: 20px; }
-  .plan-redemption-row { display: grid; gap: 5px; margin-top: 18px; font-size: 13px; }
-  .plan-redemption-row strong { font-variant-numeric: tabular-nums; }
   .plan-account-workspace .plan-trade-table { min-width: 560px; }
   @media(max-width: 760px) { .plan-account-workspace .plan-trade-table { min-width: 0; } .plan-account-workspace .plan-account-detail { padding: 0 16px 16px; } }
   @media(max-width: 1150px) { .plan-account-workspace { grid-template-columns: minmax(0, 1fr); } }
@@ -2995,48 +2992,34 @@
       <template x-if="fundingPlan()">
         <section id="plan-funding-step" class="plan-funding-plan plan-run-step" aria-label="资金调拨计划">
           <header class="plan-step-header">
-            <h2 class="plan-step-title">本期资金安排</h2>
+            <h2 class="plan-step-title">本期资金调拨目标</h2>
           </header>
           <div class="plan-step-body plan-funding-table-scroll">
             <p class="workspace-meta mb-3" x-show="plan?.fund_transfer?.cash">
-              资金池已有 <strong x-text="fmtMoney(plan?.fund_transfer?.cash?.available)"></strong>；
-              本期立即调出 <strong x-text="fmtMoney(plan?.fund_transfer?.cash?.immediate_outflow)"></strong>；
-              调出后余款 <strong x-text="fmtMoney(plan?.fund_transfer?.cash?.remaining)"></strong>。
+              资金账户当前可用 <strong x-text="fmtMoney(plan?.fund_transfer?.cash?.available)"></strong>
             </p>
-            <p x-show="!currentFundingGroups().length" class="workspace-meta">本期无需立即调拨资金。</p>
-            <table x-show="currentFundingGroups().length" class="plan-funding-table" aria-label="资金调拨动作">
-              <colgroup>
-                <col class="plan-funding-route-col">
-                <col class="plan-funding-amount-col">
-                <col>
-              </colgroup>
-              <thead>
-                <tr>
-                  <th scope="col">调拨路线</th>
-                  <th scope="col" class="plan-funding-amount-heading">调拨金额</th>
-                  <th scope="col">资金可用时间</th>
-                </tr>
-              </thead>
+            <table class="plan-funding-table" aria-label="资金调拨目标">
+              <thead><tr>
+                <th scope="col">调拨路线</th>
+                <th scope="col" class="plan-funding-amount-heading">目标金额</th>
+              </tr></thead>
               <tbody>
-                <template x-for="group in currentFundingGroups()" :key="group.availability">
-                  <template x-for="(action, actionIndex) in group.actions" :key="`${group.availability}-${action.source_account_id}-${action.target_account_id}-${actionIndex}`">
-                    <tr class="plan-funding-action">
-                      <td class="plan-funding-direction" data-label="调拨路线">
-                        <span x-text="action.source_account_name"></span>
-                        <span class="mx-2 text-gray-300" aria-hidden="true">→</span>
-                        <span x-text="action.target_account_name"></span>
-                      </td>
-                      <td class="plan-funding-amount" data-label="调拨金额" x-text="(action.conditional ? '参考上限 ' : '') + fmtMoney(action.amount)"></td>
-                      <td class="plan-funding-window" data-label="资金可用时间">
-                        <span class="plan-funding-window-label" x-text="group.label"></span>
-                        <span class="plan-funding-window-date" x-text="action.display_date || group.display_date"></span>
-                        <small class="block" x-show="action.note" x-text="action.note"></small>
-                      </td>
-                    </tr>
-                  </template>
+                <template x-for="(action, actionIndex) in fundingTargetActions()" :key="`${action.source_account_id}-${action.target_account_id}-${actionIndex}`">
+                  <tr class="plan-funding-action">
+                    <td class="plan-funding-direction" data-label="调拨路线">
+                      <span x-text="action.source_account_name"></span>
+                      <span class="mx-2 text-gray-300" aria-hidden="true">→</span>
+                      <span x-text="action.target_account_name"></span>
+                    </td>
+                    <td class="plan-funding-amount" data-label="目标金额" x-text="fmtMoney(action.amount)"></td>
+                  </tr>
                 </template>
               </tbody>
             </table>
+            <details class="plan-funding-basis mt-3">
+              <summary class="workspace-meta cursor-pointer">查看调拨依据</summary>
+              <p class="workspace-meta mt-2">转入按资金账户现有可用余额安排；回流目标不计入本期买入预算。投顾回流按计划净买入测算，实际少买则相应少赎，国内长钱优先、不足再用海外长钱。</p>
+            </details>
           </div>
         </section>
       </template>
@@ -3195,22 +3178,7 @@
           </div>
         </section>
       </template>
-      <aside class="plan-redemption-panel" x-show="conditionalFundingActions().length" aria-label="成交后赎回安排">
-        <h2 class="plan-step-title">成交后再安排赎回</h2>
-        <p class="workspace-meta mt-2">按实际净买入补回现金池，少买少赎、未买不赎。</p>
-        <template x-for="(action, index) in conditionalFundingActions()" :key="action.source_account_id + '-' + action.target_account_id">
-          <div class="plan-redemption-row">
-            <span x-text="(index ? '不足再用' : '优先使用') + action.source_account_name"></span>
-            <strong x-text="'参考上限 ' + fmtMoney(action.amount)"></strong>
-          </div>
-        </template>
-        <details class="plan-cash-audit"><summary>查看赎回依据</summary>
-          <p class="workspace-meta">以上不是立即赎回指令。成交后扣除已有赎回在途，再按国内长钱、海外长钱顺序安排；未到账款不计入本期购买力。</p>
-          <template x-for="action in conditionalFundingActions()" :key="action.source_account_id">
-            <p class="workspace-meta mt-2" x-text="action.note"></p>
-          </template>
-        </details>
-      </aside>
+
       </div>
       </div>
     </div>
@@ -5482,13 +5450,8 @@
       fundingPlan() {
         return this.executionReadModel()?.funding_plan || null
       },
-      currentFundingGroups() {
-        return (this.fundingPlan()?.groups || []).map(group => ({
-          ...group, actions: group.actions.filter(action => !action.conditional),
-        })).filter(group => group.actions.length)
-      },
-      conditionalFundingActions() {
-        return (this.fundingPlan()?.groups || []).flatMap(group => group.actions).filter(action => action.conditional)
+      fundingTargetActions() {
+        return (this.fundingPlan()?.groups || []).flatMap(group => group.actions)
       },
       accountTradingPlans() {
         return this.executionReadModel()?.account_trading_plans || []
@@ -5504,7 +5467,7 @@
         if (blocked) return `${blocked.account_name}资金不足，暂不可执行；先处理资金缺口。`
         const waiting = plans.find(plan => plan?.funding?.state === 'waits_for_funds')
         if (waiting) return `${waiting.account_name}需等待资金可用；到账前不要执行该账户交易。`
-        return '先按资金安排完成调拨，再按各账户清单交易。'
+        return '按本期目标调拨资金，并按各账户清单交易。'
       },
       hasExecutionPlans() {
         return Boolean(this.fundingPlan() || this.accountTradingPlans().length)
