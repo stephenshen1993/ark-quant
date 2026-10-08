@@ -1,0 +1,843 @@
+{
+  "review_date": "2026-10-08",
+  "before_count": 56,
+  "after_count": 35,
+  "excluded_count": 9,
+  "added_count": 1,
+  "criteria": [
+    "改变用户能做的事",
+    "修正用户会遇到的问题",
+    "要求用户调整操作"
+  ],
+  "time_basis": "历史条目统一使用对应实现提交的提交时间（Asia/Shanghai），合并采用最后一项必要实现提交时间，不声称是实际部署时间。",
+  "retained_groups": [
+    {
+      "original_indices": [
+        0
+      ],
+      "public_entry": {
+        "date": "2026-10-08",
+        "time": "10:26",
+        "title": "账户调拨统一按本轮需求安排"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "69d42aa20487632c3fa19489b91553462ef4ed75",
+          "time": "2026-10-08T10:26:35+08:00",
+          "subject": "按本轮补池需求限制回流并收紧调拨表格列距"
+        },
+        {
+          "commit": "d9814788c786e84d0cd0334ea569206bb6e61fba",
+          "time": "2026-10-08T10:14:49+08:00",
+          "subject": "实现统一账户目标再平衡与在途资金防重"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        1
+      ],
+      "public_entry": {
+        "date": "2026-10-08",
+        "time": "10:26",
+        "title": "计划页更便于核对调拨和订单"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "4bb331347c275b53a7f9a9d4bc9058ebc7093fd7",
+          "time": "2026-10-08T07:49:53+08:00",
+          "subject": "统一账户调拨说明与收盘价执行依据"
+        },
+        {
+          "commit": "333fac4e670c3cb175aa6838fb6338a413959404",
+          "time": "2026-10-08T00:45:24+08:00",
+          "subject": "重构计划页为资金安排与账户交易工作区"
+        },
+        {
+          "commit": "dba1e82b702b5da122edad2d0f46777f42bbaaf7",
+          "time": "2026-10-08T10:19:22+08:00",
+          "subject": "明确资金表展示本次调拨金额并同步页面验收断言"
+        },
+        {
+          "commit": "69d42aa20487632c3fa19489b91553462ef4ed75",
+          "time": "2026-10-08T10:26:35+08:00",
+          "subject": "按本轮补池需求限制回流并收紧调拨表格列距"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        2
+      ],
+      "public_entry": {
+        "date": "2026-10-07",
+        "time": "23:34",
+        "title": "修正纳指基金持仓归类"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "16942a94e861d24f83bb6a651aba98385af360c0",
+          "time": "2026-10-07T23:34:11+08:00",
+          "subject": "修正投顾顺序补池与纳指归类并简化账户概览"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        3
+      ],
+      "public_entry": {
+        "date": "2026-10-07",
+        "time": "23:11",
+        "title": "修正长假期间的榜单与执行日期判断"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "d87a5de674afdc71875d88b16fb30007fbb6a333",
+          "time": "2026-10-07T22:49:12+08:00",
+          "subject": "fix: 按冻结交易日校验转债数据新鲜度，避免长假误判"
+        },
+        {
+          "commit": "922f1b9511bb949b9d6b91f558f1c2ebd525b9fa",
+          "time": "2026-10-07T22:53:05+08:00",
+          "subject": "fix: 使用交易所日历确定榜单适用交易日"
+        },
+        {
+          "commit": "efdc2abbe4613842c60d8bbb287a5e51ff8d633c",
+          "time": "2026-10-07T23:11:22+08:00",
+          "subject": "fix: 计划生成不复用适用交易日错误的旧榜单"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        4
+      ],
+      "public_entry": {
+        "date": "2026-09-29",
+        "time": "09:59",
+        "title": "平安资金配置与投顾赎回衔接"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "ac59fcfdea40a3d54d5afc3ee2579a5ff08b041f",
+          "time": "2026-09-29T09:59:24+08:00",
+          "subject": "按本轮净新增投入安排国内长钱分批赎回"
+        },
+        {
+          "commit": "44064fbad439e72a2353e00965628792e573cca1",
+          "time": "2026-09-29T09:43:23+08:00",
+          "subject": "先用现有现金配置平安并分离后续目标回流"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        5
+      ],
+      "public_entry": {
+        "date": "2026-09-29",
+        "time": "09:16",
+        "title": "交易计划预留费用资金"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "f950bcf180848330eff78bce704c565a264eb045",
+          "time": "2026-09-29T09:16:19+08:00",
+          "subject": "统一证券账户现金预留区间并简化费用处理"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        6
+      ],
+      "public_entry": {
+        "date": "2026-09-29",
+        "time": "08:56",
+        "title": "平安交易条件缺失时显示待补事项"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "fcbfefa00c45d4837b1367a3cac50de2d4f64ee8",
+          "time": "2026-09-29T08:56:25+08:00",
+          "subject": "保留平安待补交易条件的账户计划展示"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        7
+      ],
+      "public_entry": {
+        "date": "2026-09-29",
+        "time": "08:46",
+        "title": "修正百润转债付息后的估值与资金估算"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "37b8a02484c373c22bd0cbb46d59f6cc71f4094f",
+          "time": "2026-09-29T08:33:24+08:00",
+          "subject": "修正百润付息后旧报价与账户现金的估值衔接"
+        },
+        {
+          "commit": "7d11bb947e68a71811eec240d2199c3feebd7a8b",
+          "time": "2026-09-29T08:46:46+08:00",
+          "subject": "统一除息参考价并修正交易计划资金估算"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        8
+      ],
+      "public_entry": {
+        "date": "2026-09-28",
+        "time": "17:51",
+        "title": "平安基金纳入统一计划"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "112b86b78dda82c9fb832fb5cba5e5747262afbf",
+          "time": "2026-09-28T17:51:19+08:00",
+          "subject": "接入统一阶段配置与平安基金交易计划"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        9
+      ],
+      "public_entry": {
+        "date": "2026-09-10",
+        "time": "08:38",
+        "title": "行情短暂超时后自动补取缺失报价"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "d513c14652f811580a07814a96b0a52805ce8f7f",
+          "time": "2026-09-10T08:38:55+08:00",
+          "subject": "fix: retry missing stock snapshots after transient quote timeouts"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        10
+      ],
+      "public_entry": {
+        "date": "2026-09-08",
+        "time": "09:03",
+        "title": "已确认停牌转债不再阻塞榜单生成"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "621ab52ff5d1157d1886f06452bbc51abebad60b",
+          "time": "2026-09-08T09:03:16+08:00",
+          "subject": "修复已确认停牌转债阻塞榜单生成"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        11
+      ],
+      "public_entry": {
+        "date": "2026-08-26",
+        "time": "00:46",
+        "title": "计划内定位与账户切换更清楚"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "3339cbb0c5d5abba16b57e8180f578dd7d0c1ac7",
+          "time": "2026-08-25T23:42:56+08:00",
+          "subject": "重新设计计划页信息流"
+        },
+        {
+          "commit": "a50a9c6e0db1be633ccdde24f4416112d9d9924d",
+          "time": "2026-08-26T00:46:05+08:00",
+          "subject": "修复资金安排导航误跳概览"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        12
+      ],
+      "public_entry": {
+        "date": "2026-08-24",
+        "time": "23:55",
+        "title": "减少历史行情缺口对转债榜单的影响"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "6a7e30e58bbc93c56ab1bcc768bd51d626562845",
+          "time": "2026-08-24T23:55:00+08:00",
+          "subject": "fix: decouple CB data preparation from strategy filters"
+        },
+        {
+          "commit": "d4ab198450f1a6de97379d07ae29cbfeeaa1e1c0",
+          "time": "2026-08-24T23:11:46+08:00",
+          "subject": "fix: isolate stock history providers"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        13
+      ],
+      "public_entry": {
+        "date": "2026-08-20",
+        "time": "01:47",
+        "title": "重复生成计划与榜单可复用行情数据"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "67ed0c73e2ebbf954ed83fcd16e684b64304f641",
+          "time": "2026-08-20T00:40:22+08:00",
+          "subject": "feat: unify strategy market data bundles"
+        },
+        {
+          "commit": "cfb703e45b8f9e77a29ac3ccbfba3603482a4ca3",
+          "time": "2026-08-20T00:46:42+08:00",
+          "subject": "feat: expose data preparation status"
+        },
+        {
+          "commit": "d290eff13d9a588ed3e5b522d0db42bb94e17f32",
+          "time": "2026-08-20T01:47:23+08:00",
+          "subject": "fix: bound incremental history refreshes"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        14
+      ],
+      "public_entry": {
+        "date": "2026-08-19",
+        "time": "23:31",
+        "title": "持仓录入支持连续添加与核对"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "b2e7b1f2959cd2cc31b42303e1052e94bb052967",
+          "time": "2026-08-19T23:31:15+08:00",
+          "subject": "feat: streamline account holdings editing"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        15
+      ],
+      "public_entry": {
+        "date": "2026-08-10",
+        "time": "01:40",
+        "title": "概览与计划使用同一市场温度"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "40cd0cc1ab5412f27a0fe6d54e1cfd8b78fea0a6",
+          "time": "2026-08-10T01:40:15+08:00",
+          "subject": "feat: 重构方舟计划信息架构与计划体验"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "public_entry": {
+        "date": "2026-08-10",
+        "time": "01:40",
+        "title": "概览、榜单与计划各有独立入口"
+      },
+      "reason": "同一轮界面重构拆成六条，合并为入口分工与执行阅读这一完整用户变化。",
+      "evidence": [
+        {
+          "commit": "40cd0cc1ab5412f27a0fe6d54e1cfd8b78fea0a6",
+          "time": "2026-08-10T01:40:15+08:00",
+          "subject": "feat: 重构方舟计划信息架构与计划体验"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        22,
+        23
+      ],
+      "public_entry": {
+        "date": "2026-08-09",
+        "time": "09:09",
+        "title": "账户录入与核对更方便"
+      },
+      "reason": "相邻的账户交互调整合并，保留防误触与核对入口，省略排序实现细节。",
+      "evidence": [
+        {
+          "commit": "54b18df63acd7a525146dcb7adc327c9d484ec5a",
+          "time": "2026-08-09T09:09:53+08:00",
+          "subject": "fix: 优化账户与计划关键交互"
+        },
+        {
+          "commit": "dc6fd2338d0048361e37cf1721d8fc7f2b49e714",
+          "time": "2026-08-09T00:37:41+08:00",
+          "subject": "fix: 按持仓市值排序当前持仓"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        24
+      ],
+      "public_entry": {
+        "date": "2026-08-09",
+        "time": "00:15",
+        "title": "已有持仓自动补齐行情与估值"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "6ba2c8d08774471025dfd8e820eaa994f3ac0ec8",
+          "time": "2026-08-09T00:15:34+08:00",
+          "subject": "fix: 补齐账户持仓实时估值"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        25,
+        26
+      ],
+      "public_entry": {
+        "date": "2026-08-08",
+        "time": "22:45",
+        "title": "账户支持独立更新与空仓确认"
+      },
+      "reason": "同一账户更新功能的主流程和清空保护合并，保留现金不会被误清零的关键差异。",
+      "evidence": [
+        {
+          "commit": "83fe92e755cad11a5ad7771af433349cef123b7d",
+          "time": "2026-08-08T22:45:36+08:00",
+          "subject": "feat: 升级全站信息流与逐账户数据更新"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        31
+      ],
+      "public_entry": {
+        "date": "2026-08-04",
+        "time": "22:16",
+        "title": "计划模式与计算依据更易核对"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "ef52ee9a694e8497b79b3517ff36455fd07cea12",
+          "time": "2026-08-04T22:16:45+08:00",
+          "subject": "Improve ark plan workflow and audit UI"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        32,
+        34,
+        35
+      ],
+      "public_entry": {
+        "date": "2026-07-25",
+        "time": "16:13",
+        "title": "完整计划统一生成并提示资料失效"
+      },
+      "reason": "完整计划生成的连续实现与保护收敛为一个结果，避免重复列出笼统的加固条目。",
+      "evidence": [
+        {
+          "commit": "a58c96d9bec9d333d9bfa1d108140b64220b726f",
+          "time": "2026-07-22T11:36:53+08:00",
+          "subject": "feat: add auditable funding and complete plan workflow"
+        },
+        {
+          "commit": "13eb5463d52e79990666dbf79347e001a9413237",
+          "time": "2026-07-22T23:46:36+08:00",
+          "subject": "feat: harden plan generation workflow"
+        },
+        {
+          "commit": "5402bbe577d121fff81b5ca57e6a0bf745e73ddc",
+          "time": "2026-07-25T16:13:01+08:00",
+          "subject": "Fix plan generation and sizing safeguards"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        33
+      ],
+      "public_entry": {
+        "date": "2026-07-23",
+        "time": "10:36",
+        "title": "股票订单按整手与持仓限制测算"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "e3861f501bb4d191b93ad3f4be3c6d62af464f0e",
+          "time": "2026-07-23T10:36:39+08:00",
+          "subject": "feat: enforce smallcap target state sizing"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        40
+      ],
+      "public_entry": {
+        "date": "2026-07-17",
+        "time": "19:42",
+        "title": "账户支持记录冻结现金"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "a3d1ae5a9481aefd5468088d6e59df697cf1e81a",
+          "time": "2026-07-17T19:42:37+08:00",
+          "subject": "feat(account): support frozen cash and atomic state saves"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        41
+      ],
+      "public_entry": {
+        "date": "2026-07-14",
+        "time": "09:11",
+        "title": "缺少榜单时仍可查看资金安排"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "6459de9774f0b7100ce83dd04c47aec5dc338476",
+          "time": "2026-07-14T09:11:28+08:00",
+          "subject": "fix: decouple transfer plan from strategy rankings"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        42
+      ],
+      "public_entry": {
+        "date": "2026-07-13",
+        "time": "07:23",
+        "title": "报价或可释放资金不足时停止订单测算"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "46df4f20b8eb3941deeeb4a292014f057ae4341a",
+          "time": "2026-07-13T07:23:08+08:00",
+          "subject": "Harden trading plan sizing"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        43
+      ],
+      "public_entry": {
+        "date": "2026-07-08",
+        "time": "07:30",
+        "title": "账户总额与更新时间更易核对"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "752ad4d779d7d2c96d0fe03bf5922d0e86c23fc1",
+          "time": "2026-07-08T07:30:00+08:00",
+          "subject": "feat: 完善账户余额与计划展示"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        44
+      ],
+      "public_entry": {
+        "date": "2026-07-03",
+        "time": "09:38",
+        "title": "订单显示预计剩余现金"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "92a75e53ddebd063879a7c75e62dc5977f45ad99",
+          "time": "2026-07-03T09:22:53+08:00",
+          "subject": "feat: 订单卡片显示交易后余额, plan API 加 cash_left"
+        },
+        {
+          "commit": "d6db664ad7ce11d26e5271dbbbdfb3814df943b1",
+          "time": "2026-07-03T09:38:52+08:00",
+          "subject": "feat: 余额分项展示 — 账面余额/待转出入/实际可用, CB加est_cost"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        45
+      ],
+      "public_entry": {
+        "date": "2026-07-03",
+        "time": "08:17",
+        "title": "股票订单考虑费用与小额交易"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "8f70e614a7d75c442d1f77552aaff61c1062c159",
+          "time": "2026-07-03T07:50:18+08:00",
+          "subject": "feat: 股票订单加交易成本 — min_trade_value=1000, 预估佣金列"
+        },
+        {
+          "commit": "2169296082e2fd028c1efbc5acf8a17ac1edac2e",
+          "time": "2026-07-03T08:02:31+08:00",
+          "subject": "fix: min_trade_value 覆盖所有交易(买/卖/加减仓), 含退出标的"
+        },
+        {
+          "commit": "cc3c2458292be99de58b6ab9789b7c6847a42d30",
+          "time": "2026-07-03T08:17:11+08:00",
+          "subject": "fix: 贪心填充后兜底修剪, 防止负现金余额"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        46
+      ],
+      "public_entry": {
+        "date": "2026-07-03",
+        "time": "06:43",
+        "title": "账户可展开维护余额与持仓"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "f0094dfd6892a6cb0434db518645944c20f16e51",
+          "time": "2026-07-03T06:43:00+08:00",
+          "subject": "refactor: 账户页手风琴 layout — 列表+展开编辑, 简单账户内联编辑"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        47
+      ],
+      "public_entry": {
+        "date": "2026-07-02",
+        "time": "23:11",
+        "title": "订单按调拨后的可用现金测算"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "ba2b76d2c5e25d53346e19c4531586275b5efb88",
+          "time": "2026-07-02T23:11:31+08:00",
+          "subject": "feat: 订单生成纳入资金调拨计划, 调拨后现金 = 账户现金 + 调拨增量"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        48,
+        49
+      ],
+      "public_entry": {
+        "date": "2026-07-02",
+        "time": "07:40",
+        "title": "计划页支持从榜单生成订单"
+      },
+      "reason": "合并同轮页面流程改造，移除数据库改造与从演示走向可用等内部叙事。",
+      "evidence": [
+        {
+          "commit": "fc6ec7125e005c92b38980fc4feaab8003566eca",
+          "time": "2026-07-02T07:10:32+08:00",
+          "subject": "feat: 数据层 DB 化 + 本地优先缓存 + 交易计划页面重构"
+        },
+        {
+          "commit": "713e39e44cc5e6bd74de63b1582549ce7ee1d924",
+          "time": "2026-07-02T07:40:41+08:00",
+          "subject": "fix: 交易页流水线逻辑 — 运行策略→排名→生成订单→订单卡片"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        50
+      ],
+      "public_entry": {
+        "date": "2026-07-01",
+        "time": "22:34",
+        "title": "明确计划的数据日与执行日"
+      },
+      "reason": "保留独立的用户变化，精简过程描述并核对时间。",
+      "evidence": [
+        {
+          "commit": "3f1dc6d855cb8e4ef3bfce30ec104540e4636404",
+          "time": "2026-07-01T22:34:27+08:00",
+          "subject": "fix: clarify plan execution date"
+        }
+      ]
+    },
+    {
+      "original_indices": [
+        51,
+        52,
+        53,
+        54
+      ],
+      "public_entry": {
+        "date": "2026-06-29",
+        "time": "07:33",
+        "title": "账户、榜单与计划看板上线"
+      },
+      "reason": "首次上线按完整用户能力记录，不把各页面和底层存储逐项拆成上线日志。",
+      "evidence": [
+        {
+          "commit": "90c082352a710d4bcdb2f221f5ebf24403f508d6",
+          "time": "2026-06-29T07:15:32+08:00",
+          "subject": "feat: account and positions API + 账户总览/持仓 pages"
+        },
+        {
+          "commit": "81bdb202f0d9d1782c3307552f792fec6a989481",
+          "time": "2026-06-29T07:20:15+08:00",
+          "subject": "feat: rankings API + 榜单 page with export"
+        },
+        {
+          "commit": "bef45aaf2ee035125517a257f343f398a90f6f22",
+          "time": "2026-06-29T07:33:40+08:00",
+          "subject": "feat: trade plan API + 本期计划 page"
+        }
+      ]
+    },
+    {
+      "original_indices": [],
+      "public_entry": {
+        "date": "2026-08-10",
+        "time": "20:15",
+        "title": "历史计划可回看并保留生成依据"
+      },
+      "reason": "补齐经提交验证的重要用户能力；历史回看与冻结依据此前没有独立记录。",
+      "evidence": [
+        {
+          "commit": "bb8212fc87e2ee28feb3342a6ec0f50b499c46ca",
+          "time": "2026-08-10T11:46:41+08:00",
+          "subject": "保留并展示历史计划快照"
+        },
+        {
+          "commit": "928ee3a16d6226946c443d0af010cf4752226ec6",
+          "time": "2026-08-10T20:15:22+08:00",
+          "subject": "feat(plan): freeze complete next-day execution inputs"
+        }
+      ]
+    }
+  ],
+  "excluded": [
+    {
+      "original_index": 27,
+      "reason": "“围绕状态主线组织”只描述设计过程，没有独立于已保留账户更新和后续导航改版的可操作变化。",
+      "source_commits": [
+        "83fe92e"
+      ],
+      "title": "全站信息流调整为状态主线"
+    },
+    {
+      "original_index": 28,
+      "reason": "统一内部读模型属于实现治理，原条目没有说明具体用户问题或新能力。",
+      "source_commits": [
+        "c875e00",
+        "035a478",
+        "0466c66"
+      ],
+      "title": "账户事实展示口径统一"
+    },
+    {
+      "original_index": 29,
+      "reason": "真源文档收口是维护活动，不是已交付的看板功能。",
+      "source_commits": [
+        "06ca6d5"
+      ],
+      "title": "当前真源文档完成重置"
+    },
+    {
+      "original_index": 30,
+      "reason": "文档目录整理属于维护记录。",
+      "source_commits": [
+        "7b468f3"
+      ],
+      "title": "文档入口按当前职责重整"
+    },
+    {
+      "original_index": 36,
+      "reason": "研究验证检查点不是产品变化，保留在研究材料中。",
+      "source_commits": [
+        "f85d13f"
+      ],
+      "title": "可转债候选验证检查点沉淀"
+    },
+    {
+      "original_index": 37,
+      "reason": "战术文档固化未在该条说明已落地的使用变化，不能当作功能交付。",
+      "source_commits": [
+        "874bad7"
+      ],
+      "title": "投资体系战术规则固化"
+    },
+    {
+      "original_index": 38,
+      "reason": "阶段范围与文档梳理属于规划过程。",
+      "source_commits": [
+        "bf470e6"
+      ],
+      "title": "战术配置和阶段范围进一步明确"
+    },
+    {
+      "original_index": 39,
+      "reason": "空目录清理并非功能下线，类型与用户影响不成立。",
+      "source_commits": [
+        "d9fb478"
+      ],
+      "title": "未启用目录完成清理"
+    },
+    {
+      "original_index": 55,
+      "reason": "实施计划形成不等于功能上线，实际上线已有独立记录。",
+      "source_commits": [
+        "67c6a66"
+      ],
+      "title": "Web 看板实施计划形成"
+    }
+  ],
+  "scope_normalization": "将计划生成归入计划，去掉与页面范围重复的视觉系统标签；不强制旧记录补齐可选标签。"
+}

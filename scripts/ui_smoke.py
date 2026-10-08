@@ -2549,7 +2549,7 @@ def browser_check_code(
                 navActive: styleOf(activeNav).backgroundColor,
                 accent: typeColors['优化'],
                 update: typeColors['更新'],
-                neutral: typeColors['公告'],
+                neutral: typeColors['公告'] ?? typeColors['下线'],
                 kicker: styleOf(kicker),
                 title: styleOf(title),
                 subtitle: styleOf(subtitle),
@@ -2596,6 +2596,8 @@ def browser_check_code(
             const styleDrift = [];
             Object.entries(expectedStyleMetrics).forEach(([role, expected]) => {{
               const actual = styleMetrics[role];
+              // 类型可以缺席；不能为了视觉测试强迫发布某一类日志。
+              if (['accent', 'update', 'neutral'].includes(role) && actual === undefined) return;
               if (expected && typeof expected === 'object') {{
                 Object.entries(expected).forEach(([property, expectedValue]) => {{
                   if (Math.abs(actual[property] - expectedValue) > 0.2) {{
