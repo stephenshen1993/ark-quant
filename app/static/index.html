@@ -288,115 +288,43 @@
   .global-status-pill.is-info { background: #e2ebf1; color: var(--ark-info); }
   .global-status-pill.is-problem { background: #f2e2df; color: var(--ark-problem); }
   .global-status-pill.is-neutral { background: #eef1f3; color: var(--ark-muted); }
-  .overview-workbench {
-    padding-top: 42px;
-  }
-  .overview-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 260px;
-    gap: 24px;
-    align-items: start;
-  }
-  .overview-section {
-    padding: 22px 24px;
-  }
-  .overview-section + .overview-section {
-    margin-top: 16px;
-  }
-  .overview-section-heading {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 14px;
-  }
-  .overview-section-heading h2,
-  .overview-side-panel h2 {
-    color: var(--ark-text);
-    font-size: 16px;
-    font-weight: 750;
-  }
-  .overview-section-heading p,
-  .overview-side-panel p {
-    margin-top: 4px;
-    color: var(--ark-muted);
-    font-size: 13px;
-    line-height: 1.65;
-  }
-  .overview-total {
-    color: var(--ark-text);
-    font-family: var(--ark-font-data);
-    font-size: 19px;
-    font-weight: 800;
-    white-space: nowrap;
-  }
-  .overview-matrix {
-    width: 100%;
-    border-collapse: collapse;
-  }
-  .overview-matrix th,
-  .overview-matrix td {
-    padding: 11px 10px;
-    border-top: 1px solid var(--ark-faint);
-    text-align: left;
-    vertical-align: top;
-  }
-  .overview-matrix th {
-    color: var(--ark-muted);
-    font-size: 11px;
-    font-weight: 700;
-  }
-  .overview-matrix .num {
-    font-family: var(--ark-font-data);
-    text-align: right;
-    white-space: nowrap;
-  }
-  .overview-matrix strong {
-    color: var(--ark-text);
-    font-weight: 750;
-  }
-  .overview-matrix small {
-    display: block;
-    margin-top: 2px;
-    color: var(--ark-muted);
-    font-size: 12px;
-    line-height: 1.45;
-  }
-  .overview-bar {
-    display: inline-grid;
-    width: 110px;
-    height: 7px;
-    margin-right: 8px;
-    overflow: hidden;
-    border-radius: 999px;
-    background: var(--ark-faint);
-    vertical-align: middle;
-  }
-  .overview-bar i {
-    display: block;
-    border-radius: inherit;
-    background: var(--ark-accent);
-  }
-  .overview-side {
-    display: grid;
-    gap: 12px;
-  }
-  .overview-side-panel {
-    padding: 18px;
-  }
-  .overview-data-line {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 9px 0;
-    border-top: 1px solid var(--ark-faint);
-    color: var(--ark-muted);
-    font-size: 12px;
-  }
-  .overview-data-line strong {
-    color: var(--ark-text);
-    font-family: var(--ark-font-data);
-  }
+  .overview-workbench { padding-top: 42px; }
+  .overview-headline { text-align: right; align-self: center; }
+  .overview-asset-label { color: var(--ark-muted); font-size: 14px; }
+  .overview-total { display: block; color: var(--ark-text); font: 600 36px/1.4 var(--ark-font-data); letter-spacing: -1px; }
+  .overview-link { color: var(--ark-accent-deep); font-size: 14px; font-weight: 650; white-space: nowrap; }
+  .overview-link:hover { text-decoration: underline; }
+  .overview-section { padding: 24px 28px; }
+  .overview-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; }
+  .overview-section-heading h2 { font-size: 18px; font-weight: 700; }
+  .overview-section-heading p, .overview-note { color: var(--ark-muted); font-size: 13px; line-height: 1.7; }
+  .overview-legend { display: flex; align-items: center; gap: 7px; color: var(--ark-muted); font-size: 12px; white-space: nowrap; }
+  .overview-legend i { width: 18px; height: 5px; border-radius: 3px; background: var(--ark-accent); }
+  .overview-legend b { height: 13px; border-left: 2px solid var(--ark-text); margin-left: 8px; }
+  .overview-matrix { width: 100%; border-collapse: collapse; }
+  .overview-matrix th, .overview-matrix td { padding: 12px 12px; border-top: 1px solid var(--ark-faint); text-align: left; vertical-align: middle; }
+  .overview-matrix th { color: var(--ark-muted); font-size: 12px; font-weight: 500; padding-top: 10px; padding-bottom: 10px; }
+  .overview-matrix th:first-child, .overview-matrix td:first-child { padding-left: 0; }
+  .overview-matrix th:last-child, .overview-matrix td:last-child { padding-right: 0; }
+  .overview-matrix .num { font-family: var(--ark-font-data); text-align: right; white-space: nowrap; }
+  .overview-matrix strong { font-weight: 650; }
+  .overview-comparison { width: 32%; }
+  .overview-ratios { display: flex; justify-content: space-between; font-family: var(--ark-font-data); font-size: 14px; }
+  .overview-ratios > span:last-child { color: var(--ark-muted); }
+  .overview-track { position: relative; height: 5px; margin: 10px 1px 2px; background: var(--ark-faint); border-radius: 3px; }
+  .overview-track i { display: block; height: 100%; background: var(--ark-accent); border-radius: inherit; }
+  .overview-track b { position: absolute; top: -4px; height: 13px; width: 2px; background: var(--ark-text); transform: translateX(-1px); }
+  .overview-deviation { color: var(--ark-muted); font-size: 14px; }
+  .overview-deviation.is-below { color: var(--ark-accent-deep); }
+  .overview-mobile-label { display: none; }
+  .overview-pending { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; border-top: 1px solid var(--ark-line); padding: 16px 0; font-size: 14px; }
+  .overview-note { margin-top: 16px; }
+  .overview-support { margin-top: 22px; border-top: 1px solid var(--ark-line); color: var(--ark-muted); font-size: 13px; }
+  .overview-support summary { padding: 14px 0; cursor: pointer; }
+  .overview-data-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 24px; padding-bottom: 16px; }
+  .overview-data-line { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: 12px; }
+  .overview-data-line time { font-family: var(--ark-font-data); }
+  .overview-temperature { padding: 14px 0; border-top: 1px solid var(--ark-faint); }
   .rankings-workbench {
     padding-top: 42px;
   }
@@ -2072,52 +2000,20 @@
     .workspace-title {
       font-size: 30px;
     }
-    .overview-layout {
-      grid-template-columns: 1fr;
-      gap: 14px;
-    }
-    .overview-section {
-      padding: 18px;
-    }
-    .overview-section-heading {
-      display: block;
-    }
-    .overview-total {
-      display: block;
-      margin-top: 8px;
-      font-size: 16px;
-    }
-    .overview-matrix,
-    .overview-matrix tbody { display: block; }
-    .overview-matrix thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0 0 0 0);
-      white-space: nowrap;
-    }
-    .overview-matrix tr {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 4px 12px;
-      padding: 12px 0;
-      border-top: 1px solid var(--ark-faint);
-    }
-    .overview-matrix td {
-      display: block;
-      padding: 0;
-      border-top: 0;
-    }
-    .overview-matrix td:first-child {
-      grid-column: 1 / -1;
-    }
-    .overview-matrix .num {
-      text-align: left;
-    }
-    .overview-bar {
-      width: 82px;
-    }
+    .overview-workbench .workspace-title-row { flex-wrap: wrap; }
+    .overview-headline { text-align: left; align-self: flex-start; }
+    .overview-total { font-size: 26px; letter-spacing: -0.7px; }
+    .overview-section { padding: 18px; }
+    .overview-section-heading { flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+    .overview-matrix, .overview-matrix tbody { display: block; }
+    .overview-matrix thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .overview-matrix tr { display: grid; grid-template-columns: minmax(0, 1fr) 102px; gap: 12px; padding: 16px 0; border-top: 1px solid var(--ark-faint); }
+    .overview-matrix td { display: block; padding: 0; border: 0; }
+    .overview-matrix td.overview-comparison { width: auto; }
+    .overview-matrix td.overview-deviation { align-self: center; font-size: 12px; }
+    .overview-matrix .num { font-size: 13px; }
+    .overview-mobile-label { display: inline; color: var(--ark-muted); font: 11px var(--ark-font-sans); margin-right: 4px; }
+    .overview-data-grid { grid-template-columns: 1fr; }
     .plan-workbench {
       padding-top: 22px;
     }
@@ -2473,7 +2369,10 @@
       <div>
         <div class="workspace-kicker">OVERVIEW</div>
         <h1 class="workspace-title tracking-normal">概览</h1>
-        <p class="workspace-meta mt-2">只看整体配置结构；下一步调拨和交易请进入计划。</p>
+        <p class="workspace-meta mt-2">掌握资产分布，核对账户目标。</p>
+      </div>
+      <div class="overview-headline" x-show="summary && !loadError" x-cloak>
+        <span class="overview-asset-label">总资产</span><strong class="overview-total" x-text="fmtMoney(totalAssets())"></strong>
       </div>
     </header>
     <section x-show="loadError" x-cloak class="account-current-alert is-warning" role="alert">
@@ -2483,74 +2382,43 @@
       </div>
       <button type="button" @click="load()">重新读取</button>
     </section>
-    <div class="overview-layout" x-show="!loadError">
-      <div>
-        <section class="ark-panel overview-section" aria-label="账户总览">
-          <div class="overview-section-heading"><div><h2>账户总览</h2><p>各账户资产及占比；包含账户内现金。</p></div><strong class="overview-total" x-text="fmtMoney(totalAssets())"></strong></div>
-          <table class="overview-matrix">
-            <thead><tr><th>账户</th><th class="num">资产金额</th><th class="num">占总资产</th></tr></thead>
-            <tbody><template x-for="account in (readModel().accounts || [])" :key="account.id"><tr>
-              <td><strong x-text="account.name"></strong></td>
-              <td class="num" x-text="fmtMoney(account.total)"></td>
-              <td class="num" x-text="percentText(account.total)"></td>
-            </tr></template></tbody>
-          </table>
-        </section>
-        <section class="ark-panel overview-section" aria-label="顶层组合配置">
-          <div class="overview-section-heading">
-            <div>
-              <h2>配置进度</h2>
-              <p>当前比例与阶段目标对照。待迁移投顾仍计入总资产，因此五项当前占比暂不合计为100%。</p>
-            </div>
-
-          </div>
-          <table class="overview-matrix">
-            <thead>
-              <tr>
-                <th>投资方向</th>
-
-                <th class="num">当前占比</th>
-                <th class="num">当前金额</th>
-                <th class="num">目标占比</th>
-              </tr>
-            </thead>
-            <tbody>
-              <template x-for="portfolio in topPortfolios()" :key="portfolio.id">
-                <tr>
-                  <td>
-                    <strong x-text="portfolioLabel(portfolio)"></strong>
-
-                  </td>
-
-                  <td class="num">
-                    <span class="overview-bar" aria-hidden="true"><i :style="`width: ${percentValue(portfolio.current_amount)}%`"></i></span>
-                    <span x-text="percentText(portfolio.current_amount)"></span>
-                  </td>
-                  <td class="num" x-text="fmtMoney(portfolio.current_amount)"></td>
-                  <td class="num" x-text="`${(portfolio.target_weight * 100).toFixed(0)}%`"></td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-        </section>
-        <p class="account-current-note is-warning" x-show="readModel().allocation_error" x-text="readModel().allocation_error"></p>
-
+    <p x-show="loading && !summary" role="status" class="overview-note">正在读取账户数据…</p>
+    <div x-show="!loading && !summary && !loadError" x-cloak class="overview-note">
+      尚未录入账户数据。<a href="#account" @click.prevent="setActivePage('account')" class="overview-link">前往录入 →</a>
+    </div>
+    <div x-show="summary && !loadError" x-cloak>
+      <section class="ark-panel overview-section" aria-label="账户配置">
+        <div class="overview-section-heading">
+          <div><h2>账户配置</h2><div class="overview-legend" aria-hidden="true"><i></i> 当前 <b></b> 目标</div></div>
+          <a href="#plan" @click.prevent="setActivePage('today')" class="overview-link">查看本轮计划 →</a>
+        </div>
+        <p class="account-current-note is-warning" role="status" x-show="readModel().allocation_error" x-text="readModel().allocation_error"></p>
+        <table class="overview-matrix">
+          <thead><tr><th scope="col">账户</th><th scope="col" class="num">资产金额</th><th scope="col">当前占比 / 目标</th><th scope="col" class="num">偏离目标</th></tr></thead>
+          <tbody><template x-for="account in allocationRows()" :key="account.id"><tr>
+            <td><strong x-text="account.name"></strong></td>
+            <td class="num" x-text="fmtMoney(account.amount)"></td>
+            <td class="overview-comparison">
+              <div class="overview-ratios"><span><span class="overview-mobile-label">当前</span><span x-text="percentText(account.amount)"></span></span><span><span class="overview-mobile-label">目标</span><span x-text="targetText(account)"></span></span></div>
+              <div class="overview-track" aria-hidden="true"><i :style="`width: ${percentValue(account.amount)}%`"></i><b x-show="account.target != null" :style="`left: ${(account.target || 0) * 100}%`"></b></div>
+            </td>
+            <td class="num overview-deviation" :class="{'is-below': deviation(account) < -0.05}" x-text="deviationText(account)"></td>
+          </tr></template></tbody>
+        </table>
+        <div class="overview-pending" x-show="pendingAmount() > 0">
+          <span>已确认在途 <span class="overview-note">· 已计入总资产，到账前单列</span></span>
+          <strong x-text="fmtMoney(pendingAmount())"></strong>
+        </div>
+        <p class="overview-note">账户金额包含账户内现金；已分离的在途资金单列。偏离以百分点表示，具体调拨见本轮计划。</p>
+      </section>
+      <div class="overview-support">
+        <details>
+          <summary>账户数据时间</summary>
+          <div class="overview-data-grid"><template x-for="line in accountDataLines()" :key="line.label"><div class="overview-data-line"><span x-text="line.label"></span><time x-text="line.time"></time></div></template></div>
+          <a href="#account" @click.prevent="setActivePage('account')" class="overview-link">更新账户数据 →</a>
+        </details>
+        <p class="overview-temperature">全市场温度 · <span x-text="temperatureText()"></span></p>
       </div>
-      <aside class="overview-side" aria-label="概览辅助信息">
-        <section class="ark-panel overview-side-panel">
-          <h2>全市场温度</h2>
-          <p x-text="temperatureText()"></p>
-        </section>
-        <section class="ark-panel overview-side-panel">
-          <h2>数据时间</h2>
-          <template x-for="line in accountDataLines()" :key="line.label">
-            <div class="overview-data-line">
-              <span x-text="line.label"></span>
-              <strong x-text="line.time"></strong>
-            </div>
-          </template>
-        </section>
-      </aside>
     </div>
   </div>
   </template>
@@ -3836,8 +3704,33 @@
       totalAssets() {
         return this.context().total_assets ?? this.summary?.total_assets ?? null
       },
+      allocationRows() {
+        return (this.readModel().accounts || []).map(account => {
+          const allocation = (this.readModel().allocation || []).find(row =>
+            row.id !== 'pending' && row.account_ids?.includes(account.id))
+          return { id: account.id, name: account.name,
+            amount: allocation?.current_amount ?? account.total,
+            target: allocation?.target_weight ?? null }
+        })
+      },
+      pendingAmount() {
+        return (this.readModel().allocation || []).find(row => row.id === 'pending')?.current_amount ?? null
+      },
+      targetText(account) {
+        return account.target == null ? '待确认' : `${(account.target * 100).toFixed(0)}%`
+      },
+      deviation(account) {
+        if (account.target == null || account.amount == null || !(Number(this.totalAssets()) > 0)) return null
+        return this.percentValue(account.amount) - account.target * 100
+      },
+      deviationText(account) {
+        const value = this.deviation(account)
+        if (value == null) return '待确认'
+        if (Math.abs(value) < 0.05) return '0.0 个百分点'
+        return `${value > 0 ? '+' : '−'}${Math.abs(value).toFixed(1)} 个百分点`
+      },
       topPortfolios() {
-        return (this.readModel().allocation || []).filter(item => ['stock', 'bond', 'nasdaq', 'technology', 'cash_pool'].includes(item.id))
+        return this.readModel().allocation || []
       },
       activePortfolio() {
         return this.topPortfolios().find(item => item.id === 'A') || null
@@ -3895,8 +3788,8 @@
           ? `，数据 ${this.marketTemperature.updated_at.slice(0, 10)}`
           : ''
         return temperature == null
-          ? '等待温度数据；本阶段固定目标不依赖温度。'
-          : `${Number(temperature).toFixed(0)}°${label}${updatedAt}，仅供观察，本阶段不改变目标比例。`
+          ? '暂无数据，账户目标比例保持不变。'
+          : `${Number(temperature).toFixed(0)}°${label}${updatedAt}，仅供观察，不改变账户目标比例。`
       },
       bPurchaseText() {
         const context = this.context()

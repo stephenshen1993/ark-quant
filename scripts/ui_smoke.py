@@ -667,6 +667,58 @@ def browser_check_code(
               assertNoDifferences(check, check + ' 导航状态异常', differences);
             }};
             await assertActivePage('overview.initial', overviewNav, '');
+            smokeStep = 'overview';
+            const overview = main.getByRole('region', {{ name: '投资概览', exact: true }});
+            await overview.locator('.overview-matrix tbody tr').nth(5).waitFor();
+            const overviewMetrics = await overview.evaluate(el => {{
+              const state = window.Alpine.$data(el);
+              const rows = state.allocationRows();
+              const originalSummary = state.summary;
+              const names = rows.map(row => row.name);
+              const total = Number(state.totalAssets());
+              const accounted = rows.reduce((sum, row) => sum + Number(row.amount), 0) + Number(state.pendingAmount());
+              const pendingSource = JSON.parse(JSON.stringify(originalSummary));
+              const allocation = pendingSource.read_model.allocation;
+              const stock = allocation.find(row => row.id === 'stock');
+              stock.current_amount -= 1000;
+              allocation.find(row => row.id === 'pending').current_amount += 1000;
+              state.summary = pendingSource;
+              const pendingTotal = state.allocationRows().reduce((sum, row) => sum + Number(row.amount), 0) + Number(state.pendingAmount());
+              state.summary = {{ ...originalSummary, read_model: {{ ...originalSummary.read_model, allocation: [], allocation_error: '目标数据缺失' }} }};
+              const missingTargetsSafe = state.allocationRows().every(row => state.targetText(row) === '待确认' && state.deviationText(row) === '待确认');
+              state.summary = {{ ...originalSummary, read_model: {{ ...originalSummary.read_model, context: {{ total_assets: 0 }} }} }};
+              const zeroSafe = state.percentText(0) === '暂不可算' && state.deviationText({{ amount: 0, target: 0.1 }}) === '待确认';
+              state.summary = originalSummary;
+              return {{ names, targetWeights: rows.map(row => row.target), total, accounted, pendingTotal, missingTargetsSafe, zeroSafe,
+                tableCount: el.querySelectorAll('table').length,
+                overflow: el.scrollWidth > el.clientWidth,
+                detailsClosed: !el.querySelector('details').open }};
+            }});
+            const overviewDifferences = [];
+            const expectedAccounts = ['广发账户', '华泰账户', '平安账户', '资金账户', '海外长钱', '国内长钱'];
+            if (JSON.stringify(overviewMetrics.names) !== JSON.stringify(expectedAccounts))
+              overviewDifferences.push(difference('overview.accounts', expectedAccounts, overviewMetrics.names));
+            if (JSON.stringify(overviewMetrics.targetWeights) !== JSON.stringify([0.35, 0.25, 0.3, 0.1, 0, 0]))
+              overviewDifferences.push(difference('overview.targets', [0.35, 0.25, 0.3, 0.1, 0, 0], overviewMetrics.targetWeights));
+            for (const field of ['accounted', 'pendingTotal']) {{
+              if (Math.abs(overviewMetrics[field] - overviewMetrics.total) > 0.02)
+                overviewDifferences.push(difference('overview.' + field, overviewMetrics.total, overviewMetrics[field]));
+            }}
+            for (const [key, value] of Object.entries({{ tableCount: 1, overflow: false, detailsClosed: true, missingTargetsSafe: true, zeroSafe: true }})) {{
+              if (overviewMetrics[key] !== value) overviewDifferences.push(difference('overview.' + key, value, overviewMetrics[key]));
+            }}
+            assertNoDifferences('overview.configuration', '概览配置或资产口径异常', overviewDifferences);
+            await overview.getByText('账户数据时间', {{ exact: true }}).click();
+            await overview.locator('.overview-data-line').first().waitFor({{ state: 'visible' }});
+            await overview.getByText('账户数据时间', {{ exact: true }}).click();
+            await main.evaluate(element => element.scrollTo({{ top: 0, left: 0 }}));
+            await page.evaluate(() => window.scrollTo({{ top: 0, left: 0 }}));
+            await page.screenshot({{ path: {json.dumps(str(screenshot_path.with_name(f'{viewport_name}-overview.png')))}, fullPage: true }});
+            await overview.getByRole('link', {{ name: '查看本轮计划 →' }}).click();
+            await assertActivePage('overview.planLink', planNav, '#plan');
+            await overviewNav.click();
+            await assertActivePage('overview.return', overviewNav, '#overview');
+
             const navItems = await navigation.getByRole('link').evaluateAll(links => links.map(link => ({{
               label: link.innerText.trim(),
               ariaLabel: link.getAttribute('aria-label'),
