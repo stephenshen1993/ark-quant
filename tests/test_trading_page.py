@@ -586,13 +586,13 @@ class TestTradingPageInteraction(unittest.TestCase):
         self.assertIn('class="plan-funding-action"', self.html)
         self.assertNotIn('class="plan-funding-group"', self.html)
         self.assertIn(">调拨路线<", self.html)
-        self.assertIn(">目标金额<", self.html)
+        self.assertIn(">本次调拨金额<", self.html)
         self.assertNotIn(">资金可用时间<", self.html)
         self.assertNotIn(">用途与影响<", self.html)
         self.assertNotIn('class="plan-funding-impact"', self.html)
         self.assertNotIn("fundingGroupInstruction(group)", self.html)
         route = self.html.index(">调拨路线<")
-        amount = self.html.index(">目标金额<")
+        amount = self.html.index(">本次调拨金额<")
         self.assertLess(route, amount)
 
     def test_account_plan_expansion_is_single_and_restorable_from_url(self):

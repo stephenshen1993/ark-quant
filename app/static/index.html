@@ -3013,16 +3013,16 @@
       <template x-if="fundingPlan()">
         <section id="plan-funding-step" class="plan-funding-plan plan-run-step" aria-label="资金调拨计划">
           <header class="plan-step-header">
-            <h2 class="plan-step-title">本期资金调拨目标</h2>
+            <h2 class="plan-step-title">本期资金调拨</h2>
           </header>
           <div class="plan-step-body plan-funding-table-scroll">
             <p class="workspace-meta mb-3" x-show="plan?.fund_transfer?.cash">
               资金账户当前可用 <strong x-text="fmtMoney(plan?.fund_transfer?.cash?.available)"></strong>
             </p>
-            <table class="plan-funding-table" aria-label="资金调拨目标">
+            <table class="plan-funding-table" aria-label="本期资金调拨">
               <thead><tr>
                 <th scope="col">调拨路线</th>
-                <th scope="col" class="plan-funding-amount-heading">目标金额</th>
+                <th scope="col" class="plan-funding-amount-heading">本次调拨金额</th>
               </tr></thead>
               <tbody>
                 <template x-for="(action, actionIndex) in fundingTargetActions()" :key="`${action.source_account_id}-${action.target_account_id}-${actionIndex}`">
@@ -3032,7 +3032,7 @@
                       <span class="mx-2 text-gray-300" aria-hidden="true">→</span>
                       <span x-text="action.target_account_name"></span>
                     </td>
-                    <td class="plan-funding-amount" data-label="目标金额" x-text="fmtMoney(action.amount)"></td>
+                    <td class="plan-funding-amount" data-label="本次调拨金额" x-text="fmtMoney(action.amount)"></td>
                   </tr>
                 </template>
               </tbody>
