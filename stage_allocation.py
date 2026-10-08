@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 
-POLICY_ID = "account-rebalance-2026-10-08-v1"
+POLICY_ID = "account-rebalance-2026-10-08-v2"
 CASH_MIN = 300.0
 CASH_MAX = 1000.0  # 旧计划兼容；新规则不因账户零星余款自动回池。
 MIN_ADJUSTMENT = 1000.0
@@ -109,6 +109,13 @@ def build_stage_plan(account: dict, *, blocked: dict | None = None) -> dict:
     reductions = {k: -remaining[k] for k in (*CARRIERS, "changqian", "overseas")
                   if remaining[k] <= -MIN_ADJUSTMENT and k not in blocked}
     allocated = proportional(gaps, available["cash"])
+    used = money(sum(allocated.values()))
+    pending_returns = money(account["changqian_pending"] + account["overseas_pending"] +
+                            sum(t["amount"] for t in account.get("pending_transfers", []) if t["target"] == "cash"))
+    # 只补本轮调出后的资金账户目标缺口；已安排回流占用缺口，不为下一轮提前筹款。
+    return_limit = money(max(0, targets["cash_pool"] -
+                            (current["cash_pool"] - used + pending_returns - reserved["cash"])))
+    reductions = {k: v for k, v in proportional(reductions, return_limit).items() if v}
     actions = []
     for key in (*CARRIERS, "changqian", "overseas"):
         carrier = CARRIERS.get(key, key)
@@ -120,7 +127,7 @@ def build_stage_plan(account: dict, *, blocked: dict | None = None) -> dict:
                     reason="account_target_rebalance", immediate=immediate,
                     available_on="same_day" if immediate else "deferred",
                     cash_effect="immediate_cash_in" if immediate else "deferred_cash_return",
-                    note="实际到账后纳入账户交易预算" if immediate else "按超配目标转出；可取核验及到账后才计入资金账户预算"))
+                    note="实际到账后纳入账户交易预算" if immediate else "按本轮补池需求分摊回流；可取核验及到账后才计入资金账户预算"))
     reserves, strategy_cash = {}, {}
     for key, carrier in CARRIERS.items():
         incoming, outgoing = allocated.get(key, 0), reductions.get(key, 0)
@@ -140,9 +147,6 @@ def build_stage_plan(account: dict, *, blocked: dict | None = None) -> dict:
     buy_budgets.update({k: allocated[k] for k in ("stock", "bond") if k in allocated})
     planned = {k: money(allocated.get(k, 0) - reductions.get(k, 0)) for k in current if k != "cash_pool"}
     planned["cash_pool"] = money(-sum(planned.values()))
-    used = money(sum(allocated.values()))
-    pending_returns = money(account["changqian_pending"] + account["overseas_pending"] +
-                            sum(t["amount"] for t in account.get("pending_transfers", []) if t["target"] == "cash"))
     rows = [dict(id=k, label=LABELS[k], current=v, weight=WEIGHTS.get(k, 0), target=targets[k],
                  delta=deltas[k], arranged_delta=money(projected[k]-v), planned_delta=planned[k],
                  remaining_gap=money(remaining[k]-planned[k]), blocked_reason=blocked.get(k)) for k,v in current.items()]
@@ -158,6 +162,6 @@ def build_stage_plan(account: dict, *, blocked: dict | None = None) -> dict:
         pending_transfers=account.get("pending_transfers", []),
         cash=dict(available=available["cash"], immediate_outflow=used, remaining=money(current["cash_pool"]-used),
             expected_returns=money(sum(reductions.values()) + pending_returns),
-            pending_returns=pending_returns, pending_outflow=reserved["cash"],
+            pending_returns=pending_returns, pending_outflow=reserved["cash"], return_limit=return_limit,
             terminal_estimate=money(current["cash_pool"] + planned["cash_pool"] + pending_returns - reserved["cash"]),
             note="10%为静态目标；动态按已到账可调拨资金补缺口。预计回流不计本次购买力。"))

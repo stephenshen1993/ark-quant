@@ -1517,13 +1517,13 @@ def browser_check_code(
                   planMetrics.fundingTableMetrics.rowHeights,
                 ));
               }}
-              // 当前是铺满宽度的两列表格：金额右对齐，检查不与路线重叠。
+              // 路线与金额相邻，既不能重叠，也不能被宽表格拉开。
               const disconnectedFundingAmounts = planMetrics.fundingTableMetrics.routeToAmountGaps
-                .filter(gap => gap < 0);
+                .filter(gap => gap < 0 || gap > 56);
               if (disconnectedFundingAmounts.length) {{
                 planDifferences.push(difference(
                   'plan.fundingRouteToAmountGaps',
-                  {{ min: 0 }},
+                  {{ min: 0, max: 56 }},
                   planMetrics.fundingTableMetrics.routeToAmountGaps,
                 ));
               }}

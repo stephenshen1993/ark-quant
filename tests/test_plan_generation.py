@@ -302,7 +302,7 @@ class TestPlanGeneration(unittest.TestCase):
         snapshot = plan["snapshot"]
         plan_id = plan["generation"]["plan_id"]
         self.assertEqual(snapshot["version"], 2)
-        self.assertEqual(snapshot["allocation_policy"], "account-rebalance-2026-10-08-v1")
+        self.assertEqual(snapshot["allocation_policy"], "account-rebalance-2026-10-08-v2")
         self.assertEqual(snapshot["plan_id"], plan_id)
         self.assertEqual(snapshot["data_date"], "2026-06-29")
         self.assertEqual(snapshot["execution_date"], "2026-06-30")

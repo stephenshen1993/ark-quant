@@ -98,6 +98,9 @@ class TestStageAllocation(unittest.TestCase):
             self.assertAlmostEqual(sum(plan['allocation']['planned_deltas'].values()), 0, places=2)
             self.assertLessEqual(plan['cash']['immediate_outflow'], account['cash_pool'])
             self.assertGreaterEqual(plan['cash']['remaining'], 0)
+            returned = sum(a['amount'] for a in plan['actions'] if a['target'] == 'cash_pool')
+            needed = max(0, plan['allocation']['targets']['cash_pool'] - plan['cash']['remaining'])
+            self.assertLessEqual(returned, needed + .01)
             for carrier, keys, prefix in (('stock',['stock'],'stock'), ('cb',['bond'],'bond'), ('pingan',['nasdaq','technology'],'pingan')):
                 incoming = sum(a['amount'] for a in plan['actions'] if a['target'] == carrier)
                 self.assertLessEqual(sum(plan['buy_budgets'].get(k,0) for k in keys),

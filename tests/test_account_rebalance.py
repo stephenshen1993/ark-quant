@@ -24,7 +24,9 @@ class AccountRebalanceTests(unittest.TestCase):
         p = build_stage_plan(a)
         self.assertEqual(p['account_allocations'], {'bond': 18750, 'pingan': 11250})
         self.assertEqual(p['cash']['remaining'], 0)
-        self.assertEqual(p['account_reductions']['stock'], 150000)
+        self.assertEqual(p['account_reductions']['stock'], 100000)
+        self.assertEqual(p['cash']['terminal_estimate'], 100000)
+        self.assertEqual(p['allocation']['planned_deltas']['stock'], -100000)
 
     def test_pingan_internal_gap_does_not_request_external_cash(self):
         p = build_stage_plan(facts(nasdaq=250000, technology=50000))
@@ -32,12 +34,13 @@ class AccountRebalanceTests(unittest.TestCase):
         self.assertGreater(p['sell_budgets']['nasdaq'], 0)
         self.assertEqual(p['buy_budgets']['technology'], 0)
 
-    def test_advisers_return_all_remaining_without_matching_purchase(self):
+    def test_advisers_share_only_current_cash_gap_without_matching_purchase(self):
         a = facts()
         a.update(changqian_total=100000, changqian_pending=40000, overseas_total=50000)
         p = build_stage_plan(a)
-        self.assertEqual(p['account_reductions']['changqian'], 60000)
-        self.assertEqual(p['account_reductions']['overseas'], 50000)
+        self.assertEqual(p['account_reductions']['changqian'], 40909.08)
+        self.assertEqual(p['account_reductions']['overseas'], 34090.90)
+        self.assertEqual(p['cash']['terminal_estimate'], 115000)
         self.assertEqual(add_migration_redemption(a, p, []), p)
 
     def test_pending_incoming_prevents_duplicate_and_is_not_spendable(self):
@@ -98,3 +101,18 @@ class AccountRebalanceTests(unittest.TestCase):
             with self.subTest(gap=gap):
                 p = build_stage_plan(facts(stock=350000-gap, cash=100000+gap))
                 self.assertEqual(p['cash']['immediate_outflow'], expected)
+
+    def test_no_return_when_cash_target_is_met_and_no_current_outflow(self):
+        a = facts(stock=500000, bond=200000, nasdaq=140000, technology=60000, cash=100000)
+        a['cash_unavailable'] = 100000
+        p = build_stage_plan(a)
+        self.assertFalse(p['actions'])
+        self.assertEqual(p['cash']['terminal_estimate'], 100000)
+
+    def test_pending_return_already_covers_cash_target(self):
+        a = facts(stock=450000, bond=150000, nasdaq=100000, technology=50000, cash=50000)
+        a.update(changqian_total=200000, changqian_pending=100000)
+        p = build_stage_plan(a)
+        self.assertFalse(any(x['target'] == 'cash_pool' for x in p['actions']))
+        self.assertEqual(p['cash']['immediate_outflow'], 50000)
+        self.assertEqual(p['cash']['terminal_estimate'], 100000)

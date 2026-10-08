@@ -157,7 +157,7 @@ class TestPlansApi(unittest.TestCase):
         )
         self.assertEqual(
             account_plans[1]["cash"]["expected_ending"],
-            -63806.55,
+            -25770.0,
         )
 
     def test_plan_service_builds_current_plan_without_http_route(self):
@@ -290,7 +290,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         data = r.json()
         self.assertTrue({"allocation", "actions", "cash"} <= set(data["fund_transfer"]))
-        self.assertEqual(data["fund_transfer"]["policy_id"], "account-rebalance-2026-10-08-v1")
+        self.assertEqual(data["fund_transfer"]["policy_id"], "account-rebalance-2026-10-08-v2")
         self.assertNotEqual(data["transfer_deltas"]["stock"], 0)
         self.assertNotEqual(data["transfer_deltas"]["bond"], 0)
         self.assertTrue(data["transfer_steps"])
@@ -644,7 +644,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(data["plan_date"], "2026-06-29")
         self.assertIn("transfer_steps", data)
         self.assertIn("transfer_deltas", data)
-        self.assertEqual(data["fund_transfer"]["policy_id"], "account-rebalance-2026-10-08-v1")
+        self.assertEqual(data["fund_transfer"]["policy_id"], "account-rebalance-2026-10-08-v2")
         self.assertEqual(data["fund_transfer"]["allocation"]["targets"]["changqian"], 0)
         self.assertEqual(
             data["account_read_model"]["portfolios"][0]["account_ids"],

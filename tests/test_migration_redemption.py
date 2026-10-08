@@ -6,7 +6,7 @@ from app.plan_service import build_fund_transfer
 
 
 class TestMigrationRedemption(unittest.TestCase):
-    def test_both_advisers_return_full_remaining_regardless_of_purchase(self):
+    def test_advisers_share_current_return_need_regardless_of_orders(self):
         account = TestFundingBeforeFundOrders().account()
         account['changqian_pending'] = 50000
         transfer = build_fund_transfer(account, qualified_cb_count=20)
@@ -15,8 +15,12 @@ class TestMigrationRedemption(unittest.TestCase):
             result = add_migration_redemption(account, transfer, orders)
             self.assertEqual(result, before)
             returns = {a['source']:a['amount'] for a in result['actions'] if a['target']=='cash_pool'}
-            self.assertEqual(returns['changqian'], 62958.51)
-            self.assertEqual(returns['overseas'], 93526.38)
+            self.assertGreater(returns['changqian'], 0)
+            self.assertLess(returns['changqian'], 62958.51)
+            self.assertGreater(returns['overseas'], 0)
+            self.assertLess(returns['overseas'], 93526.38)
+            self.assertLessEqual(sum(returns.values()), result['cash']['return_limit'])
+            self.assertLessEqual(result['cash']['terminal_estimate'], result['allocation']['targets']['cash_pool'])
             self.assertFalse(any(a.get('conditional') for a in result['actions']))
         self.assertEqual(transfer, before)
 
