@@ -121,6 +121,8 @@ def add_migration_redemption(account: dict, transfer: dict, orders: list[dict]) 
     from copy import deepcopy
 
     result = deepcopy(transfer)
+    if result.get("phase") == "account_rebalance":
+        return result
     result["actions"] = [a for a in result["actions"] if a.get("reason") != "matched_migration_redemption"]
     # 基金内部卖出换入不是新增投入；整手余款、现金预留也不是投入。
     net_buy = money(max(0, sum((1 if o.get("delta_shares", 0) > 0 else -1) * o["amount"]

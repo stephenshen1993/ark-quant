@@ -2778,6 +2778,27 @@
             </label>
           </div>
 
+          <details x-show="['cash','stock','cb','pingan'].includes(selectedId)" class="account-current-note">
+            <summary>已发起调拨与不可用资金</summary>
+            <p>仅登记已实际发起但尚未到账的转账，不登记计划建议。已扣账时，余额和持仓填写扣除后的事实，在途由系统另计一次；到账或撤销后移除记录并更新相关账户。</p>
+            <label x-show="selectedId === 'cash'">其他不可调拨金额（元，不含下方已登记调拨）
+              <input type="number" min="0" step="0.01" x-model="draft.unavailable_amount" @input="markEdited()" aria-label="不可调拨金额">
+            </label>
+            <template x-for="(transfer, index) in (draft.pending_transfers || [])" :key="index">
+              <div class="flex flex-wrap gap-2 my-2">
+                <select x-model="transfer.target" @change="markEdited()" aria-label="调拨接收账户">
+                  <template x-for="option in (selectedId === 'cash' ? [{id:'stock',name:'广发账户'},{id:'cb',name:'华泰账户'},{id:'pingan',name:'平安账户'}] : [{id:'cash',name:'资金账户'}])" :key="option.id">
+                    <option :value="option.id" x-text="option.name"></option>
+                  </template>
+                </select>
+                <input type="number" min="0.01" step="0.01" x-model="transfer.amount" @input="markEdited()" aria-label="已发起调拨金额">
+                <label><input type="checkbox" x-model="transfer.debited" @change="markEdited()">已从余额扣除</label>
+                <button type="button" @click="draft.pending_transfers.splice(index,1); markEdited()">移除记录</button>
+              </div>
+            </template>
+            <button type="button" @click="draft.pending_transfers.push({target:selectedId === 'cash' ? 'stock' : 'cash',amount:'',debited:false}); markEdited()">登记已发起调拨</button>
+          </details>
+
           <div x-show="selected?.kind === 'securities'" class="account-current-securities-editor">
             <section class="account-current-cash-row" aria-label="账户资金">
               <label>
@@ -3239,9 +3260,17 @@
         <button @click="runStrategy('stock')" :disabled="running.stock || loadingPlan" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs hover:bg-gray-50 disabled:text-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">生成股票榜单</button>
         <span class="text-xs text-gray-400">这些操作只准备计划数据，不会执行交易。</span>
       </div>
-    <details class="plan-conditions-panel mt-4" aria-label="计划条件"><summary>阶段规则与后续目标</summary>
-      <strong>本阶段：先用现有现金配置海外增长</strong>
-      <p class="workspace-meta">本期只用已有现金买入；成交后按实际净新增投入分批赎回，扣除已有赎回在途，国内长钱优先、不足再赎海外长钱。少买少赎、未买不赎；到账更新后生成下一批，无需等周度轮动。原换股换债照常。</p>
+    <details class="plan-conditions-panel mt-4" aria-label="计划条件"><summary>账户再平衡规则</summary>
+      <strong>账户目标再平衡：资金账户统一供款</strong>
+      <p class="workspace-meta">按账户总资产与目标差额调拨；可用资金不足时按缺口比例分配。10%为资金账户静态目标，不限制动态供款。超配回款和已发起在途须实际到账后才能使用；原选股、选债纪律继续适用。周度统一检查，账户剩余偏差或分配份额不足1000元不新增调拨。</p>
+      <div x-show="plan?.fund_transfer?.cash" class="workspace-meta mt-2">
+        本次调出后资金余额 <strong x-text="fmtMoney(plan?.fund_transfer?.cash?.remaining)"></strong>；
+        预计回流 <strong x-text="fmtMoney(plan?.fund_transfer?.cash?.expected_returns)"></strong>；
+        回流后预计余额 <strong x-text="fmtMoney(plan?.fund_transfer?.cash?.terminal_estimate)"></strong>。预计不代表已到账。
+      </div>
+      <template x-for="(amount, account) in (plan?.fund_transfer?.return_shortfalls || {})" :key="account">
+        <p x-show="amount > 0" class="text-sm text-amber-700" x-text="({stock:'广发账户',cb:'华泰账户',pingan:'平安账户'}[account] || account) + ' 尚有目标转出差额 ' + fmtMoney(amount) + '，实际成交后更新事实再计算。'"></p>
+      </template>
       <details class="mt-2" x-show="Object.keys(plan?.fund_transfer?.deferred_reductions || {}).length">
         <summary class="text-sm cursor-pointer">后续目标减配（不属于本期操作）</summary>
         <template x-for="row in (plan?.fund_transfer?.allocation?.rows || []).filter(row => (plan?.fund_transfer?.deferred_reductions || {})[row.id])" :key="row.id">
@@ -4313,6 +4342,8 @@
           return {
             amount: account.raw_data?.amount ?? '',
             pending_amount: account.raw_data?.pending_amount ?? 0,
+            pending_transfers: structuredClone(account.raw_data?.pending_transfers || []),
+            unavailable_amount: account.raw_data?.unavailable_amount ?? 0,
             available_cash: '',
             frozen_cash: '',
             positions: [],
@@ -4339,6 +4370,8 @@
             lot_size: '', commission_rate: '', minimum_fee: '', price_date: '', cost_reviewed: false,
             ...(account.raw_data?.fund_terms || []).find(term => term.direction === direction),
           })),
+          pending_transfers: structuredClone(account.raw_data?.pending_transfers || []),
+          unavailable_amount: 0,
           available_cash: account.raw_data?.available_cash ?? '',
           frozen_cash: account.raw_data?.frozen_cash ?? '',
           positions: this.sortPositionsByMarketValue(positions),
@@ -4437,10 +4470,15 @@
         return Number.isFinite(number) ? number : null
       },
       normalizeRaw(raw) {
+        const transferFacts = ['cash','stock','cb','pingan'].includes(this.selectedId) ? {
+          pending_transfers: (raw?.pending_transfers || []).map(t => ({target:t.target,amount:this.numberOrNull(t.amount),debited:Boolean(t.debited)})).sort((a,b)=>a.target.localeCompare(b.target) || Number(a.debited)-Number(b.debited)),
+          ...(this.selectedId === 'cash' ? {unavailable_amount:this.numberOrNull(raw?.unavailable_amount) ?? 0} : {}),
+        } : {}
         if (!this.selected || this.selected.kind === 'balance') {
-          return { amount: this.numberOrNull(raw?.amount), ...(["changqian", "overseas"].includes(this.selectedId) ? {pending_amount: this.numberOrNull(raw?.pending_amount) ?? 0} : {}) }
+          return { ...transferFacts, amount: this.numberOrNull(raw?.amount), ...(["changqian", "overseas"].includes(this.selectedId) ? {pending_amount: this.numberOrNull(raw?.pending_amount) ?? 0} : {}) }
         }
         return {
+          ...transferFacts,
           ...(this.selectedId === 'pingan' ? {fund_terms: (raw?.fund_terms || []).filter(term => term.code).map(term => ({
             direction: term.direction, code: term.code, limit_price: this.numberOrNull(term.limit_price),
             lot_size: this.numberOrNull(term.lot_size), commission_rate: this.numberOrNull(term.commission_rate),
@@ -4466,6 +4504,7 @@
           frozen_cash: this.draft.frozen_cash,
           positions: this.draft.positions,
           fund_terms: this.draft.fund_terms,
+          pending_transfers: this.draft.pending_transfers,
         })
       },
       isDirty() {
@@ -4475,6 +4514,8 @@
       isValid() {
         if (!this.selected) return false
         const raw = this.payloadRaw()
+        if ((raw.pending_transfers || []).some(t => t.amount === null || t.amount <= 0)) return false
+        if (raw.unavailable_amount < 0) return false
         if (this.selected.kind === 'balance') return raw.amount !== null && raw.amount >= 0
         if (raw.available_cash === null || raw.available_cash < 0) return false
         if (raw.frozen_cash === null || raw.frozen_cash < 0) return false
@@ -4670,6 +4711,15 @@
         const before = this.originalRaw
         const after = this.payloadRaw()
         const changes = []
+        if (JSON.stringify(before.pending_transfers || []) !== JSON.stringify(after.pending_transfers || [])) {
+          changes.push('已发起调拨记录已调整，请核对金额、接收账户及扣账状态。')
+        }
+        if ((before.unavailable_amount || 0) !== (after.unavailable_amount || 0)) {
+          changes.push(`不可调拨金额：${this.fmtMoney(before.unavailable_amount || 0)} → ${this.fmtMoney(after.unavailable_amount || 0)}`)
+        }
+        if ((before.pending_amount || 0) !== (after.pending_amount || 0)) {
+          changes.push(`确认赎回在途：${this.fmtMoney(before.pending_amount || 0)} → ${this.fmtMoney(after.pending_amount || 0)}`)
+        }
         if (this.selected.kind === 'balance') {
           if (before.amount !== after.amount) {
             changes.push(`资金余额：${this.fmtMoney(before.amount)} → ${this.fmtMoney(after.amount)}`)

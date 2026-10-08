@@ -61,6 +61,8 @@ class CurrentPositionIn(StrictRequest):
 
 class CurrentAccountUpdateIn(StrictRequest):
     pending_amount: NonnegativeFinite = 0
+    pending_transfers: Optional[list[dict]] = None
+    unavailable_amount: Optional[NonnegativeFinite] = None
     fund_terms: Optional[list[dict]] = None
     expected_version: Optional[str] = None
     amount: Optional[NonnegativeFinite] = None
@@ -227,6 +229,8 @@ def put_current_account(account_id: str, body: CurrentAccountUpdateIn):
             expected_version=body.expected_version,
             amount=body.amount,
             pending_amount=body.pending_amount,
+            pending_transfers=body.pending_transfers,
+            unavailable_amount=body.unavailable_amount,
             fund_terms=body.fund_terms,
             available_cash=body.available_cash,
             frozen_cash=body.frozen_cash,

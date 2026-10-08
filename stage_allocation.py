@@ -1,19 +1,18 @@
-"""已确认阶段配置：目标 → 调拨预算。纯计算，不读账户、不执行交易。"""
+"""账户目标 → 真实可用资金预算；纯计算，不执行交易。"""
 from __future__ import annotations
 
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 
-POLICY_ID = "growth-2026-10-08-preserve-strategy-cash"
+POLICY_ID = "account-rebalance-2026-10-08-v1"
 CASH_MIN = 300.0
-CASH_MAX = 1000.0
+CASH_MAX = 1000.0  # 旧计划兼容；新规则不因账户零星余款自动回池。
 MIN_ADJUSTMENT = 1000.0
-WEIGHTS = {"stock": .35, "nasdaq": .20, "technology": .10, "bond": .25, "cash_pool": .10}
-LABELS = {
-    "stock": "小市值", "nasdaq": "纳指方向", "technology": "501312",
-    "bond": "主动转债", "cash_pool": "直接现金", "changqian": "国内长钱（待迁移）",
-    "overseas": "海外长钱（待迁移）", "pending": "赎回在途", "unclassified": "待归类持仓",
-}
-CARRIERS = {"stock": "stock", "bond": "cb", "nasdaq": "pingan", "technology": "pingan"}
+WEIGHTS = {"stock": .35, "bond": .25, "pingan": .30, "cash_pool": .10}
+LABELS = {"stock": "广发账户", "bond": "华泰账户", "pingan": "平安账户",
+          "cash_pool": "资金账户", "changqian": "国内长钱（待退出）",
+          "overseas": "海外长钱（待退出）", "pending": "已确认在途"}
+CARRIERS = {"stock": "stock", "bond": "cb", "pingan": "pingan"}
+TRANSFER_KEYS = {"stock": "stock", "cb": "bond", "pingan": "pingan", "cash": "cash_pool"}
 
 
 def money(value) -> float:
@@ -22,7 +21,6 @@ def money(value) -> float:
 
 def required_amount(account: dict, key: str) -> float:
     from portfolio_rebalance import PlanValidationError
-
     try:
         value = Decimal(str(account[key]))
         if not value.is_finite() or value < 0:
@@ -33,156 +31,133 @@ def required_amount(account: dict, key: str) -> float:
 
 
 def allocation_amounts(account: dict) -> dict:
-    """券商现金从策略市值扣出；投顾完整余额与在途单次计量。"""
+    """账户总额包括账户现金；已扣账在途从来源分离，资产只计一次。"""
     from portfolio_rebalance import PlanValidationError
-
-    current = {}
-    cash = required_amount(account, "cash_pool")
-    for key, prefix in (("stock", "stock"), ("bond", "bond")):
-        total = required_amount(account, f"{prefix}_total")
-        balance = required_amount(account, f"{prefix}_cash")
-        if balance > total:
-            raise PlanValidationError("INVALID_CASH", f"{key}现金超过账户总额")
-        current[key] = money(total - balance)
-        cash += balance
-    cash += required_amount(account, "pingan_cash")
-    for key in ("nasdaq", "technology", "unclassified"):
-        current[key] = required_amount(account, f"{key}_total")
-    pa_total = required_amount(account, "pingan_total")
-    if abs(pa_total - sum(current[k] for k in ("nasdaq", "technology", "unclassified"))
-           - account["pingan_cash"]) > .02:
+    current = {"cash_pool": required_amount(account, "cash_pool")}
+    for key, prefix in (("stock", "stock"), ("bond", "bond"), ("pingan", "pingan")):
+        total = required_amount(account, prefix + "_total")
+        if required_amount(account, prefix + "_cash") > total:
+            raise PlanValidationError("INVALID_CASH", "现金超过账户总额")
+        current[key] = total
+    pa_parts = sum(required_amount(account, k + "_total") for k in ("nasdaq", "technology", "unclassified"))
+    pa_pending = sum(t["amount"] for t in account.get("pending_transfers", []) if t["source"] == "pingan" and t["debited"])
+    if abs(current["pingan"] - pa_parts - account["pingan_cash"] - pa_pending) > .02:
         raise PlanValidationError("INVALID_PINGAN_TOTAL", "平安持仓与现金合计不等于账户估值")
-    current["cash_pool"] = money(cash)
+    current["pending"] = 0.0
     for key in ("changqian", "overseas"):
-        total = required_amount(account, f"{key}_total")
-        pending = required_amount(account, f"{key}_pending")
+        total = required_amount(account, key + "_total")
+        pending = required_amount(account, key + "_pending")
         if pending > total:
             raise PlanValidationError("INVALID_PENDING", "在途金额不能超过所属账户总额")
         current[key] = money(total - pending)
-    current["pending"] = money(account["changqian_pending"] + account["overseas_pending"])
+        current["pending"] += pending
+    for transfer in account.get("pending_transfers", []):
+        if transfer["debited"]:
+            key = TRANSFER_KEYS[transfer["source"]]
+            current[key] = money(current[key] - transfer["amount"])
+            current["pending"] += transfer["amount"]
+            if current[key] < 0:
+                raise PlanValidationError("INVALID_PENDING", "已扣账在途超过账户含在途总额")
+    current["pending"] = money(current["pending"])
     return current
 
 
 def targets_for(current: dict) -> dict:
     total = money(sum(current.values()))
-    targets = {key: money(Decimal(str(total)) * Decimal(str(weight))) for key, weight in WEIGHTS.items()}
-    targets["cash_pool"] = money(total - sum(value for key, value in targets.items() if key != "cash_pool"))
-    targets.update({key: 0.0 for key in current if key not in targets})
+    targets = {k: money(Decimal(str(total)) * Decimal(str(w))) for k, w in WEIGHTS.items()}
+    targets["cash_pool"] = money(total - sum(v for k, v in targets.items() if k != "cash_pool"))
+    targets.update({k: 0.0 for k in current if k not in targets})
     return targets
 
 
-def proportional(gaps: dict, budget: float) -> dict:
-    """向下到分，不超预算；分配后小额留池，不递归重分配。"""
-    total = sum(gaps.values())
-    scale = min(1.0, budget / total) if total else 0
-    return {
-        key: value if value >= MIN_ADJUSTMENT else 0.0
-        for key, gap in gaps.items()
-        for value in [float((Decimal(str(gap)) * Decimal(str(scale))).quantize(Decimal(".01"), rounding=ROUND_DOWN))]
-    }
+def proportional(gaps: dict, budget: float, *, minimum: float = MIN_ADJUSTMENT) -> dict:
+    """按分向下取整，小额留存，不递归重分配。"""
+    total = sum(Decimal(str(v)) for v in gaps.values())
+    scale = min(Decimal(1), Decimal(str(max(0, budget))) / total) if total else Decimal(0)
+    result = {}
+    for key, gap in gaps.items():
+        value = float((Decimal(str(gap)) * scale).quantize(Decimal(".01"), rounding=ROUND_DOWN))
+        result[key] = value if value >= minimum else 0.0
+    return result
 
 
 def build_stage_plan(account: dict, *, blocked: dict | None = None) -> dict:
-    """资金未到账不支持买入；不同券商可用资金不等同于已转入资金池。"""
     from portfolio_rebalance import PlanValidationError
-
     current = allocation_amounts(account)
     targets = targets_for(current)
-    deltas = {key: money(targets[key] - value) for key, value in current.items()}
+    projected = dict(current)
     blocked = dict(blocked or {})
-    available = {"cash": required_amount(account, "cash_pool")}
+    reserved = {k: 0.0 for k in TRANSFER_KEYS}
+    # 当期事实的total含已扣账在途；current已分离在途，接收方只用于防重。
+    for transfer in account.get("pending_transfers", []):
+        source, target, amount = transfer["source"], transfer["target"], transfer["amount"]
+        if not transfer["debited"]:
+            projected[TRANSFER_KEYS[source]] -= amount
+            reserved[source] += amount
+        projected[TRANSFER_KEYS[target]] += amount
+    available = {"cash": money(current["cash_pool"] - account.get("cash_unavailable", 0) - reserved["cash"])}
+    if available["cash"] < 0:
+        raise PlanValidationError("CASH_OVERCOMMITTED", "资金账户不可用金额与已安排调拨超过现有余额")
     for carrier, prefix in (("stock", "stock"), ("cb", "bond"), ("pingan", "pingan")):
-        available[carrier] = required_amount(account, f"{prefix}_available_cash")
-        if available[carrier] > account[f"{prefix}_cash"]:
-            raise PlanValidationError("INVALID_AVAILABLE_CASH", "可用现金超过现金余额")
-
-    deferred_reductions = {key: -delta for key, delta in deltas.items()
-             if key in (*CARRIERS, "changqian", "overseas") and delta <= -MIN_ADJUSTMENT and key not in blocked}
-    sells = {}  # 当前迁移阶段：目标减配只列后续缺口，不生成本期释放任务。
-    gaps = {key: delta for key, delta in deltas.items()
-            if key in CARRIERS and delta >= MIN_ADJUSTMENT and key not in blocked}
-    # 本期只分配现有现金；后续目标回流不计即时或终态购买力。
-    reserves = {}
-    reserve_topups = {}
-    for carrier in ("stock", "cb", "pingan"):
-        keys = [key for key, c in CARRIERS.items() if c == carrier]
-        active = any(key not in blocked and (current[key] > 0 or (key in gaps and available["cash"] + available[carrier] >= CASH_MIN)) for key in keys)
-        reserve = CASH_MIN if active else min(CASH_MIN, available[carrier])
-        release = sum(sells.get(key, 0) for key in keys)
-        reserves[carrier] = reserve
-        reserve_topups[carrier] = money(max(0, reserve - available[carrier] - release))
-    if sum(reserve_topups.values()) > available["cash"]:
-        raise PlanValidationError("CASH_RESERVE_SHORTFALL", "已有现金不足以预留每账户300元；到账后更新事实再生成")
-    trading_available = {c: max(0, available[c] - reserves[c]) for c in reserves}
-    bank_available = money(available["cash"] - sum(reserve_topups.values()))
-    spendable = bank_available + sum(trading_available.values())
-    allocated = proportional(gaps, spendable)
-    carrier_need = {carrier: sum(allocated.get(key, 0) for key, c in CARRIERS.items() if c == carrier)
-                    for carrier in ("stock", "cb", "pingan")}
-    bank_need = {carrier: max(0.0, need - trading_available[carrier]) for carrier, need in carrier_need.items()}
-    bank_total = sum(bank_need.values())
-    bank_scale = min(1.0, bank_available / bank_total) if bank_total else 1.0
-    for carrier, need in carrier_need.items():
-        cap = trading_available[carrier] + bank_need[carrier] * bank_scale
-        if need > cap and need:
-            reduced = proportional({key: allocated[key] for key, c in CARRIERS.items() if c == carrier and key in allocated}, cap)
-            allocated.update(reduced)
-    planned = {key: -sells.get(key, 0) + allocated.get(key, 0) for key in current if key != "cash_pool"}
-    planned["cash_pool"] = money(-sum(planned.values()))
+        balance = required_amount(account, prefix + "_available_cash")
+        if balance > account[prefix + "_cash"] or reserved[carrier] > balance:
+            raise PlanValidationError("INVALID_AVAILABLE_CASH", "可用现金不足以覆盖已安排调拨")
+        available[carrier] = money(balance - reserved[carrier])
+    deltas = {k: money(targets[k] - v) for k, v in current.items()}
+    remaining = {k: money(targets[k] - v) for k, v in projected.items()}
+    gaps = {k: remaining[k] for k in CARRIERS if remaining[k] >= MIN_ADJUSTMENT and k not in blocked}
+    reductions = {k: -remaining[k] for k in (*CARRIERS, "changqian", "overseas")
+                  if remaining[k] <= -MIN_ADJUSTMENT and k not in blocked}
+    allocated = proportional(gaps, available["cash"])
     actions = []
-    strategy_cash = {}
-    for carrier in ("stock", "cb", "pingan"):
-        keys = [key for key, c in CARRIERS.items() if c == carrier]
-        buys = sum(allocated.get(key, 0) for key in keys)
-        release = sum(sells.get(key, 0) for key in keys)
-        # 平安按新增配置预算买入；原策略保留本账户现金，预留仅约束订单预算。
-        strategy_cash[carrier] = money(buys - release)
-        incoming = money(max(0, buys - trading_available[carrier]) + reserve_topups[carrier])
-        outgoing = money(max(0, available[carrier] + incoming + release - buys - reserves[carrier]))
-        if not buys and not release:
-            outgoing = money(max(0, available[carrier] - CASH_MAX))
-        if carrier in {"stock", "cb"}:
-            outgoing = 0.0
-            strategy_cash[carrier] = money(max(0, available[carrier] + incoming - reserves[carrier]))
-        for source, target, amount, immediate in (
-            ("cash_pool", carrier, incoming, True),
-            (carrier, "cash_pool", outgoing, False),
-        ):
-            if amount <= 0 or (not immediate and not release and available[carrier] - buys <= CASH_MAX):
-                continue
-            actions.append({
-                "source": source, "target": target,
-                "amount": amount, "reason": "stage_target_rebalance",
-                "immediate": immediate,
-                "available_on": "same_day" if immediate else "deferred",
-                "cash_effect": "immediate_cash_in" if immediate else "deferred_cash_return",
-                "note": "到账后才可买入" if immediate else "卖出与可取核验后回池；不计当期购买力",
-            })
-    for key in ("changqian", "overseas"):
-        if sells.get(key):
-            actions.append({"source": key, "target": "cash_pool", "amount": sells[key],
-                            "reason": "stage_target_rebalance", "immediate": False,
-                            "available_on": "deferred", "cash_effect": "deferred_cash_return",
-                            "note": "平台确认赎回并到账后更新账户；在途不可买入"})
-    used_bank = money(sum(a["amount"] for a in actions if a["source"] == "cash_pool"))
-    if used_bank > available["cash"] + .01:
-        raise PlanValidationError("CASH_OVERCOMMITTED", "资金池被重复占用")
-    rows = [{"id": key, "label": LABELS[key], "current": value,
-             "weight": WEIGHTS.get(key, 0), "target": targets[key], "delta": deltas[key],
-             "planned_delta": money(planned.get(key, 0)),
-             "remaining_gap": money(deltas[key] - planned.get(key, 0)),
-             "blocked_reason": blocked.get(key)} for key, value in current.items()]
-    return {"policy_id": POLICY_ID, "cadence": "weekly", "minimum_adjustment": MIN_ADJUSTMENT,
-            "allocation": {"total": money(sum(current.values())), "current": current, "targets": targets,
-                           "deltas": deltas, "planned_deltas": planned, "rows": rows},
-            "actions": actions, "strategy_cash": strategy_cash,
-            "cash_reserves": reserves, "cash_band": {"lower": CASH_MIN, "upper": CASH_MAX},
-            "transfer_deltas": {"stock": money(strategy_cash["stock"] - available["stock"]),
-                                "bond": money(strategy_cash["cb"] - available["cb"])},
-            "buy_budgets": allocated,
-            "sell_budgets": sells, "deferred_reductions": deferred_reductions, "blocked": blocked,
-            "phase": "existing_cash_first",
-            "cash": {"available": available["cash"], "immediate_outflow": used_bank,
-                     "remaining": money(available["cash"] - used_bank),
-                     "terminal_estimate": money(current["cash_pool"] + planned["cash_pool"]),
-                     "note": "当前先用已有现金；高配减持列后续目标，基金订单生成后再按新增投入列条件赎回。现金目标允许迁移中暂时偏离。"}}
+    for key in (*CARRIERS, "changqian", "overseas"):
+        carrier = CARRIERS.get(key, key)
+        for source, target, amount in (("cash_pool", carrier, allocated.get(key, 0)),
+                                       (carrier, "cash_pool", reductions.get(key, 0))):
+            if amount:
+                immediate = source == "cash_pool"
+                actions.append(dict(source=source, target=target, amount=money(amount),
+                    reason="account_target_rebalance", immediate=immediate,
+                    available_on="same_day" if immediate else "deferred",
+                    cash_effect="immediate_cash_in" if immediate else "deferred_cash_return",
+                    note="实际到账后纳入账户交易预算" if immediate else "按超配目标转出；可取核验及到账后才计入资金账户预算"))
+    reserves, strategy_cash = {}, {}
+    for key, carrier in CARRIERS.items():
+        incoming, outgoing = allocated.get(key, 0), reductions.get(key, 0)
+        # 留款仅从本账户计划预算中扣除，不产生额外小额跨账户转入。
+        capacity = max(0, current[key] + incoming - outgoing)
+        reserves[carrier] = min(CASH_MIN, capacity)
+        strategy_cash[carrier] = money(available[carrier] + incoming - outgoing - reserves[carrier])
+    # 平安账户内部按2:1恢复；未成交卖单不支持同批买单。
+    pa_value = max(0, current["pingan"] + allocated.get("pingan", 0) - reductions.get("pingan", 0)
+                   - account["pingan_cash"] + available["pingan"] - reserves["pingan"])
+    pa_targets = {"nasdaq": money(Decimal(str(pa_value)) * Decimal(2) / 3)}
+    pa_targets["technology"] = money(pa_value - pa_targets["nasdaq"])
+    buy_gaps = {k: max(0, money(pa_targets[k] - account[k + "_total"])) for k in pa_targets}
+    sell_budgets = {k: max(0, money(account[k + "_total"] - pa_targets[k])) for k in pa_targets}
+    buy_budgets = proportional(buy_gaps, max(0, strategy_cash["pingan"]), minimum=0)
+    # 原股票/转债订单用现金净增减控制预算，不把证券市值重复加入。
+    buy_budgets.update({k: allocated[k] for k in ("stock", "bond") if k in allocated})
+    planned = {k: money(allocated.get(k, 0) - reductions.get(k, 0)) for k in current if k != "cash_pool"}
+    planned["cash_pool"] = money(-sum(planned.values()))
+    used = money(sum(allocated.values()))
+    pending_returns = money(account["changqian_pending"] + account["overseas_pending"] +
+                            sum(t["amount"] for t in account.get("pending_transfers", []) if t["target"] == "cash"))
+    rows = [dict(id=k, label=LABELS[k], current=v, weight=WEIGHTS.get(k, 0), target=targets[k],
+                 delta=deltas[k], arranged_delta=money(projected[k]-v), planned_delta=planned[k],
+                 remaining_gap=money(remaining[k]-planned[k]), blocked_reason=blocked.get(k)) for k,v in current.items()]
+    return dict(policy_id=POLICY_ID, cadence="weekly", minimum_adjustment=MIN_ADJUSTMENT,
+        phase="account_rebalance", allocation=dict(total=money(sum(current.values())), current=current,
+            targets=targets, deltas=deltas, planned_deltas=planned, rows=rows),
+        actions=actions, strategy_cash=strategy_cash, cash_reserves=reserves,
+        cash_band=dict(lower=CASH_MIN, upper=None),
+        transfer_deltas={"stock": money(strategy_cash["stock"]-account["stock_available_cash"]),
+                         "bond": money(strategy_cash["cb"]-account["bond_available_cash"])},
+        buy_budgets=buy_budgets, sell_budgets=sell_budgets, account_allocations=allocated,
+        account_reductions=reductions, deferred_reductions={}, blocked=blocked,
+        pending_transfers=account.get("pending_transfers", []),
+        cash=dict(available=available["cash"], immediate_outflow=used, remaining=money(current["cash_pool"]-used),
+            expected_returns=money(sum(reductions.values()) + pending_returns),
+            pending_returns=pending_returns, pending_outflow=reserved["cash"],
+            terminal_estimate=money(current["cash_pool"] + planned["cash_pool"] + pending_returns - reserved["cash"]),
+            note="10%为静态目标；动态按已到账可调拨资金补缺口。预计回流不计本次购买力。"))

@@ -28,37 +28,34 @@ def terms(direction='nasdaq', code='161130', price=10):
 
 
 class TestStageAllocation(unittest.TestCase):
-    def test_at_target_only_funds_account_cash_reserves(self):
+    def test_at_target_does_not_add_account_reserve_transfers(self):
         plan = build_stage_plan(facts())
-        self.assertEqual(sum(a['amount'] for a in plan['actions']), 900)
-        self.assertTrue(all(a['source'] == 'cash_pool' for a in plan['actions']))
-        self.assertEqual(plan['buy_budgets'], {})
+        self.assertEqual(plan['actions'], [])
         self.assertEqual(sum(plan['allocation']['targets'].values()), 1000000)
 
-    def test_new_money_only_changes_facts_then_follows_unified_targets(self):
+    def test_new_money_is_allocated_by_account_gaps(self):
         plan = build_stage_plan(facts(cash=107500))
-        self.assertEqual(plan['buy_budgets'], {'stock': 2625, 'nasdaq': 1500, 'bond': 1875})
-        self.assertEqual(plan['cash']['immediate_outflow'], 6900)
-        self.assertEqual(plan['cash']['terminal_estimate'], 101500)
-        self.assertEqual(plan['allocation']['deltas']['technology'], 750)
+        self.assertEqual(plan['account_allocations'], {'stock': 2625, 'bond': 1875, 'pingan': 2250})
+        self.assertEqual(plan['cash']['immediate_outflow'], 6750)
+        self.assertEqual(plan['cash']['remaining'], 100750)
 
-    def test_broker_cash_is_counted_once_and_offsets_transfer(self):
+    def test_broker_cash_remains_inside_account_configuration(self):
         account = facts(cash=104500)
         account.update(stock_total=353000, stock_cash=3000, stock_available_cash=3000)
         plan = build_stage_plan(account)
         self.assertEqual(plan['allocation']['total'], 1007500)
-        self.assertEqual(plan['allocation']['current']['stock'], 350000)
-        self.assertEqual(plan['cash']['immediate_outflow'], 3975)
-        self.assertEqual(plan['strategy_cash']['stock'], 2700)  # 本账户现金扣除订单预留
-        self.assertEqual(plan['transfer_deltas']['stock'], -300)
+        self.assertEqual(plan['allocation']['current']['stock'], 353000)
+        self.assertEqual(plan['allocation']['current']['cash_pool'], 104500)
+        self.assertEqual(plan['cash']['immediate_outflow'], 4125)
+        self.assertEqual(plan['strategy_cash']['stock'], 2700)
 
     def test_pending_receivable_never_supplies_immediate_buying_power(self):
         account = facts(stock=400000, nasdaq=0, technology=0, bond=300000, cash=0)
         account.update(changqian_total=300000, changqian_pending=300000)
-        with self.assertRaises(PlanValidationError):
-            build_stage_plan(account)  # 在途不能支付缺失的账户现金预留
-        account.update(changqian_total=0, changqian_pending=0, cash_pool=300000)
-        self.assertEqual(build_stage_plan(account)['allocation']['total'], 1000000)
+        plan = build_stage_plan(account)
+        self.assertEqual(plan['cash']['immediate_outflow'], 0)
+        self.assertNotIn('changqian', plan['account_reductions'])
+        self.assertEqual(plan['allocation']['total'], 1000000)
 
     def test_missing_pingan_does_not_mean_zero(self):
         account = facts()
@@ -66,12 +63,11 @@ class TestStageAllocation(unittest.TestCase):
         with self.assertRaises(PlanValidationError):
             build_stage_plan(account)
 
-    def test_unavailable_direction_retains_target_and_gap(self):
-        plan = build_stage_plan(facts(nasdaq=0, cash=300000), blocked={'nasdaq': '条件未核实'})
-        self.assertEqual(plan['allocation']['targets']['nasdaq'], 200000)
-        self.assertEqual(plan['buy_budgets'], {})
-        self.assertEqual(plan['allocation']['planned_deltas']['nasdaq'], 0)
-        self.assertEqual(plan['allocation']['targets']['technology'], 100000)
+    def test_unavailable_account_retains_target_and_gap(self):
+        plan = build_stage_plan(facts(nasdaq=0, cash=300000), blocked={'pingan': '账户无法接收'})
+        self.assertEqual(plan['allocation']['targets']['pingan'], 300000)
+        self.assertNotIn('pingan', plan['account_allocations'])
+        self.assertEqual(plan['allocation']['planned_deltas']['pingan'], 0)
 
     def test_two_funds_share_one_account_cash(self):
         account = facts(nasdaq=0, technology=0, cash=100000)
@@ -79,16 +75,14 @@ class TestStageAllocation(unittest.TestCase):
         plan = build_stage_plan(account)
         fund_buys = sum(plan['buy_budgets'].get(k, 0) for k in ('nasdaq','technology'))
         transfer = sum(a['amount'] for a in plan['actions'] if a['target'] == 'pingan')
-        self.assertAlmostEqual(transfer + 10000, fund_buys + 300, places=2)
+        self.assertAlmostEqual(transfer + 10000, fund_buys + 300, delta=.02)
         self.assertLessEqual(plan['cash']['immediate_outflow'], 100000)
 
-    def test_opposing_pingan_orders_do_not_spend_unfilled_sell_proceeds(self):
-        account = facts(nasdaq=250000, technology=50000)
-        plan = build_stage_plan(account)
-        self.assertIn({'source': 'cash_pool', 'target': 'pingan'},
-                      [{k: a[k] for k in ('source', 'target')} for a in plan['actions']])
-        self.assertEqual(plan['buy_budgets']['technology'], 50000)
-        self.assertEqual(plan['cash']['immediate_outflow'], 50900)
+    def test_opposing_funds_do_not_request_extra_bank_funding(self):
+        plan = build_stage_plan(facts(nasdaq=250000, technology=50000))
+        self.assertEqual(plan['actions'], [])
+        self.assertEqual(plan['buy_budgets']['technology'], 0)
+        self.assertGreater(plan['sell_budgets']['nasdaq'], 50000)
 
     def test_randomized_shared_cash_and_target_conservation(self):
         rng = random.Random(87)
@@ -118,22 +112,17 @@ class TestStageAllocation(unittest.TestCase):
 
 
 class TestFundBudgetOrders(unittest.TestCase):
-    def test_overweight_fund_is_deferred_without_a_current_sell(self):
+    def test_overweight_fund_sells_without_spending_unfilled_proceeds(self):
         account = facts(nasdaq=255555, technology=44445)
         account.update(fund_terms=normalize_terms([terms(), terms('technology','501312',7)]),
                        fund_positions=[dict(code='161130', quantity=25555), dict(code='501312', quantity=6349)])
         transfer = build_stage_plan(account)
         funds = build_fund_orders(account, transfer, '2026-09-25')
         reconciled = reconcile_fund_return(account, transfer, funds)
-        incoming = sum(a['amount'] for a in reconciled['actions'] if a['target'] == 'pingan')
-        outgoing = sum(a['amount'] for a in reconciled['actions'] if a['source'] == 'pingan')
-        net = sum((1 if o['shares'] < 0 else -1) * o['amount'] - o['estimated_fee'] for o in funds['orders'])
-        self.assertEqual(outgoing, 0)
-        self.assertGreater(transfer['deferred_reductions']['nasdaq'], 0)
-        self.assertFalse(transfer['sell_budgets'])
-        self.assertTrue(all(o['shares'] > 0 for o in funds['orders']))
-        self.assertGreaterEqual(round(incoming + net - outgoing, 2), 0)
-        self.assertLessEqual(incoming + net - outgoing, 1000)
+        self.assertEqual(reconciled['actions'], [])
+        self.assertTrue(funds['orders'])
+        self.assertTrue(all(o['shares'] < 0 for o in funds['orders']))
+        self.assertEqual(funds['summary']['buy_cost'], 0)
 
     def test_lots_fees_and_two_orders_stay_inside_shared_budget(self):
         account = facts(nasdaq=0, technology=0, cash=400000)

@@ -113,9 +113,9 @@ def build_account_read_model(summary: dict | None) -> dict | None:
                       for key, value in current.items()]
         carriers = {"stock": ["stock"], "bond": ["cb"], "nasdaq": ["pingan"],
                     "technology": ["pingan"], "unclassified": ["pingan"],
-                    "cash_pool": ["cash", "stock", "cb", "pingan"],
+                    "cash_pool": ["cash"], "pingan": ["pingan"],
                     "changqian": ["changqian"], "overseas": ["overseas"],
-                    "pending": ["changqian", "overseas"]}
+                    "pending": ["changqian", "overseas", "cash", "stock", "cb", "pingan"]}
         names = {a["id"]: a["name"] for a in account_facts}
         for row in allocation:
             row["account_ids"] = carriers[row["id"]]

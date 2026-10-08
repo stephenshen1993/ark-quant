@@ -57,6 +57,8 @@ def build_current_account_summary() -> dict | None:
     updated_at = {}
     snapshot_dates = {}
     totals = []
+    result["pending_transfers"] = []
+    result["cash_unavailable"] = 0.0
     for account in accounts:
         account_id = account["account_id"]
         total_key, cash_key = account_store.ACCOUNT_VALUE_FIELDS[account_id]
@@ -65,6 +67,10 @@ def build_current_account_summary() -> dict | None:
             if account["record_state"] == "recorded"
             else None
         )
+        raw = account["raw_data"]
+        result["pending_transfers"].extend({"source": account_id, **t} for t in raw.get("pending_transfers", []))
+        if account_id == "cash":
+            result["cash_unavailable"] = raw.get("unavailable_amount", 0)
         result[total_key] = total
         totals.append(total)
         if cash_key:
@@ -127,6 +133,8 @@ def update_current_account(
     frozen_cash: float | None = None,
     positions: list[dict] | None = None,
     pending_amount: float = 0,
+    pending_transfers: list[dict] | None = None,
+    unavailable_amount: float | None = None,
     fund_terms: list[dict] | None = None,
 ) -> dict:
     """Save one account from raw user facts and invalidate plans only on change."""
@@ -145,6 +153,23 @@ def update_current_account(
         if any(not float(item["quantity"]).is_integer() for item in raw["positions"]):
             raise CurrentAccountError("场内基金持仓份额必须为整数")
         raw["fund_terms"] = normalize_terms(fund_terms or [])
+    from app.account_transfers import normalize_transfers
+    # 旧客户端省略新字段时保留原有在途事实，不能静默清空。
+    with db._conn() as conn:
+        previous_raw = _current_account(conn, account_id)["raw_data"]
+    if pending_transfers is None:
+        pending_transfers = previous_raw.get("pending_transfers", [])
+    if unavailable_amount is None:
+        unavailable_amount = previous_raw.get("unavailable_amount", 0)
+    transfers = normalize_transfers(account_id, pending_transfers)
+    if transfers:
+        raw["pending_transfers"] = transfers
+    if account_id == "cash" and unavailable_amount:
+        raw["unavailable_amount"] = account_store.validate_nonnegative_finite(unavailable_amount, "不可调拨金额")
+    reserved = sum(t["amount"] for t in transfers if not t["debited"])
+    balance = raw.get("available_cash", raw.get("amount", 0))
+    if reserved + raw.get("unavailable_amount", 0) > balance:
+        raise CurrentAccountError("未扣账调拨与不可用金额超过来源可用余额；请勿重复登记冻结金额")
     valuation = _derive_valuation(account_id, raw)
 
     with db._conn() as conn:
@@ -282,6 +307,13 @@ def _normalize_raw_data(
 
 
 def _derive_valuation(account_id: str, raw: dict) -> dict:
+    valuation = _derive_holdings_valuation(account_id, raw)
+    if valuation["total"] is not None:
+        valuation["total"] = round(valuation["total"] + sum(t["amount"] for t in raw.get("pending_transfers", []) if t["debited"]), 2)
+    return valuation
+
+
+def _derive_holdings_valuation(account_id: str, raw: dict) -> dict:
     if account_id not in SECURITIES_ACCOUNTS:
         return {
             "status": "available",

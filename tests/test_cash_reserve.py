@@ -71,4 +71,4 @@ class TestCashReserve(unittest.TestCase):
         self.assertEqual(plan['allocation']['total'], 1000000)
         self.assertEqual(plan['allocation']['targets']['cash_pool'], 100000)
         self.assertEqual(sum(plan['cash_reserves'].values()), 900)
-        self.assertEqual(plan['cash']['remaining'], 99100)
+        self.assertEqual(plan['cash']['remaining'], 100000)

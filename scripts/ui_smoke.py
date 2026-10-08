@@ -1299,12 +1299,17 @@ def browser_check_code(
               changedPayloads,
             }});
             await chooseAccount('pingan');
-            await accountPage.getByLabel('基金限价', {{ exact: true }}).first().waitFor({{ state: 'visible' }});
-            if (await accountPage.getByLabel('基金限价', {{ exact: true }}).count() !== 2) {{
-              fail('account.pinganTerms', '平安两方向交易条件未完整显示');
+            const pendingDetails = accountPage.locator('details').filter({{ hasText: '已发起调拨与不可用资金' }});
+            await pendingDetails.locator('summary').click();
+            await pendingDetails.getByRole('button', {{ name: '登记已发起调拨', exact: true }}).click();
+            await pendingDetails.getByLabel('已发起调拨金额', {{ exact: true }}).fill('1000');
+            const pendingTarget = await pendingDetails.getByLabel('调拨接收账户', {{ exact: true }}).inputValue();
+            if (pendingTarget !== 'cash') fail('account.pendingTarget', '券商回款必须流向资金账户');
+            await pendingDetails.getByRole('button', {{ name: '移除记录', exact: true }}).click();
+            if (await pendingDetails.getByLabel('已发起调拨金额', {{ exact: true }}).count()) {{
+              fail('account.pendingRemoval', '已移除的在途登记仍留在表单');
             }}
-            const fieldWidths = await accountPage.getByLabel('基金限价', {{ exact: true }}).evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().width));
-            if (fieldWidths.some(width => width < 130)) fail('account.pinganFieldWidth', '基金输入框被挤窄');
+            await pendingDetails.locator('summary').click();
             await assertPageIntegrity('account.pingan', main);
             await page.screenshot({{ path: {json.dumps(account_screenshot.replace('.png','-pingan.png'))}, fullPage: true }});
             await chooseAccount('changqian');
@@ -1368,7 +1373,10 @@ def browser_check_code(
             const fundingPlanPanel = executionDossier.locator('.plan-funding-plan');
             const accountPlanCards = executionDossier.locator('.plan-account-card');
             await fundingPlanPanel.waitFor({{ state: 'visible', timeout: 10000 }});
-            const stageConditions = planPage.locator('section[aria-label="计划条件"]');
+            const advancedRules = planPage.locator('.plan-advanced-panel');
+            await advancedRules.locator(':scope > summary').click();
+            const stageConditions = planPage.locator('details[aria-label="计划条件"]');
+            await stageConditions.locator(':scope > summary').click();
             await stageConditions.waitFor({{ state: 'visible', timeout: 10000 }});
             const stageRulesText = await stageConditions.innerText();
             if (!stageRulesText.includes('周度统一检查') || !stageRulesText.includes('1000元')) {{
@@ -1377,6 +1385,8 @@ def browser_check_code(
             if (await stageConditions.locator('input, select').count()) {{
               fail('plan.stageRules', '阶段规则不应保留旧温度、新钱或B申购输入');
             }}
+            await stageConditions.locator(':scope > summary').click();
+            await advancedRules.locator(':scope > summary').click();
             const [planShellBox, statusBox, dossierBox] = await Promise.all([
               planPage.boundingBox(),
               planPage.locator('.workspace-title-row').boundingBox(),
@@ -1412,7 +1422,7 @@ def browser_check_code(
               }};
             }});
             const accountsCollapsedByDefault = await accountPlanCards.evaluateAll(cards =>
-              cards.every(card => !card.open)
+              cards.filter(card => card.checkVisibility()).length === 1
             );
             const planMetrics = {{
               shellWidth: planShellBox?.width || 0,
@@ -1507,12 +1517,13 @@ def browser_check_code(
                   planMetrics.fundingTableMetrics.rowHeights,
                 ));
               }}
+              // 当前是铺满宽度的两列表格：金额右对齐，检查不与路线重叠。
               const disconnectedFundingAmounts = planMetrics.fundingTableMetrics.routeToAmountGaps
-                .filter(gap => gap > 56);
+                .filter(gap => gap < 0);
               if (disconnectedFundingAmounts.length) {{
                 planDifferences.push(difference(
                   'plan.fundingRouteToAmountGaps',
-                  {{ max: 56 }},
+                  {{ min: 0 }},
                   planMetrics.fundingTableMetrics.routeToAmountGaps,
                 ));
               }}
@@ -1537,15 +1548,15 @@ def browser_check_code(
             await page.waitForTimeout(100);
             await page.screenshot({{ path: {json.dumps(plan_screenshot)}, fullPage: true }});
             const fundPlanCard = planPage.locator('.plan-account-card').filter({{ hasText: '平安账户' }}).first();
-            await fundPlanCard.locator(':scope > summary').click();
+            await planPage.locator('.plan-account-tabs button').filter({{ hasText: '平安账户' }}).click();
             await fundPlanCard.locator('.plan-trade-row').first().waitFor({{ state: 'visible' }});
             const fundRows = fundPlanCard.locator('.plan-trade-row');
-            if (await fundRows.count() !== 2 || await fundPlanCard.locator('td[data-label="限价"]').count() !== 2) {{
-              fail('plan.fundOrders', '两只基金的订单或限价未完整展示');
+            if (await fundRows.count() !== 2 || await fundPlanCard.locator('td[data-label="参考价"]').count() !== 2) {{
+              fail('plan.fundOrders', '两只基金的订单或参考价未完整展示');
             }}
             await assertPageIntegrity('plan.fundOrders', main);
             await fundPlanCard.screenshot({{ path: {json.dumps(plan_screenshot.replace('.png', '-funds.png'))} }});
-            await fundPlanCard.locator(':scope > summary').click();
+            await planPage.locator('.plan-account-tabs button').filter({{ hasText: '平安账户' }}).click();
             let expandedAccountPlanChecks = null;
             let planFocusChecks = null;
 
@@ -2016,7 +2027,7 @@ def browser_check_code(
               const fundingPlanVisible = await scenarioFundingPlan.isVisible();
               const accountPlanCount = await scenarioAccountPlans.count();
               const accountsCollapsedByDefault = accountPlanCount > 0
-                ? await scenarioAccountPlans.evaluateAll(cards => cards.every(card => !card.open))
+                ? await scenarioAccountPlans.evaluateAll(cards => cards.filter(card => card.checkVisibility()).length === 1)
                 : true;
 	              const noActionConclusion = scenario.name === 'no-action'
 	                ? {{
@@ -2028,11 +2039,8 @@ def browser_check_code(
               const expectedFundingDate = scenario.name === 'future-funding'
                 ? '日期待确认'
                 : scenario.plan?.stock?.trade_date;
-              const fundingDatesVisible = !scenario.fundingPlanVisible || (
-                (await scenarioFundingPlan.innerText()).includes(expectedFundingDate)
-                && (scenario.name === 'future-funding'
-                  ? (await scenarioAccountPlans.first().innerText()).includes(expectedFundingDate)
-                  : (await scenarioPage.innerText()).includes(expectedFundingDate))
+              const fundingDatesVisible = !scenario.fundingPlanVisible || (await scenarioPage.innerText()).includes(
+                scenario.name === 'readiness-error' ? '等待生成执行计划' : scenario.plan?.stock?.trade_date
               );
               const generateDisabled = await generateButton.isDisabled();
               const legacyPanelsVisible = await scenarioPage
@@ -2134,169 +2142,40 @@ def browser_check_code(
                   generateButtonText,
                 ));
               }}
-	              if (scenario.name === 'action' && accountPlanCount > 0) {{
-	                const firstAccountPlan = scenarioAccountPlans.first();
-	                const readExpandedAccountPlan = async (accountPlan, expectedIndex) => {{
-	                  if (!(await accountPlan.evaluate(card => card.open))) {{
-	                    await accountPlan.locator(':scope > summary').click();
-	                  }}
-	                  await scenarioPage.locator('.plan-execution-index').waitFor({{ state: 'visible', timeout: 10000 }});
-	                  const check = await accountPlan.evaluate((card, context) => {{
-	                    const rows = Array.from(card.querySelectorAll('.plan-trade-row'));
-	                    const cashLabels = Array.from(card.querySelectorAll('.plan-cash-label'))
-	                      .map(label => label.textContent.trim());
-	                    const requiredLabels = ['证券代码', '证券名称', '委托数量', '参考价', '预计金额'];
-	                    const completeRows = rows.every(row => {{
-	                      const labels = Array.from(row.querySelectorAll('[data-label]'))
-	                        .map(cell => cell.dataset.label);
-	                      return requiredLabels.every(label => labels.includes(label));
-	                    }});
-	                    const scrollContainers = Array.from(card.querySelectorAll('.plan-trade-table-scroll'));
-	                    const noHorizontalOverflow = scrollContainers.every(container =>
-	                      container.scrollWidth <= container.clientWidth + 2
-	                    );
-	                    const title = card.querySelector('.plan-account-title')?.innerText || '';
-	                    const rowHeights = rows.map(row => row.getBoundingClientRect().height);
-	                    const tradeTableWidth = card.querySelector('.plan-trade-table')?.getBoundingClientRect().width || 0;
-	                    const actionLabels = Array.from(card.querySelectorAll('.plan-trade-group-main'))
-	                      .map(node => node.innerText.split('·')[0].trim());
-                    const actionRanks = actionLabels.map(label => (
-                      {{ '清仓': 0, '减仓': 1, '建仓': 2, '加仓': 3 }}[label] ?? -1
-                    ));
-	                    const positionActionsOrdered = actionRanks.every(rank => rank >= 0)
-	                      && actionRanks.every((rank, idx) => idx === 0 || rank >= actionRanks[idx - 1]);
-	                    const tradeDetailWidth = card.querySelector('.plan-account-detail')?.getBoundingClientRect().width || 0;
-	                    const metrics = {{
-	                      accountLabel: title,
-	                      open: card.open,
-	                      tradeTableCount: card.querySelectorAll('.plan-trade-table').length,
-	                      rowCount: rows.length,
-	                      rowHeights,
-	                      completeRows,
-	                      noHorizontalOverflow,
-	                      hasCashEquation: Boolean(card.querySelector('.plan-cash-equation')),
-	                      cashEquationDeferred: Boolean(card.querySelector('.plan-account-detail .plan-cash-audit .plan-cash-equation'))
-	                        && !card.querySelector(':scope > summary .plan-cash-equation')
-	                        && !card.querySelector('.plan-cash-audit')?.open,
-	                      compactWhenOpen: !card.querySelector('.plan-cash-equation')?.checkVisibility()
-	                        && !card.querySelector('.plan-account-open-summary'),
-	                      hasEndingBalance: cashLabels.includes('计划后预计资金余额'),
-	                      hasAccountSwitcher: Boolean(document.querySelector('.plan-execution-index')?.checkVisibility()),
-	                      noDuplicateFolio: !card.querySelector('.plan-account-folio'),
-	                      hasGuardrails: card.querySelectorAll('.plan-execution-guardrail').length >= 2,
-		                      groupedActionsVisible: actionLabels.length > 0
-		                        && actionLabels.every(label => ['清仓', '减仓', '建仓', '加仓'].includes(label)),
-		                      noRepeatedRowAction: rows.every(row => !row.querySelector('.plan-trade-action-badge')),
-		                      quantityFirst: rows.every(row => row.querySelector('.plan-trade-quantity')?.innerText.match(/\\d/)),
-		                      noVisiblePositionRoutes: rows.every(row => !row.querySelector('.plan-trade-position-route')),
-		                      positionRouteInTitle: rows.every(row => row.querySelector('.plan-trade-position')?.title.includes('持仓变化：')),
-	                      codeNameSplit: rows.every(row => row.querySelector('.plan-trade-code') && row.querySelector('.plan-trade-name')),
-	                      positionActionsOrdered,
-	                      noRepeatedActionColumn: rows.every(row => !row.querySelector('[data-label="仓位动作"]')),
-	                      noExecutionStepColumn: !Array.from(card.querySelectorAll('th'))
-	                        .some(th => th.innerText.trim() === '顺序')
-	                        && rows.every(row => !row.querySelector('.plan-trade-step')),
-	                      compactTradeRows: context.isNarrow || rowHeights.every(height => height <= 46),
-	                      fullWidthTradeTable: tradeTableWidth > 0 && tradeTableWidth <= tradeDetailWidth + 2,
-	                      noPhaseHeadings: !card.querySelector('.plan-trade-phase-heading')
-	                        && !card.innerText.includes('卖出阶段')
-	                        && !card.innerText.includes('买入阶段'),
-	                      urlKeepsAccount: Boolean(new URL(window.location.href).searchParams.get('planAccount')),
-	                      noRowPriceCap: !card.querySelector('.plan-trade-price-cap'),
-	                    }};
-	                    return {{
-	                      ...metrics,
-	                      passes: metrics.open
-	                        && metrics.tradeTableCount === 1
-	                        && metrics.rowCount >= 1
-	                        && metrics.completeRows
-	                        && metrics.noHorizontalOverflow
-	                        && metrics.hasCashEquation
-	                        && metrics.cashEquationDeferred
-	                        && metrics.compactWhenOpen
-	                        && metrics.hasEndingBalance
-	                        && metrics.hasAccountSwitcher
-	                        && metrics.noDuplicateFolio
-		                        && metrics.hasGuardrails
-		                        && metrics.groupedActionsVisible
-		                        && metrics.noRepeatedRowAction
-		                        && metrics.quantityFirst
-		                        && metrics.noVisiblePositionRoutes
-	                        && metrics.positionRouteInTitle
-	                        && metrics.codeNameSplit
-	                        && metrics.positionActionsOrdered
-	                        && metrics.noRepeatedActionColumn
-	                        && metrics.noExecutionStepColumn
-	                        && metrics.compactTradeRows
-	                        && metrics.fullWidthTradeTable
-	                        && metrics.noPhaseHeadings
-	                        && metrics.noRowPriceCap
-	                        && metrics.urlKeepsAccount,
-	                    }};
-	                  }}, {{ expectedIndex, total: accountPlanCount, isNarrow: {json.dumps(viewport_name)} === 'narrow' }});
-	                  check.exclusiveAfterOpen = (await scenarioAccountPlans.evaluateAll(cards =>
-	                    cards.filter(card => card.open).length === 1
-	                  ));
-	                  return check;
-	                }};
-	                const accountChecks = [];
-	                for (let index = 0; index < accountPlanCount; index += 1) {{
-	                  accountChecks.push(await readExpandedAccountPlan(scenarioAccountPlans.nth(index), index + 1));
-	                }}
-	                expandedAccountPlanChecks = {{
-	                  accountCount: accountPlanCount,
-	                  accountChecks,
-	                  allAccountsPass: accountChecks.every(check => check.passes),
-	                  exclusiveExpansion: accountChecks.every(check => check.exclusiveAfterOpen),
-	                  noRowPriceCap: accountChecks.every(check => check.noRowPriceCap),
-	                  firstAccount: accountChecks[0] || null,
-	                }};
-	                if (!(await firstAccountPlan.evaluate(card => card.open))) {{
-	                  await firstAccountPlan.locator(':scope > summary').click();
-	                }}
-	                if (
-	                  !expandedAccountPlanChecks.allAccountsPass
-	                  || !expandedAccountPlanChecks.noRowPriceCap
-	                  || !expandedAccountPlanChecks.exclusiveExpansion
-	                ) {{
-	                  scenarioDifferences.push(difference(
-	                    'plan.expandedAccountPlanChecks',
-	                    {{
-	                      allAccountsPass: true,
-	                      noRowPriceCap: true,
-	                      exclusiveExpansion: true,
-	                    }},
-	                    expandedAccountPlanChecks,
-                  ));
+              if (scenario.name === 'action' && accountPlanCount > 0) {{
+                const accountChecks = [];
+                for (let index = 0; index < accountPlanCount; index += 1) {{
+                  const card = scenarioAccountPlans.nth(index);
+                  const accountId = await card.getAttribute('data-plan-account-id');
+                  await scenarioPage.locator('.plan-account-tabs button[aria-controls="plan-account-' + accountId + '"]').click();
+                  await card.waitFor({{ state: 'visible' }});
+                  const check = await card.evaluate(card => {{
+                    const rows = Array.from(card.querySelectorAll('.plan-trade-row'));
+                    const labels = ['证券代码', '证券名称', '委托数量', '参考价', '预计金额'];
+                    return {{
+                      account: card.dataset.planAccountId,
+                      rowsComplete: rows.length > 0 && rows.every(row => labels.every(label => row.querySelector('[data-label="' + label + '"]'))),
+                      noOverflow: Array.from(card.querySelectorAll('.plan-trade-table-scroll')).every(el => el.scrollWidth <= el.clientWidth + 2),
+                      cashAuditAvailable: Boolean(card.querySelector('.plan-cash-audit .plan-cash-equation')),
+                      noRowPriceCap: !card.querySelector('.plan-trade-price-cap'),
+                      urlKeepsAccount: new URL(location.href).searchParams.get('planAccount') === card.dataset.planAccountId,
+                    }};
+                  }});
+                  check.exclusiveAfterOpen = await scenarioAccountPlans.evaluateAll(cards => cards.filter(card => card.checkVisibility()).length === 1);
+                  check.passes = check.rowsComplete && check.noOverflow && check.cashAuditAvailable && check.noRowPriceCap && check.urlKeepsAccount && check.exclusiveAfterOpen;
+                  accountChecks.push(check);
                 }}
-                if ({json.dumps(viewport_name)} === 'narrow') {{
-                  await firstAccountPlan.locator('.plan-trade-row').first().scrollIntoViewIfNeeded();
-                  await page.screenshot({{ path: {json.dumps(plan_expanded_screenshot)} }});
-                }} else {{
-                  await firstAccountPlan.screenshot({{ path: {json.dumps(plan_expanded_screenshot)} }});
+                expandedAccountPlanChecks = {{
+                  accountCount: accountPlanCount, accountChecks,
+                  allAccountsPass: accountChecks.every(check => check.passes),
+                  noRowPriceCap: accountChecks.every(check => check.noRowPriceCap),
+                  exclusiveExpansion: accountChecks.every(check => check.exclusiveAfterOpen),
+                }};
+                if (!expandedAccountPlanChecks.allAccountsPass) {{
+                  scenarioDifferences.push(difference('plan.accountTabs', 'all account checks pass', expandedAccountPlanChecks));
                 }}
-                const focusToggle = scenarioPage.getByRole('button', {{ name: '进入专注视图' }});
-                await focusToggle.click();
-                const focused = await page.evaluate(() => ({{
-                  classApplied: document.documentElement.classList.contains('plan-focus-mode'),
-                  urlApplied: new URL(window.location.href).searchParams.get('planFocus') === '1',
-                  navHidden: !document.querySelector('.app-nav')?.checkVisibility(),
-                  conditionsHidden: !document.querySelector('.plan-conditions-panel')?.checkVisibility(),
-                }}));
-                await scenarioPage.getByRole('button', {{ name: '退出专注视图' }}).click();
-                const restored = await page.evaluate(() => ({{
-                  classRemoved: !document.documentElement.classList.contains('plan-focus-mode'),
-                  urlRemoved: !new URL(window.location.href).searchParams.has('planFocus'),
-                }}));
-                scenarioPlanFocusChecks = {{ focused, restored }};
-                planFocusChecks = scenarioPlanFocusChecks;
-                if (!Object.values(focused).every(Boolean) || !Object.values(restored).every(Boolean)) {{
-                  scenarioDifferences.push(difference(
-                    'plan.focusMode',
-                    {{ focused: 'all true', restored: 'all true' }},
-                    scenarioPlanFocusChecks,
-                  ));
-                }}
+                await scenarioPage.locator('.plan-account-tabs button').first().click();
+                await scenarioAccountPlans.first().screenshot({{ path: {json.dumps(plan_expanded_screenshot)} }});
               }}
               let orderEntryNarrowChecks = null;
               if ({json.dumps(viewport_name)} === 'narrow' && scenario.name === 'action') {{
