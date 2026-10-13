@@ -7,6 +7,8 @@ import logging
 import math
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
+
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -14,6 +16,8 @@ from time import perf_counter
 from typing import Callable, Iterable, Sequence
 
 import pandas as pd
+
+from datasource.request_control import bounded_market_requests, report_progress
 
 from datasource.market_data_bundle import (
     DataRequirements,
@@ -67,6 +71,8 @@ def prepare_market_history(
 ) -> MarketHistoryResult:
     """Fill only proven trading-day gaps, using full-market batches before per-symbol fallback."""
     started = perf_counter()
+    label = "正股历史行情" if requirements.symbol_field == "stock_code" else "转债历史行情"
+    report_progress(f"检查{label}缓存")
     required_dates = _required_dates(
         effective_date,
         trading_days,
@@ -101,6 +107,7 @@ def prepare_market_history(
         external_calls = 0
 
         if missing_dates and batch_fetcher is not None:
+            report_progress(f"获取{label}")
             batch_requests = 1
             try:
                 fetched_batch = batch_fetcher(missing_dates)
@@ -136,6 +143,7 @@ def prepare_market_history(
         if missing_by_symbol and fallback_fetcher is not None:
             fallback_symbols = len(missing_by_symbol)
 
+            @bounded_market_requests
             def _fetch_symbol(
                 item: tuple[str, list[date]],
             ) -> tuple[pd.DataFrame | MarketFetchResult | None, Exception | None]:
@@ -146,38 +154,43 @@ def prepare_market_history(
                     return None, exc
 
             items = sorted(missing_by_symbol.items())
+            report_progress(f"补齐{label}", 0, len(items))
             with ThreadPoolExecutor(
                 max_workers=max(1, min(fallback_workers, len(items)))
             ) as executor:
-                for (symbol, days), (fetched_symbol, error) in zip(
-                    items,
-                    executor.map(_fetch_symbol, items),
-                ):
-                    if error is not None:
-                        if allow_partial:
-                            logging.warning(
-                                "Skipping unavailable %s history for %s: %s",
-                                requirements.source,
-                                symbol,
+                futures = [executor.submit(copy_context().run, _fetch_symbol, item) for item in items]
+                try:
+                    for index, ((symbol, days), future) in enumerate(zip(items, futures), 1):
+                        fetched_symbol, error = future.result()
+                        report_progress(f"补齐{label}", index, len(items))
+                        if error is not None:
+                            if allow_partial:
+                                logging.warning(
+                                    "Skipping unavailable %s history for %s: %s",
+                                    requirements.source,
+                                    symbol,
+                                    error,
+                                )
+                                continue
+                            raise _source_error(
+                                requirements,
+                                effective_date,
+                                "market_history_fallback",
+                                remaining,
                                 error,
-                            )
-                            continue
-                        raise _source_error(
+                            ) from error
+                        frame, physical_calls = _unwrap_fetch_result(fetched_symbol)
+                        external_calls += physical_calls
+                        normalized = _normalize_rows(
+                            frame,
                             requirements,
-                            effective_date,
-                            "market_history_fallback",
-                            remaining,
-                            error,
-                        ) from error
-                    frame, physical_calls = _unwrap_fetch_result(fetched_symbol)
-                    external_calls += physical_calls
-                    normalized = _normalize_rows(
-                        frame,
-                        requirements,
-                        [symbol],
-                        days,
-                    )
-                    refreshed_keys.update(_upsert_rows(conn, requirements, normalized))
+                            [symbol],
+                            days,
+                        )
+                        refreshed_keys.update(_upsert_rows(conn, requirements, normalized))
+                finally:
+                    for future in futures:
+                        future.cancel()
 
         complete = _load_rows(conn, requirements, required_symbols, required_dates)
         missing_after = _missing_pairs(

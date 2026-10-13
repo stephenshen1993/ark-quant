@@ -22,6 +22,11 @@ def get_latest(strategy: Literal["cb", "stock"]):
     return strategy_runner.build_ranking_response(strategy, dates[0])
 
 
+@router.get("/{strategy}/status")
+def get_status(strategy: Literal["cb", "stock"]):
+    return strategy_runner.get_run_status(strategy)
+
+
 @router.get("/{strategy}/{data_date}/export")
 def export_md(strategy: Literal["cb", "stock"], data_date: str):
     items = db.get_rankings(strategy, data_date)

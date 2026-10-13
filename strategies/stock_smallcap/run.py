@@ -12,6 +12,8 @@ Data sources (eastmoney-free): universe list from sina spot, snapshot fields (pr
 """
 from __future__ import annotations
 
+from datasource.request_control import bounded_market_requests, report_progress
+
 import argparse
 import json
 import logging
@@ -207,6 +209,7 @@ def fetch_snapshot_with_probe(fetcher, codes, probe_size: int) -> pd.DataFrame:
     return result
 
 
+@bounded_market_requests
 def fetch_deducted_roe_ttm(ak, code: str) -> float | None:
     """TTM 扣非净资产收益率(%) via THS quarterly + annual data.
 
@@ -516,6 +519,7 @@ def market_data_requirements(
     )
 
 
+@bounded_market_requests
 def run(
     config_path: Path,
     positions_path: Path,
@@ -533,6 +537,7 @@ def run(
 
     def _fetch_raw_inputs() -> dict[str, pd.DataFrame]:
         ak = require_akshare()
+        report_progress("获取股票范围与行情")
         universe = fetch_universe(ak)
         universe = filter_board_and_st(universe, config)
         if max_universe:
@@ -589,6 +594,7 @@ def run(
 
         return {"universe": universe[["stock_code"]].copy(), "merged": merged}
 
+    report_progress("准备股票行情与财务数据")
     bundle = prepare_market_data_bundle(
         requirements,
         data_date,

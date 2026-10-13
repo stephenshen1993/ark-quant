@@ -7,6 +7,7 @@ import threading
 from time import perf_counter
 
 from datasource import db
+from datasource.request_control import market_requests, report_to
 from datasource.market_data_bundle import PreparationMetadata
 from datasource.trade_calendar import resolve_effective_trading_date, resolve_next_trading_date
 
@@ -59,6 +60,26 @@ _RUN_LOCKS: dict[Strategy, threading.Lock] = {
     "cb": threading.Lock(),
     "stock": threading.Lock(),
 }
+
+
+_STATUS_LOCK = threading.Lock()
+_RUN_STATUS: dict[str, dict] = {}
+
+
+def get_run_status(strategy: str) -> dict:
+    _validate_strategy(strategy)
+    with _STATUS_LOCK:
+        state = dict(_RUN_STATUS.get(strategy, {"status": "idle"}))
+    if "started_clock" in state:
+        started = state.pop("started_clock")
+        ended = state.pop("ended_clock", perf_counter())
+        state["elapsed_seconds"] = int(ended - started)
+    return state
+
+
+def _set_status(strategy: str, **fields) -> None:
+    with _STATUS_LOCK:
+        _RUN_STATUS.setdefault(strategy, {}).update(fields)
 
 
 def freeze_strategy_run_task(
@@ -145,8 +166,20 @@ def run_strategy(
             },
         )
 
+    with _STATUS_LOCK:
+        _RUN_STATUS[strategy] = {
+            "status": "running", "stage": "准备行情与缓存",
+            "started_at": datetime.now().isoformat(), "started_clock": perf_counter(),
+            "completed": None, "total": None,
+        }
+
+    def progress(stage, completed, total):
+        _set_status(strategy, stage=stage, completed=completed, total=total)
+
     try:
-        artifacts = _run_strategy_impl(strategy, task) if task is not None else _run_strategy_impl(strategy)
+        with market_requests(), report_to(progress):
+            artifacts = _run_strategy_impl(strategy, task) if task is not None else _run_strategy_impl(strategy)
+        _set_status(strategy, stage="校验并读取榜单", completed=None, total=None)
         run_id = getattr(artifacts, "run_id", None)
         if run_id is None:
             raise _persistence_error("策略运行没有返回 run_id")
@@ -156,6 +189,7 @@ def run_strategy(
         items = db.get_rankings_by_run_id(strategy, run_id)
         if not items:
             raise _persistence_error(f"策略运行 {run_id} 没有有效榜单")
+        _set_status(strategy, status="complete", stage="榜单已生成", data_date=strategy_run["data_date"], ended_clock=perf_counter())
         return _result_from_run(
             strategy,
             strategy_run,
@@ -163,11 +197,13 @@ def run_strategy(
             generated=True,
             preparation=getattr(artifacts, "preparation", None),
         )
-    except StrategyRunnerError:
+    except StrategyRunnerError as exc:
+        _set_status(strategy, status="failed", stage="生成失败", error=exc.detail.get("message", str(exc)), ended_clock=perf_counter())
         raise
     except (Exception, SystemExit) as exc:
         msg = str(exc) if str(exc) else type(exc).__name__
         code = _classify_error(msg)
+        _set_status(strategy, status="failed", stage="生成失败", error=f"策略运行失败：{msg}", ended_clock=perf_counter())
         LOGGER.exception("Strategy run failed: strategy=%s code=%s", strategy, code)
         raise StrategyRunnerError(
             500,

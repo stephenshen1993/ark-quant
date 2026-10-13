@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datasource.request_control import bounded_market_requests, report_progress
+
 import argparse
 import importlib
 import json
@@ -503,6 +505,7 @@ def fetch_cb_daily_turnover(
     max_workers = max(1, min(8, int(data_config.get("per_symbol_fetch_workers", 4))))
     fetch_started_at = perf_counter()
 
+    @bounded_market_requests
     def _fetch_one(code: str) -> tuple[dict | None, Exception | None]:
         try:
             hist = ak.bond_zh_hs_cov_daily(symbol=bond_symbol_with_exchange(code))
@@ -608,6 +611,7 @@ def fetch_stock_factors(ak, stock_codes: Iterable[str], end: date, config: dict)
     codes = [code for code in codes if code]
     fetch_started_at = perf_counter()
 
+    @bounded_market_requests
     def _fetch_one(code: str) -> tuple[dict | None, Exception | None]:
         try:
             try:
@@ -1729,6 +1733,7 @@ def prepare_cb_history_inputs(
     )
 
 
+@bounded_market_requests
 def run(
     config_path: Path,
     positions_path: Path,
@@ -1747,6 +1752,7 @@ def run(
     def _fetch_remote_inputs() -> dict[str, pd.DataFrame]:
         nonlocal history_preparation
         ak = require_akshare()
+        report_progress("获取转债基础行情与强赎信息")
         raw = fetch_cb_universe(ak, config)
         universe = normalize_cb_data(raw)
         if max_universe:
@@ -1784,6 +1790,7 @@ def run(
         )
         stock_factors = history_inputs.stock_factors
         enriched = with_turnover.merge(stock_factors, on="stock_code", how="left")
+        report_progress("获取正股市值")
         stock_caps = fetch_stock_market_caps(
             ak,
             enriched["stock_code"].dropna(),
@@ -1812,6 +1819,7 @@ def run(
     plan_price_universe = cb[
         ["bond_code", "bond_name", "cb_price", "turnover_trade_date"]
     ].copy()
+    report_progress("计算因子与筛选榜单")
     enforce_cb_filter_coverage(cb, config, as_of=data_date)
     cb = apply_cb_prefilters(cb, config, as_of=data_date)
     if config.get("data", {}).get("strict_original_rules", True):

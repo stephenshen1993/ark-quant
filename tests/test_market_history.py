@@ -53,6 +53,21 @@ class IncrementalMarketHistoryTests(unittest.TestCase):
             for symbol in symbols
         ])
 
+    def test_worker_progress_reports_real_counts_with_request_bounds(self):
+        from datasource.request_control import _active, report_to
+        updates = []
+
+        def fetch(symbol, start, end):
+            self.assertTrue(_active.get())
+            return self._rows([day for day in self.calendar if start <= day <= end], (symbol,))
+
+        with report_to(lambda stage, completed, total: updates.append((completed, total))):
+            prepare_market_history(
+                self.requirements, date(2026, 8, 14), ("600001", "600002"),
+                self.calendar, None, fallback_fetcher=fetch, store_path=self.store_path,
+            )
+        self.assertEqual([item for item in updates if item[1] is not None], [(0, 2), (1, 2), (2, 2)])
+
     def test_cross_week_run_only_batches_missing_trading_days(self) -> None:
         batches: list[list[date]] = []
 

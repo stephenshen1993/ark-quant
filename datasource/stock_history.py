@@ -8,6 +8,7 @@ from time import sleep
 
 import pandas as pd
 
+from datasource.request_control import bounded_market_requests
 from datasource.market import stock_symbol_with_exchange
 from datasource.market_history import MarketFetchResult
 
@@ -23,6 +24,7 @@ class StockHistoryProviderError(RuntimeError):
     """The selected provider could not return a valid price series."""
 
 
+@bounded_market_requests
 def fetch_stock_history_with_adjustment(
     ak,
     provider: str,

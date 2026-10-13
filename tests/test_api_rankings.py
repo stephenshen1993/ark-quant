@@ -28,6 +28,12 @@ class TestRankingsApi(unittest.TestCase):
         db._TEST_CONN.close()
         db._TEST_CONN = None
 
+    def test_status_route_is_not_treated_as_ranking_date(self):
+        with patch("app.strategy_runner.get_run_status", return_value={"status": "running", "completed": 2, "total": 4}):
+            response = self.client.get("/api/rankings/cb/status")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["total"], 4)
+
     def test_get_dates(self):
         r = self.client.get("/api/rankings/cb/dates")
         self.assertIn("2026-06-27", r.json())

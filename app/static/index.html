@@ -2457,6 +2457,11 @@
       </div>
     </div>
 
+    <div x-show="running[active] || progressError" x-cloak class="workspace-meta mb-4" role="status" aria-live="polite">
+      <span x-text="progressText(active) || (running[active] ? '正在启动榜单任务…' : '')"></span>
+      <span x-show="progressError" x-text="progressError"></span>
+    </div>
+
     <section class="ark-panel rankings-panel" aria-label="榜单明细">
       <div class="rankings-panel-heading">
         <div>
@@ -3868,11 +3873,59 @@
       loadError: '',
       componentErrors: { cb: '', stock: '' },
       running: { cb: false, stock: false },
+      posting: { cb: false, stock: false },
+      progress: { cb: null, stock: null },
+      progressError: '',
+      progressTimer: null,
+      polling: false,
+      disposed: false,
+      destroy() {
+        this.disposed = true
+        clearInterval(this.progressTimer)
+      },
+      progressText(strategy) {
+        const state = this.progress[strategy]
+        if (!state || state.status !== 'running') return ''
+        const count = state.total != null ? ` ${state.completed}/${state.total}` : ''
+        return `${state.stage}${count} · 已用时 ${state.elapsed_seconds || 0} 秒`
+      },
+      async refreshProgress() {
+        if (this.polling || this.disposed) return
+        this.polling = true
+        try {
+          await Promise.all(['cb', 'stock'].map(async strategy => {
+            const response = await fetch(`/api/rankings/${strategy}/status`, {signal: AbortSignal.timeout(10000)})
+            if (!response.ok) throw new Error('进度暂时无法读取，正在重试。')
+            const state = await response.json()
+            if (this.disposed) return
+            const previous = this.progress[strategy]
+            this.progress[strategy] = state
+            this.running[strategy] = this.posting[strategy] || state.status === 'running'
+            if (state.status === 'running') this.componentErrors[strategy] = ''
+            if (state.status === 'failed') this.componentErrors[strategy] = state.error || '榜单生成失败，请重试。'
+            if (previous?.status === 'running' && state.status === 'complete') {
+              this.selectedDateByStrategy[strategy] = state.data_date
+              await this.loadDates(strategy)
+              await this.loadRanking(strategy)
+            }
+            if (previous?.status === 'running' && state.status === 'idle') {
+              this.componentErrors[strategy] = '服务已重启，生成任务已中断，请重新生成。'
+            }
+          }))
+          this.progressError = ''
+        } catch (error) {
+          this.progressError = '进度暂时无法读取，正在重试。'
+        } finally {
+          this.polling = false
+        }
+      },
       datesByStrategy: { cb: [], stock: [] },
       selectedDateByStrategy: { cb: '', stock: '' },
       itemsByStrategy: { cb: [], stock: [] },
       tradeDateByStrategy: { cb: '', stock: '' },
       async load() {
+        if (!this.progressTimer) this.progressTimer = setInterval(() => this.refreshProgress(), 2000)
+        await this.refreshProgress()
         this.loading = true
         this.loadError = ''
         try {
@@ -3923,12 +3976,18 @@
         }
       },
       async generateRanking(strategy) {
+        if (this.running[strategy]) return
+        this.posting[strategy] = true
         this.running[strategy] = true
         this.componentErrors[strategy] = ''
         try {
           const response = await fetch(`/api/rankings/${strategy}/run`, { method: 'POST' })
           const body = await response.json().catch(() => ({}))
           if (!response.ok) {
+            if (body.detail?.code === 'STRATEGY_RUNNING') {
+              await this.refreshProgress()
+              return
+            }
             const detail = typeof body.detail === 'object' ? body.detail.message : body.detail
             throw new Error(detail || `${this.strategyLabel(strategy)}榜单生成失败 (${response.status})`)
           }
@@ -3940,7 +3999,9 @@
         } catch (error) {
           this.componentErrors[strategy] = error?.message || `${this.strategyLabel(strategy)}榜单生成失败。`
         } finally {
-          this.running[strategy] = false
+          this.posting[strategy] = false
+          await this.refreshProgress()
+          this.running[strategy] = this.progress[strategy]?.status === 'running'
         }
       },
       async exportMd(strategy) {
@@ -3980,6 +4041,7 @@
         return tradeDate ? `数据 ${date} · 适用 ${tradeDate}` : `数据 ${date}`
       },
       emptyText() {
+        if (this.running[this.active]) return '榜单生成中，完成后自动显示。'
         return `暂无${this.strategyLabel(this.active)}榜单；可点击“生成${this.strategyLabel(this.active)}榜单”。`
       },
       rankingRowKey(row) {
