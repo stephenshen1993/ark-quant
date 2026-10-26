@@ -48,7 +48,9 @@ def with_reference_terms(account: dict, plan_date: str, execution_date: str) -> 
     codes = {d: explicit.get(d, {}).get('code') or code for d, code in REFERENCE_CODES.items()}
     needed = [codes[d] for d in codes if not explicit.get(d, {}).get('limit_price')
               or explicit[d].get('price_date') != plan_date]
-    quotes = fetch_reference_quotes(needed, plan_date, execution_date) if needed else {}
+    held_codes = [item['code'] for item in account.get('fund_positions', []) if item.get('quantity')]
+    requested = list(dict.fromkeys(needed + held_codes))
+    quotes = fetch_reference_quotes(requested, plan_date, execution_date) if requested else {}
     terms = []
     for direction, code in codes.items():
         item = explicit.get(direction, {}).copy()
@@ -57,8 +59,8 @@ def with_reference_terms(account: dict, plan_date: str, execution_date: str) -> 
             item.setdefault('lot_size', 100)
             if item['lot_size'] is None:
                 item['lot_size'] = 100
-        if code in quotes:
+        if code in quotes and code in needed:
             quote = quotes[code]
             item.update(quote, limit_price=quote['price'], reference_only=True, cost_reviewed=False)
         terms.append(item)
-    return {**account, 'fund_terms': terms}
+    return {**account, 'fund_terms': terms, 'fund_reference_quotes': quotes}

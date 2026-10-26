@@ -48,3 +48,14 @@ class TestReferenceQuotes(unittest.TestCase):
         self.assertEqual((order['current_quantity'], order['target_quantity']), (8600, 18200))
         self.assertEqual(order['price_date'], '2026-09-30')
         self.assertIn('未核验', funds['review_required'])
+
+    @patch('app.fund_reference.fetch_reference_quotes')
+    def test_held_fund_gets_a_close_price_separate_from_an_explicit_limit(self, fetch):
+        fetch.return_value = {'161130': dict(price=5, price_date='2026-10-23')}
+        account = {'fund_terms': [dict(direction='nasdaq', code='161130', limit_price=6,
+                                      price_date='2026-10-23', cost_reviewed=True)],
+                   'fund_positions': [dict(code='161130', quantity=100)]}
+        result = with_reference_terms(account, '2026-10-23', '2026-10-26')
+        self.assertIn('161130', fetch.call_args.args[0])
+        self.assertEqual(result['fund_terms'][0]['limit_price'], 6)
+        self.assertEqual(result['fund_reference_quotes']['161130']['price'], 5)

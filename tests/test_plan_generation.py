@@ -136,18 +136,34 @@ class TestPlanGeneration(unittest.TestCase):
         self.assertEqual(data["cb"]["data_date"], "2026-06-29")
         self.assertEqual(data["stock"]["data_date"], "2026-06-29")
 
-    def test_complete_plan_generation_uses_the_refreshed_current_valuation(self):
+    def test_complete_plan_generation_uses_frozen_close_valuation(self):
         self.stock_quotes_mock.return_value = pd.DataFrame([{
             "stock_code": "600051",
             "stock_name_q": "宁波联合",
             "price": 200.0,
         }])
 
-        _, account, _, _ = plan_generation.prepare_complete_plan_generation()
+        _, account, _, _, _ = plan_generation.prepare_complete_plan_generation()
 
-        self.assertEqual(account["stock_total"], 360274.0)
+        self.assertEqual(account["stock_total"], 10_498.0)
         stock = {item["id"]: item for item in account["accounts"]}["stock"]
-        self.assertEqual(stock["total"], 360274.0)
+        self.assertEqual(stock["total"], 10_498.0)
+
+    def test_plan_budget_is_independent_of_intraday_quotes(self):
+        with patch("app.account_current_state._fetch_quotes",
+                   side_effect=AssertionError("plan inputs must not read current quotes")):
+            _, first, _, first_transfer, first_prices = plan_generation.prepare_complete_plan_generation()
+            self.stock_quotes_mock.return_value = pd.DataFrame([{
+                "stock_code": "600051", "price": 999.0,
+            }])
+            _, second, _, second_transfer, second_prices = plan_generation.prepare_complete_plan_generation()
+        self.assertEqual(first, second)
+        self.assertEqual(first_transfer, second_transfer)
+        self.assertEqual(first_prices["stock"], second_prices["stock"])
+        # The account screen retains its live valuation behavior.
+        live = account_current_state.build_current_account_summary()
+        self.assertEqual(live["stock_total"], 1_798_474)
+        self.assertEqual(second["stock_total"], 10_498)
 
     def test_reads_generated_plan_by_lifecycle_identity(self):
         plan_id = "plan-2026-06-29-deadbeef"
@@ -304,7 +320,7 @@ class TestPlanGeneration(unittest.TestCase):
         snapshot = plan["snapshot"]
         plan_id = plan["generation"]["plan_id"]
         self.assertEqual(snapshot["version"], 2)
-        self.assertEqual(snapshot["allocation_policy"], "account-rebalance-2026-10-26-v4")
+        self.assertEqual(snapshot["allocation_policy"], "account-rebalance-2026-10-26-v5")
         self.assertEqual(snapshot["plan_id"], plan_id)
         self.assertEqual(snapshot["data_date"], "2026-06-29")
         self.assertEqual(snapshot["execution_date"], "2026-06-30")
@@ -390,7 +406,7 @@ class TestPlanGeneration(unittest.TestCase):
                 size_stock_orders=stock_size,
             )
 
-        self.assertEqual(plan["price_snapshot"], prices)
+        self.assertEqual(plan["price_snapshot"], {**prices, "funds": {}, "fund_sources": {}})
         self.assertEqual(cb_size.call_args.kwargs["prices"], prices["cb"])
         self.assertEqual(stock_size.call_args.kwargs["prices"], prices["stock"])
         self.assertEqual(cb_size.call_args.kwargs["rankings"][0]["bond_code"], "113062")
@@ -421,6 +437,19 @@ class TestPlanGeneration(unittest.TestCase):
             "PLAN_PRICE_SNAPSHOT_INCOMPLETE",
         )
         self.assertEqual(caught.exception.detail["missing"]["cb"], ["113062"])
+
+    def test_missing_close_price_fails_before_funding_or_order_generation(self):
+        db.insert_positions('stock', '2026-06-29', [
+            dict(code='600051', name='宁波联合', shares=1800),
+            dict(code='600099', name='退出持仓', shares=100),
+        ])
+        cb_size, stock_size = Mock(), Mock()
+        with patch('app.plan_service._raw_snapshot_prices', return_value={}), self.assertRaises(PlanServiceError) as caught:
+            plan_generation.generate_complete_plan(size_cb_orders=cb_size, size_stock_orders=stock_size)
+        self.assertEqual(caught.exception.detail['code'], 'PLAN_PRICE_SNAPSHOT_INCOMPLETE')
+        cb_size.assert_not_called()
+        stock_size.assert_not_called()
+        self.assertEqual(plan_lifecycle.get_latest_plan_status('2026-06-29')['status'], 'failed')
 
     def test_frozen_price_capture_uses_plan_date_inputs_not_realtime_quotes(self):
         with patch(
@@ -564,7 +593,7 @@ class TestPlanGeneration(unittest.TestCase):
         )
         saved = plan_lifecycle.get_plan(result["generation"]["plan_id"])
         self.assertEqual(saved["status"], plan_lifecycle.COMPLETE)
-        self.assertEqual(saved["plan"]["account"]["stock_total"], 209555)
+        self.assertEqual(saved["plan"]["account"]["stock_total"], 10_498)
 
     def test_strategy_ranking_date_mismatch_has_plan_generation_stage(self):
         self._clear_strategy_outputs()

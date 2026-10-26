@@ -108,7 +108,7 @@ def generate_complete_plan(
         raise _generation_in_progress_error(plan_date, running_generation)
 
     try:
-        plan_date, account, market_temperature, fund_transfer = prepare_complete_plan_generation(plan_date)
+        plan_date, account, market_temperature, fund_transfer, price_snapshot = prepare_complete_plan_generation(plan_date)
         strategy_rankings = {
             strategy: {
                 "run": db.get_strategy_run_meta(strategy, plan_date),
@@ -116,7 +116,6 @@ def generate_complete_plan(
             }
             for strategy in ("cb", "stock")
         }
-        price_snapshot = plan_service.capture_frozen_plan_prices(plan_date, strategy_rankings)
         plan = plan_service.build_generated_plan_response(
             plan_id=plan_id,
             status=plan_lifecycle.RUNNING,
@@ -237,15 +236,22 @@ def _generation_in_progress_error(plan_date: str, generation: dict | None) -> pl
     )
 
 
-def prepare_complete_plan_generation(plan_date: str | None = None) -> tuple[str, dict, object, dict]:
+def prepare_complete_plan_generation(plan_date: str | None = None) -> tuple[str, dict, object, dict, dict]:
     plan_date = plan_date or plan_service.current_plan_date()
-    account = plan_service.current_account_summary()
+    account = plan_service.current_account_summary(refresh_valuation=False)
     account_errors = plan_service.validate_account_inputs(
         plan_date,
         account,
         plan_service.account_transfer_window_end(plan_date),
         include_overseas=True,
     )
+    account_errors = [error for error in account_errors if not (
+        error.get("status") == "valuation_unavailable"
+        and error.get("account_id") in (account or {}).get("account_positions", {})
+        and all((account or {}).get(
+            {"stock": "stock", "cb": "bond", "pingan": "pingan"}[error["account_id"]] + suffix
+        ) is not None for suffix in ("_available_cash", "_frozen_cash"))
+    )]
     if account_errors:
         raise plan_service.PlanServiceError(
             409,
@@ -277,8 +283,7 @@ def prepare_complete_plan_generation(plan_date: str | None = None) -> tuple[str,
     account = dict(account)
     account["temperature"] = market_temperature.temperature
     account["plan_date"] = plan_date
-    from app.fund_reference import with_reference_terms
-    account = with_reference_terms(account, plan_date, plan_service.trade_date_for("stock", plan_date))
+    account, price_snapshot = plan_service.freeze_plan_account(account, plan_date)
     cb_rankings = db.get_rankings("cb", plan_date)
     try:
         fund_transfer = plan_service.build_fund_transfer(
@@ -298,7 +303,7 @@ def prepare_complete_plan_generation(plan_date: str | None = None) -> tuple[str,
                 "message": exc.message,
             },
         ) from exc
-    return plan_date, account, market_temperature, fund_transfer
+    return plan_date, account, market_temperature, fund_transfer, price_snapshot
 
 
 def ensure_rankings_for_plan_date(plan_date: str) -> None:

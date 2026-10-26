@@ -44,12 +44,13 @@ def get_current_account(account_id: str) -> dict:
     return _refresh_current_valuation(account)
 
 
-def build_current_account_summary() -> dict | None:
+def build_current_account_summary(*, refresh_valuation: bool = True) -> dict | None:
     """Build the single account summary used by both the UI and plan generation."""
     with db._conn() as conn:
         summary = account_store.get_current_account_summary(conn)
         accounts = [_current_account(conn, account_id) for account_id in ACCOUNT_ORDER]
-    accounts = [_refresh_current_valuation(account) for account in accounts]
+    if refresh_valuation:
+        accounts = [_refresh_current_valuation(account) for account in accounts]
     if summary is None and all(account["record_state"] == "missing" for account in accounts):
         return None
 
@@ -59,6 +60,11 @@ def build_current_account_summary() -> dict | None:
     totals = []
     result["pending_transfers"] = []
     result["cash_unavailable"] = 0.0
+    if not refresh_valuation:
+        result["account_positions"] = {
+            item["account_id"]: item["raw_data"]["positions"]
+            for item in accounts if item["account_id"] in SECURITIES_ACCOUNTS
+        }
     for account in accounts:
         account_id = account["account_id"]
         total_key, cash_key = account_store.ACCOUNT_VALUE_FIELDS[account_id]
@@ -91,6 +97,8 @@ def build_current_account_summary() -> dict | None:
             terms = account["raw_data"].get("fund_terms", [])
             result["fund_terms"] = terms
             result["fund_positions"] = account["valuation"].get("items", [])
+            if not refresh_valuation:
+                result["fund_positions"] = [dict(item) for item in raw["positions"]]
             by_code = {"161130": "nasdaq", **{item["code"]: item["direction"] for item in terms}}
             by_code["501312"] = "technology"
             amounts = {"nasdaq": 0.0, "technology": 0.0, "unclassified": 0.0}
@@ -108,7 +116,8 @@ def build_current_account_summary() -> dict | None:
     result["account_updated_at"] = updated_at
     result["accounts"] = account_store.build_account_items(result)
     result["total_assets"] = None if any(total is None for total in totals) else sum(totals)
-    _invalidate_plans_with_different_valuation(result)
+    if refresh_valuation:
+        _invalidate_plans_with_different_valuation(result)
     return result
 
 

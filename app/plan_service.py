@@ -35,9 +35,26 @@ def build_plan_context(refresh_temperature: bool = False) -> dict:
     }
 
 
-def current_account_summary() -> dict | None:
+def current_account_summary(*, refresh_valuation: bool = True) -> dict | None:
     """Return the valuation-aware account inputs used throughout planning."""
-    return account_current_state.build_current_account_summary()
+    return account_current_state.build_current_account_summary(refresh_valuation=refresh_valuation)
+
+
+def freeze_plan_account(account: dict, plan_date: str, strategy_rankings: dict | None = None) -> tuple[dict, dict]:
+    from app.fund_reference import with_reference_terms
+    from app.plan_valuation import revalue_plan_account
+
+    account = with_reference_terms(account, plan_date, trade_date_for("stock", plan_date))
+    prices = capture_frozen_plan_prices(plan_date, strategy_rankings, positions=account["account_positions"])
+    quotes = account.get("fund_reference_quotes", {})
+    prices = {**prices, "funds": {
+        code: quote["price"] for code, quote in quotes.items()
+        if quote.get("price_date") == plan_date
+    }, "fund_sources": quotes}
+    try:
+        return revalue_plan_account(account, prices, plan_date), prices
+    except PlanValidationError as exc:
+        raise PlanServiceError(503, {"code": exc.code, "message": exc.message}) from exc
 
 
 def hydrate_execution_read_model(plan: dict) -> dict:
@@ -110,7 +127,7 @@ def build_plan_readiness() -> dict:
 def build_transfer_plan(refresh_temperature: bool = False) -> dict:
     market_temperature = _market_temperature(refresh=refresh_temperature)
     plan_date = current_plan_date()
-    account = current_account_summary()
+    account = current_account_summary(refresh_valuation=False)
     if account:
         account = dict(account)
         account["temperature"] = market_temperature.temperature
@@ -133,6 +150,8 @@ def build_transfer_plan(refresh_temperature: bool = False) -> dict:
                 "errors": account_errors,
             },
         )
+
+    account, _ = freeze_plan_account(account, plan_date)
 
     try:
         fund_transfer = build_fund_transfer(account)
@@ -162,7 +181,7 @@ def build_current_plan(refresh_temperature: bool = False) -> dict:
     market_temperature = _market_temperature(refresh=refresh_temperature)
     plan_date = current_plan_date()
 
-    account = current_account_summary()
+    account = current_account_summary(refresh_valuation=False)
     if account:
         account = dict(account)
         account["temperature"] = market_temperature.temperature
@@ -199,6 +218,8 @@ def build_current_plan(refresh_temperature: bool = False) -> dict:
     stock_trade_date = trade_date_for("stock", stock_data_date)
     stock_rankings = db.get_rankings("stock", plan_date) if not stock_orders else []
 
+    account, _ = freeze_plan_account(account, plan_date)
+
     try:
         fund_transfer = build_fund_transfer(
             account,
@@ -215,6 +236,12 @@ def build_current_plan(refresh_temperature: bool = False) -> dict:
     funds = build_fund_orders(account, fund_transfer, plan_date)
     funds["trade_date"] = trade_date_for("stock", plan_date)
     fund_transfer = reconcile_fund_return(account, fund_transfer, funds)
+    try:
+        fund_transfer = reconcile_cash_reserves(account, fund_transfer, {
+            strategy: orders for strategy, orders in (("cb", cb_orders), ("stock", stock_orders)) if orders
+        })
+    except PlanValidationError as exc:
+        raise PlanServiceError(409, {"code": exc.code, "message": exc.message}) from exc
     targets, deltas, transfer_steps = fund_transfer_compatibility(fund_transfer)
 
     def order_summary(orders, cash_key: str) -> dict | None:
@@ -298,7 +325,7 @@ def validate_plan_inputs(plan_date: str, account: dict | None) -> list[dict]:
     )
 
 
-def prepare_complete_plan_generation() -> tuple[str, dict, object, dict]:
+def prepare_complete_plan_generation() -> tuple[str, dict, object, dict, dict]:
     from app import plan_generation
 
     return plan_generation.prepare_complete_plan_generation()
@@ -448,6 +475,7 @@ def build_plan_snapshot(
             "account": {
                 "data_date": plan_date,
                 "snapshot_dates": (account or {}).get("account_snapshot_dates", {}),
+                "valuation_basis": (account or {}).get("valuation_basis"),
             },
             "strategies": {
                 strategy: {"data_date": plan_date, "trade_date": trade_date}
@@ -462,13 +490,15 @@ def build_plan_snapshot(
     }
 
 
-def capture_frozen_plan_prices(plan_date: str, strategy_rankings: dict[str, dict] | None = None) -> dict:
+def capture_frozen_plan_prices(plan_date: str, strategy_rankings: dict[str, dict] | None = None, *, positions: dict | None = None) -> dict:
     """Freeze close prices and known ex-interest adjustments for execution."""
     from app.price_adjustments import adjust_cb_reference_price
 
     input_end = account_input_window_end(plan_date)
-    cb_positions = position_snapshot_for_plan("cb", plan_date, input_end) or {}
-    stock_positions = position_snapshot_for_plan("stock", plan_date, input_end) or {}
+    cb_positions = ({"items": positions.get("cb", [])} if positions is not None
+                    else position_snapshot_for_plan("cb", plan_date, input_end) or {})
+    stock_positions = ({"items": positions.get("stock", [])} if positions is not None
+                       else position_snapshot_for_plan("stock", plan_date, input_end) or {})
     strategy_rankings = strategy_rankings or {
         strategy: {"items": db.get_rankings(strategy, plan_date)}
         for strategy in ("cb", "stock")
