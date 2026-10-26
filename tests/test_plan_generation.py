@@ -302,7 +302,7 @@ class TestPlanGeneration(unittest.TestCase):
         snapshot = plan["snapshot"]
         plan_id = plan["generation"]["plan_id"]
         self.assertEqual(snapshot["version"], 2)
-        self.assertEqual(snapshot["allocation_policy"], "account-rebalance-2026-10-08-v2")
+        self.assertEqual(snapshot["allocation_policy"], "account-rebalance-2026-10-26-v3")
         self.assertEqual(snapshot["plan_id"], plan_id)
         self.assertEqual(snapshot["data_date"], "2026-06-29")
         self.assertEqual(snapshot["execution_date"], "2026-06-30")
@@ -314,6 +314,11 @@ class TestPlanGeneration(unittest.TestCase):
         )
 
         before_stale = plan_lifecycle.get_plan(plan_id)["plan"]
+        with patch("app.plan_generation.POLICY_ID", "next-cash-policy"):
+            outdated = plan_generation.get_generated_plan(plan_id)
+        self.assertEqual(outdated["status"], plan_lifecycle.STALE)
+        self.assertEqual(outdated["plan"]["execution_status"], "stale")
+        self.assertEqual(plan_lifecycle.get_plan(plan_id)["plan"], before_stale)
         plan_lifecycle.mark_stale()
         after_stale = plan_lifecycle.get_plan(plan_id)
         self.assertEqual(after_stale["status"], plan_lifecycle.STALE)

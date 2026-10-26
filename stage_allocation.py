@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 
-POLICY_ID = "account-rebalance-2026-10-08-v2"
+POLICY_ID = "account-rebalance-2026-10-26-v3"
 CASH_MIN = 300.0
-CASH_MAX = 1000.0  # 旧计划兼容；新规则不因账户零星余款自动回池。
+CASH_MAX = 1000.0
 MIN_ADJUSTMENT = 1000.0
 WEIGHTS = {"stock": .35, "bond": .25, "pingan": .30, "cash_pool": .10}
 LABELS = {"stock": "广发账户", "bond": "华泰账户", "pingan": "平安账户",
@@ -154,7 +154,7 @@ def build_stage_plan(account: dict, *, blocked: dict | None = None) -> dict:
         phase="account_rebalance", allocation=dict(total=money(sum(current.values())), current=current,
             targets=targets, deltas=deltas, planned_deltas=planned, rows=rows),
         actions=actions, strategy_cash=strategy_cash, cash_reserves=reserves,
-        cash_band=dict(lower=CASH_MIN, upper=None),
+        cash_band=dict(lower=CASH_MIN, upper=CASH_MAX),
         transfer_deltas={"stock": money(strategy_cash["stock"]-account["stock_available_cash"]),
                          "bond": money(strategy_cash["cb"]-account["bond_available_cash"])},
         buy_budgets=buy_budgets, sell_budgets=sell_budgets, account_allocations=allocated,
