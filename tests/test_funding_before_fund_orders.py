@@ -41,13 +41,12 @@ class TestFundingBeforeFundOrders(unittest.TestCase):
         self.assertEqual(transfer['deferred_reductions'], {})
         self.assertLess(transfer['strategy_cash']['stock'], 0)
 
-    def test_account_cash_excess_returns_without_security_orders(self):
+    def test_account_cash_does_not_trigger_an_unrelated_return(self):
         account = facts()
         account.update(stock_cash=16008.23, stock_available_cash=16008.23)
         transfer = build_fund_transfer(account, qualified_cb_count=20)
         self.assertEqual(transfer['strategy_cash']['stock'], 15708.23)
         from app.cash_reserve import reconcile_cash_reserves
         result = reconcile_cash_reserves(account, transfer, {'stock': []})
-        self.assertEqual(result['actions'][0]['amount'], 15008.23)
-        self.assertEqual(result['transfer_deltas']['stock'], -15008.23)
-        self.assertEqual(result['cash']['available'], account['cash_pool'])
+        self.assertEqual(result['actions'], [])
+        self.assertEqual(result['transfer_deltas']['stock'], 0)

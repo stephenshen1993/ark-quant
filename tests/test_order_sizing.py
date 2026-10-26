@@ -50,6 +50,8 @@ class TestOrderSizing(unittest.TestCase):
 
         self.assertGreater(len(result["orders"]), 0)
         self.assertEqual(result["summary"]["starting_cash"], 110)
+        self.assertEqual(result["summary"]["objective_order"][0], "max_overall_deviation")
+        self.assertIn("cash_residual_reason", result["summary"])
         persisted = db.get_orders("cb", "2026-06-29")
         self.assertGreater(len(persisted), 0)
 

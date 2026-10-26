@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 
-POLICY_ID = "account-rebalance-2026-10-26-v3"
+POLICY_ID = "account-rebalance-2026-10-26-v4"
 CASH_MIN = 300.0
 CASH_MAX = 1000.0
 MIN_ADJUSTMENT = 1000.0
@@ -154,7 +154,7 @@ def build_stage_plan(account: dict, *, blocked: dict | None = None) -> dict:
         phase="account_rebalance", allocation=dict(total=money(sum(current.values())), current=current,
             targets=targets, deltas=deltas, planned_deltas=planned, rows=rows),
         actions=actions, strategy_cash=strategy_cash, cash_reserves=reserves,
-        cash_band=dict(lower=CASH_MIN, upper=CASH_MAX),
+        cash_band=dict(lower=CASH_MIN, upper=None),
         transfer_deltas={"stock": money(strategy_cash["stock"]-account["stock_available_cash"]),
                          "bond": money(strategy_cash["cb"]-account["bond_available_cash"])},
         buy_budgets=buy_budgets, sell_budgets=sell_budgets, account_allocations=allocated,

@@ -342,9 +342,15 @@ def build_generated_plan_response(
     fund_transfer = add_migration_redemption(account, fund_transfer, funds["orders"])
     targets, deltas, transfer_steps = fund_transfer_compatibility(fund_transfer)
     if cb_result is not None:
-        cb_result = {**cb_result, "summary": summarize_order_cash(account.get("bond_available_cash", 0), deltas["bond"], cb_orders)}
+        cb_result = {**cb_result, "summary": {
+            **cb_result.get("summary", {}),
+            **summarize_order_cash(account.get("bond_available_cash", 0), deltas["bond"], cb_orders),
+        }}
     if stock_result is not None:
-        stock_result = {**stock_result, "summary": summarize_order_cash(account.get("stock_available_cash", 0), deltas["stock"], stock_orders)}
+        stock_result = {**stock_result, "summary": {
+            **stock_result.get("summary", {}),
+            **summarize_order_cash(account.get("stock_available_cash", 0), deltas["stock"], stock_orders),
+        }}
     account_read_model = build_account_read_model(account)
     cb_section = {
         "data_date": plan_date,

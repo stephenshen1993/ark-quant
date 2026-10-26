@@ -666,6 +666,20 @@ def _solve_lexicographically(
 ):
     target_count = len(problem.target_codes)
 
+    objective = np.zeros(layout.variable_count)
+    objective[layout.max_deviation] = 1.0
+    result = model.solve(objective)
+    maximum_deviation = _exact_values(
+        result.x,
+        problem=problem,
+        state_space=state_space,
+        layout=layout,
+    )[1]
+    model.add_constraint(
+        {layout.max_deviation: 1.0},
+        upper=float(maximum_deviation),
+    )
+
     squared = {
         index: (
             target_count * state.value_mills - problem.total_value_mills
@@ -721,20 +735,6 @@ def _solve_lexicographically(
         tracking_row,
         lower=float(reduced_optimum),
         upper=float(reduced_optimum),
-    )
-
-    objective = np.zeros(layout.variable_count)
-    objective[layout.max_deviation] = 1.0
-    result = model.solve(objective)
-    maximum_deviation = _exact_values(
-        result.x,
-        problem=problem,
-        state_space=state_space,
-        layout=layout,
-    )[1]
-    model.add_constraint(
-        {layout.max_deviation: 1.0},
-        upper=float(maximum_deviation),
     )
 
     total_row = {
@@ -861,6 +861,12 @@ def _cash_residual_reason(
         ** 2
         for code in problem.target_codes
     )
+    target_count = len(problem.target_codes)
+    current_maximum = max(
+        target_count * cash_mills,
+        *(abs(target_count * targets[code] * problem.price_mills[code]
+              - problem.total_value_mills) for code in problem.target_codes),
+    )
     next_steps = []
     for code in problem.target_codes:
         index = state_lookup[(code, targets[code])]
@@ -894,12 +900,20 @@ def _cash_residual_reason(
             state_space.states[next_index].value_mills
             - state_space.states[index].value_mills
         )
-        next_steps.append((trial_cash, trial_error, value_increase))
+        trial_maximum = max(
+            target_count * trial_cash,
+            *(abs(target_count * trial[code] * problem.price_mills[code]
+                  - problem.total_value_mills) for code in problem.target_codes),
+        )
+        next_steps.append((trial_cash, trial_error, value_increase, trial_maximum))
     if not next_steps:
         return "at_cap_or_no_feasible_buy"
-    if any(trial_cash >= 0 and trial_error >= current_error for trial_cash, trial_error, _ in next_steps):
+    if any(trial_cash >= 0 and maximum == current_maximum and trial_error >= current_error
+           for trial_cash, trial_error, _, maximum in next_steps):
         return "equal_weight_priority"
-    if any(value <= cash_mills for _, _, value in next_steps):
+    if any(trial_cash >= 0 for trial_cash, _, _, _ in next_steps):
+        return "overall_deviation_priority"
+    if any(value <= cash_mills for _, _, value, _ in next_steps):
         return "fees"
     return "insufficient_for_next_feasible_state"
 
@@ -1021,6 +1035,10 @@ def solve_equal_weight_targets(
             "solver": "scipy.optimize.milp/HiGHS",
             "solver_decomposition": "shared_fee_schedule",
             "solver_status": "OPTIMAL",
+            "objective_order": [
+                "max_overall_deviation", "target_tracking_error",
+                "total_overall_deviation", "cash_left", "estimated_fees", "order_count",
+            ],
             "solver_mip_gap": max(model.mip_gaps, default=0.0),
             "solver_node_count": model.node_count,
             "solver_solve_count": model.solve_count,

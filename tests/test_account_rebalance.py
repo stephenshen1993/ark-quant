@@ -67,59 +67,12 @@ class AccountRebalanceTests(unittest.TestCase):
         self.assertLessEqual(p['cash']['immediate_outflow'], 2000)
         self.assertEqual(p['account_allocations'], {'bond': 0, 'pingan': 1200})
 
-    def test_rounding_residue_returns_without_changing_orders(self):
+    def test_rounding_residue_does_not_create_return(self):
         a = facts()
         a.update(stock_cash=10000, stock_available_cash=10000)
         p = build_stage_plan(a)
         out = reconcile_cash_reserves(a, p, {'stock': []})
-        self.assertEqual(out['actions'][0]['amount'], 9000)
-        self.assertEqual(out['transfer_deltas']['stock'], -9000)
-        self.assertEqual(out['cash']['available'], p['cash']['available'])
-        self.assertEqual(out['cash']['expected_returns'], 9000)
-        self.assertEqual(reconcile_cash_reserves(a, out, {'stock': []}), out)
-
-    def test_cash_band_reduces_incoming_before_creating_return(self):
-        a = facts(stock=340000, cash=110000)
-        p = build_stage_plan(a)
-        orders = [dict(delta_shares=100, amount=6341.06)]
-        out = reconcile_cash_reserves(a, p, {'stock': orders})
-        self.assertEqual(orders, [dict(delta_shares=100, amount=6341.06)])
-        self.assertEqual(out['transfer_deltas']['stock'], 7341.06)
-        self.assertFalse(any(x['source'] == 'stock' for x in out['actions']))
-        self.assertEqual(out['cash']['immediate_outflow'], 7341.06)
-        self.assertEqual(out['cash']['remaining'], 102658.94)
-        row = next(x for x in out['allocation']['rows'] if x['id'] == 'stock')
-        self.assertEqual(row['remaining_gap'], 2658.94)
-        self.assertEqual(reconcile_cash_reserves(a, out, {'stock': orders}), out)
-
-    def test_cash_return_can_exceed_configuration_return(self):
-        a = facts(stock=360000, cash=90000)
-        a.update(stock_cash=13658.94, stock_available_cash=13658.94)
-        out = reconcile_cash_reserves(a, build_stage_plan(a), {'stock': []})
-        action = next(x for x in out['actions'] if x['source'] == 'stock')
-        self.assertEqual(action['amount'], 12658.94)
-        self.assertEqual(action['remaining_amount'], 0)
-        self.assertEqual(out['return_shortfalls']['stock'], 0)
-        self.assertEqual(out['cash']['available'], 90000)
-        self.assertEqual(out['cash']['expected_returns'], 12658.94)
-        self.assertEqual(reconcile_cash_reserves(a, out, {'stock': []}), out)
-
-    def test_cash_band_boundaries_and_small_excess_for_both_strategies(self):
-        for carrier, prefix in (('stock', 'stock'), ('cb', 'bond')):
-            for balance in (300, 1000, 1000.01, 1059.15, 1133.62, 4670.77):
-                with self.subTest(carrier=carrier, balance=balance):
-                    a = facts()
-                    a.update({prefix+'_cash': balance, prefix+'_available_cash': balance})
-                    out = reconcile_cash_reserves(a, build_stage_plan(a), {carrier: []})
-                    self.assertAlmostEqual(balance + out['transfer_deltas'][prefix], min(balance, 1000))
-                    self.assertAlmostEqual(sum(out['allocation']['planned_deltas'].values()), 0)
-
-    def test_cash_reserve_does_not_add_unfunded_topups(self):
-        a = facts()
-        a['cash_unavailable'] = a['cash_pool']
-        out = reconcile_cash_reserves(a, build_stage_plan(a), {'stock': []})
         self.assertEqual(out['actions'], [])
-        self.assertEqual(out['transfer_deltas']['stock'], 0)
 
     def test_transfer_orders_do_not_exceed_realized_return_capacity(self):
         a = facts(stock=400000, bond=200000)
@@ -138,7 +91,7 @@ class AccountRebalanceTests(unittest.TestCase):
         a.update(stock_cash=10000, stock_available_cash=10000)
         a['pending_transfers'] = [dict(source='stock', target='cash', amount=10000, debited=False)]
         p = reconcile_cash_reserves(a, build_stage_plan(a), {'stock': []})
-        self.assertEqual(p['cash']['immediate_outflow'], 0)
+        self.assertFalse(p['actions'])
         self.assertEqual(p['cash']['available'], 90000)
         self.assertEqual(p['cash']['expected_returns'], 10000)
         self.assertEqual(p['cash']['terminal_estimate'], 100000)

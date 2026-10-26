@@ -52,7 +52,7 @@ class DiscreteTargetSizingTests(unittest.TestCase):
         self.assertLess(max(target_values) - min(target_values), 1_500)
         self.assertLess(summary["max_overall_deviation"], 0.01)
 
-    def test_keeps_equal_weight_ahead_of_residual_cash(self):
+    def test_overall_deviation_includes_idle_cash_before_equal_weight(self):
         target_codes = codes()
         prices = {code: 100.0 for code in target_codes}
 
@@ -64,11 +64,14 @@ class DiscreteTargetSizingTests(unittest.TestCase):
             lot=10,
         )
 
-        self.assertEqual(sum(targets.values()), 200)
-        self.assertEqual(summary["cash_left"], 1_490.0)
-        self.assertEqual(len(set(targets.values())), 1)
+        self.assertEqual(sum(targets.values()), 210)
+        self.assertEqual(summary["cash_left"], 490.0)
+        self.assertEqual(sorted(set(targets.values())), [10, 20])
+        baseline_square_error = 20 * (1000 / 21_500 - .05) ** 2
+        self.assertGreater(summary["target_tracking_error"], baseline_square_error)
+        self.assertLess(summary["max_overall_deviation"], 1490 / 21_500)
 
-    def test_equal_target_values_are_not_sacrificed_only_to_reduce_cash(self):
+    def test_idle_cash_is_not_hidden_by_equal_security_values(self):
         target_codes = codes()
         prices = {code: 130.0 for code in target_codes}
         holdings = {code: 70 for code in target_codes}
@@ -89,9 +92,9 @@ class DiscreteTargetSizingTests(unittest.TestCase):
             lot=10,
         )
 
-        self.assertEqual(targets, holdings)
-        self.assertEqual(summary["cash_left"], 12_000.0)
-        self.assertGreater(summary["max_overall_deviation"], baseline[0] - 1e-12)
+        self.assertNotEqual(targets, holdings)
+        self.assertLess(summary["cash_left"], 1_300.0)
+        self.assertLess(summary["max_overall_deviation"], baseline[0])
 
     def test_estimated_fee_is_a_cash_hard_constraint(self):
         target_codes = codes()
@@ -155,8 +158,8 @@ class DiscreteTargetSizingTests(unittest.TestCase):
             candidates.append(
                 (
                     (
-                        tracking_error,
                         overall[0],
+                        tracking_error,
                         overall[1],
                         cash_left,
                         fee,

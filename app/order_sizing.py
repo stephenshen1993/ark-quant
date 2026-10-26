@@ -119,10 +119,10 @@ def size_cb_orders(
     orders = sheet.to_dict("records")
     return {
         "orders": orders,
-        "summary": plan_service.summarize_order_cash(
+        "summary": {**summary, **plan_service.summarize_order_cash(
             account_cash, cash - account_cash, orders,
             estimated_fees=summary.get("estimated_fees", 0.0),
-        ),
+        )},
     }
 
 
@@ -259,10 +259,10 @@ def size_stock_orders(
     orders = sheet.to_dict("records")
     return {
         "orders": orders,
-        "summary": plan_service.summarize_order_cash(
+        "summary": {**summary, **plan_service.summarize_order_cash(
             account_cash, cash - account_cash, orders,
             estimated_fees=summary.get("estimated_fees", 0.0),
-        ),
+        )},
     }
 
 

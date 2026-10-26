@@ -65,12 +65,12 @@ def exhaustive_equal_weight_truth(
             for code in target_codes
         )
         fee = Fraction(5 * order_count)
-        denominator = total_value - fee
+        denominator = total_value
         values = {
             code: Fraction(targets[code]) * Fraction(str(prices_by_code[code]))
             for code in target_codes
         }
-        cash_left = denominator - sum(values.values())
+        cash_left = total_value - fee - sum(values.values())
         if cash_left < 0:
             continue
         deviations = [
@@ -78,11 +78,11 @@ def exhaustive_equal_weight_truth(
             for code in target_codes
         ]
         score = (
+            max(*deviations, cash_left / denominator),
             sum(
                 (values[code] / denominator - target_weight) ** 2
                 for code in target_codes
             ),
-            max(*deviations, cash_left / denominator),
             sum(deviations) + cash_left / denominator,
             cash_left,
             fee,
@@ -170,11 +170,12 @@ class TargetStateSizingTests(unittest.TestCase):
                         target_codes=target_codes,
                         prices=price_map,
                         cash_left=cash_left,
+                        total_value=budget,
                     )
-                    post_fee_value = budget - fee
+                    frozen_budget = budget
                     tracking_error = sum(
                         (
-                            targets[code] * price_map[code] / post_fee_value
+                            targets[code] * price_map[code] / frozen_budget
                             - 1 / len(target_codes)
                         )
                         ** 2
@@ -183,8 +184,8 @@ class TargetStateSizingTests(unittest.TestCase):
                     candidates.append(
                         (
                             (
-                                tracking_error,
                                 overall_score[0],
+                                tracking_error,
                                 overall_score[1],
                                 overall_score[2],
                                 fee,
@@ -208,12 +209,12 @@ class TargetStateSizingTests(unittest.TestCase):
 
         self.assertEqual(
             expected,
-            {"600001": 400, "600002": 400, "600003": 200},
+            {"600001": 300, "600002": 300, "600003": 300},
         )
         self.assertEqual(actual.targets, expected)
         self.assertEqual(actual.summary["solver_status"], "OPTIMAL")
 
-    def test_keeps_equal_weight_ahead_of_cash_and_order_costs(self):
+    def test_improves_overall_deviation_ahead_of_security_square_error(self):
         target_codes = [f"{600001 + index:06d}" for index in range(20)]
         price_values = [
             23.94,
@@ -290,9 +291,9 @@ class TargetStateSizingTests(unittest.TestCase):
         self.assertEqual(actual.targets[target_codes[8]], 3_100)
         self.assertLess(actual.targets[target_codes[4]], held[target_codes[4]])
         self.assertGreater(actual.targets[target_codes[4]], 0)
-        self.assertEqual(actual.summary["cash_left"], 3569.26)
-        self.assertEqual(actual.summary["estimated_fees"], 46.58)
-        self.assertEqual(actual.summary["cash_residual_reason"], "equal_weight_priority")
+        self.assertEqual(actual.summary["cash_left"], 248.26)
+        self.assertEqual(actual.summary["estimated_fees"], 56.58)
+        self.assertEqual(actual.summary["cash_residual_reason"], "insufficient_for_next_feasible_state")
         self.assertIn("target_tracking_error", actual.summary["solver_objectives"])
 
     def test_top_twenty_holding_can_trim_without_liquidating(self):
@@ -333,11 +334,11 @@ class TargetStateSizingTests(unittest.TestCase):
 
         self.assertEqual(actual.targets["600001"], 400)
         self.assertEqual(actual.targets["600002"], 900)
-        self.assertEqual(actual.targets["600003"], 900)
+        self.assertEqual(actual.targets["600003"], 1000)
         self.assertGreater(actual.targets["600001"], 0)
         self.assertEqual(
             actual.summary["cash_residual_reason"],
-            "equal_weight_priority",
+            "insufficient_for_next_feasible_state",
         )
         self.assertGreaterEqual(actual.summary["cash_left"], 0)
 
@@ -353,9 +354,9 @@ class TargetStateSizingTests(unittest.TestCase):
         )
 
         self.assertEqual(actual.targets["600001"], 200)
-        self.assertEqual(actual.targets["600002"], 200)
-        self.assertEqual(actual.targets["600003"], 400)
-        self.assertEqual(actual.summary["cash_left"], 2052.19)
+        self.assertEqual(actual.targets["600002"], 300)
+        self.assertEqual(actual.targets["600003"], 300)
+        self.assertEqual(actual.summary["cash_left"], 892.29)
         self.assertEqual(actual.summary["solver_status"], "OPTIMAL")
 
     def test_official_rounded_fee_never_leaves_negative_cash(self):
@@ -452,13 +453,13 @@ class TargetStateSizingTests(unittest.TestCase):
         self.assertTrue((sheet["target_shares"] % 100 == 0).all())
         self.assertGreaterEqual(summary["cash_left"], 0)
 
-    def test_keeps_cash_when_another_lot_would_break_equal_weight(self):
+    def test_uses_cash_when_it_improves_the_worst_overall_deviation(self):
         target = rankings()
         sheet, summary = size_target_state(target, positions(), 21_500, prices(target))
 
-        self.assertEqual(summary["cash_left"], 1_400)
-        self.assertEqual(summary["cash_residual_reason"], "equal_weight_priority")
-        self.assertEqual(sheet["target_shares"].sum(), 2_000)
+        self.assertEqual(summary["cash_left"], 400)
+        self.assertEqual(summary["cash_residual_reason"], "insufficient_for_next_feasible_state")
+        self.assertEqual(sheet["target_shares"].sum(), 2_100)
 
     def test_considers_multiple_lots_when_one_lot_is_below_the_order_threshold(self):
         target = rankings()
@@ -484,8 +485,8 @@ class TargetStateSizingTests(unittest.TestCase):
         expensive = sheet.loc[sheet["stock_code"] == expensive_code].iloc[0]
         self.assertGreaterEqual(cheap["delta_shares"], 300)
         self.assertLessEqual(expensive["target_shares"], 600)
-        self.assertEqual(summary["cash_residual_reason"], "equal_weight_priority")
-        self.assertLess(summary["target_tracking_error"], 3e-5)
+        self.assertEqual(summary["cash_residual_reason"], "overall_deviation_priority")
+        self.assertLess(summary["max_overall_deviation"], 6_000 / summary["total_value"])
 
     def test_reports_proven_optimal_solver_evidence(self):
         target = rankings()

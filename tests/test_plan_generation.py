@@ -279,6 +279,8 @@ class TestPlanGeneration(unittest.TestCase):
             "orders": [],
             "summary": {
                 "starting_cash": 110.0,
+                "cash_residual_reason": "overall_deviation_priority",
+                "objective_order": ["max_overall_deviation", "target_tracking_error"],
                 "transfer_delta": 0.0,
                 "order_delta": 0.0,
                 "cash_left": 110.0,
@@ -302,7 +304,7 @@ class TestPlanGeneration(unittest.TestCase):
         snapshot = plan["snapshot"]
         plan_id = plan["generation"]["plan_id"]
         self.assertEqual(snapshot["version"], 2)
-        self.assertEqual(snapshot["allocation_policy"], "account-rebalance-2026-10-26-v3")
+        self.assertEqual(snapshot["allocation_policy"], "account-rebalance-2026-10-26-v4")
         self.assertEqual(snapshot["plan_id"], plan_id)
         self.assertEqual(snapshot["data_date"], "2026-06-29")
         self.assertEqual(snapshot["execution_date"], "2026-06-30")
@@ -313,6 +315,8 @@ class TestPlanGeneration(unittest.TestCase):
             {"data_date": "2026-06-29", "trade_date": "2026-06-30"},
         )
 
+        self.assertEqual(plan["cb"]["summary"]["cash_residual_reason"], "overall_deviation_priority")
+        self.assertEqual(plan["cb"]["summary"]["objective_order"][0], "max_overall_deviation")
         before_stale = plan_lifecycle.get_plan(plan_id)["plan"]
         with patch("app.plan_generation.POLICY_ID", "next-cash-policy"):
             outdated = plan_generation.get_generated_plan(plan_id)

@@ -55,7 +55,7 @@ def reconcile_cash_reserves(account: dict, transfer: dict, batches: dict, *, pen
 
 
 def _reconcile_account_rebalance(account: dict, result: dict, batches: dict) -> dict:
-    """订单冻结后以现金调拨收口，不为现金区间新增证券交易。"""
+    """取整余款留本账户；不借现金区间追加顶层调拨。"""
     shortfalls = dict(result.get("return_shortfalls", {}))
     for carrier, orders in batches.items():
         prefix = {"stock": "stock", "cb": "bond", "pingan": "pingan"}[carrier]
@@ -69,41 +69,17 @@ def _reconcile_account_rebalance(account: dict, result: dict, batches: dict) -> 
         balance = money(account.get(prefix + "_available_cash", 0) - reserved + incoming + net)
         if balance < -.01:
             raise PlanValidationError("CASH_OVERCOMMITTED", "订单超过本账户真实可用预算")
-        reserve = result["cash_reserves"].get(carrier, 0)
-        actual_return = money(min(outgoing, max(0, balance - reserve)))
-        ending = money(balance - actual_return)
-        if carrier in {"stock", "cb"} and ending > CASH_MAX:
-            excess = money(ending - CASH_MAX)
-            reduction = min(incoming, excess)
-            incoming = money(incoming - reduction)
-            actual_return = money(actual_return + excess - reduction)
-        shortfalls[carrier] = money(max(0, outgoing - actual_return))
+        actual_return = money(min(outgoing, max(0, balance - result["cash_reserves"].get(carrier, 0))))
+        shortfalls[carrier] = money(outgoing - actual_return)
         for action in actions:
-            if action["target"] == carrier:
-                action["amount"] = incoming
             if action["source"] == carrier:
                 action["target_amount"] = outgoing
                 action["amount"] = actual_return
-                action["remaining_amount"] = shortfalls[carrier]
+                action["remaining_amount"] = money(outgoing - actual_return)
                 action["note"] = "预计卖出后回池；须核验实际成交及可取金额，未到账不支持买入"
-        for source, target, amount, immediate in (
-            ("cash_pool", carrier, incoming, True), (carrier, "cash_pool", actual_return, False),
-        ):
-            if amount and not any(a["source"] == source and a["target"] == target for a in actions):
-                actions.append(dict(source=source, target=target, amount=amount,
-                    target_amount=0, remaining_amount=0, reason="cash_reserve_reconciliation",
-                    immediate=immediate, available_on="same_day" if immediate else "deferred",
-                    cash_effect="immediate_cash_in" if immediate else "deferred_cash_return",
-                    note="实际到账后纳入账户现金预留" if immediate else "预计卖出后回池；须核验实际成交及可取金额，未到账不支持买入"))
-        actions[:] = [a for a in actions if a["amount"] or a.get("remaining_amount", 0)]
         if carrier != "pingan":
             result["transfer_deltas"][prefix] = money(incoming - actual_return - reserved)
-    used = money(sum(a["amount"] for a in result["actions"] if a["source"] == "cash_pool"))
-    if used > result["cash"]["available"] + .01:
-        raise PlanValidationError("CASH_RESERVE_SHORTFALL", "现有银行现金不足以覆盖订单与现金预留；不能预支待回池资金")
-    result["cash"]["remaining"] = money(result["cash"]["remaining"] + result["cash"]["immediate_outflow"] - used)
-    result["cash"]["immediate_outflow"] = used
-    # 现金收口后配置表同步展示实际调拨及剩余偏差。
+    # 订单取整或资金约束缩减回款后，配置表也须展示实际计划与未完成缺口。
     allocation = result["allocation"]
     planned = dict.fromkeys(allocation["current"], 0)
     for action in result["actions"]:
