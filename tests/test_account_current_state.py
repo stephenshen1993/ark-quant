@@ -88,11 +88,8 @@ class TestAccountCurrentState(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         accounts = response.json()["accounts"]
         self.assertEqual([item["account_id"] for item in accounts], [
-            "stock", "cb", "pingan", "cash", "changqian", "overseas",
+            "stock", "cb", "pingan", "cash",
         ])
-        labels = {item["account_id"]: item["label"] for item in accounts}
-        self.assertEqual(labels["changqian"], "国内长钱")
-        self.assertEqual(labels["overseas"], "海外长钱")
         self.assertTrue(all(item["record_state"] == "missing" for item in accounts))
         self.assertTrue(all(item["version"] is None for item in accounts))
 

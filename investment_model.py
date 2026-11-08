@@ -9,6 +9,10 @@ from __future__ import annotations
 from typing import Final
 
 
+ACTIVE_ACCOUNT_IDS = ("stock", "cb", "pingan", "cash")
+RETIRED_ACCOUNT_IDS = ("changqian", "overseas")
+
+
 ACCOUNT_DEFINITIONS: Final[dict[str, dict]] = {
     "pingan": {
         "label": "平安账户", "sub": "场内基金交易与托管",

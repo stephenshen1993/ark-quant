@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from investment_model import ACCOUNT_DEFINITIONS, STRATEGY_DEFINITIONS
+from investment_model import ACCOUNT_DEFINITIONS, ACTIVE_ACCOUNT_IDS, STRATEGY_DEFINITIONS
 
 ACTIVE_PORTFOLIO = "A"
 OVERSEAS_LONG_TERM_PORTFOLIO = "B"
 DOMESTIC_LONG_TERM_PORTFOLIO = "C"
 
-ACCOUNT_FACT_ORDER = ("stock", "cb", "pingan", "cash", "overseas", "changqian")
+ACCOUNT_FACT_ORDER = (*ACTIVE_ACCOUNT_IDS, "overseas", "changqian")
 
 ACCOUNT_FACT_FIELDS = {
     "pingan": {
@@ -99,7 +99,10 @@ PORTFOLIO_DEFINITIONS = {
 def build_account_read_model(summary: dict | None) -> dict | None:
     if summary is None:
         return None
-    account_facts = [_account_fact(account_id, summary) for account_id in ACCOUNT_FACT_ORDER]
+    account_facts = [
+        _account_fact(account_id, summary) for account_id in ACCOUNT_FACT_ORDER
+        if account_id in ACTIVE_ACCOUNT_IDS or ACCOUNT_FACT_FIELDS[account_id]["total"] in summary
+    ]
     portfolio_nodes = _portfolio_nodes(account_facts)
     portfolios = _top_portfolios(portfolio_nodes)
     from stage_allocation import allocation_amounts, targets_for, LABELS, WEIGHTS
@@ -118,7 +121,7 @@ def build_account_read_model(summary: dict | None) -> dict | None:
                     "pending": ["changqian", "overseas", "cash", "stock", "cb", "pingan"]}
         names = {a["id"]: a["name"] for a in account_facts}
         for row in allocation:
-            row["account_ids"] = carriers[row["id"]]
+            row["account_ids"] = [key for key in carriers[row["id"]] if key in names]
             row["account_names"] = [names[key] for key in row["account_ids"]]
         allocation_error = None
     except PlanValidationError as exc:
@@ -260,6 +263,8 @@ def _top_portfolios(portfolio_nodes: list[dict]) -> list[dict]:
             for node_id in definition["child_node_ids"]
             if node_id in node_by_id
         ]
+        if not children:
+            continue
         portfolios.append({
             "id": portfolio_id,
             "kind": definition["kind"],

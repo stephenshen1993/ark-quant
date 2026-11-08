@@ -136,7 +136,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertIsNotNone(funding_plan)
         self.assertEqual(
             [group["availability"] for group in funding_plan["groups"]],
-            ["same_day", "deferred"],
+            ["same_day"],
         )
         account_plans = data["execution_read_model"]["account_trading_plans"]
         self.assertEqual(
@@ -172,7 +172,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertGreater(len(data["stock"]["orders"]), 0)
         self.assertIn("account_read_model", data)
 
-    def test_plan_readiness_reports_five_ready_account_facts(self):
+    def test_plan_readiness_reports_four_ready_account_facts(self):
         from app.plan_service import build_plan_readiness
 
         with patch("app.plan_service.datetime") as clock:
@@ -187,7 +187,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(readiness["status"], "ready")
         self.assertEqual(
             [item["account_id"] for item in readiness["accounts"]],
-            ["stock", "cb", "pingan", "cash", "overseas", "changqian"],
+            ["stock", "cb", "pingan", "cash"],
         )
         self.assertEqual(
             {item["status"] for item in readiness["accounts"]},
@@ -209,11 +209,12 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(stock["status"], "valuation_unavailable")
         self.assertIn("行情暂不可用", stock["message"])
 
-    def test_plan_readiness_route_names_a_missing_overseas_account(self):
+    def test_plan_readiness_route_ignores_retired_facts_and_validates_active_dates(self):
         db._TEST_CONN.execute(
-            "DELETE FROM account_value_snapshots WHERE account_id='overseas'"
+            "DELETE FROM account_value_snapshots WHERE account_id IN ('overseas', 'cash')"
         )
         db._TEST_CONN.commit()
+        db.insert_account_value_snapshot("cash", "2026-06-27", 63030)
 
         with patch("app.plan_service.datetime") as clock:
             clock.now.return_value.date.return_value.isoformat.return_value = "2026-06-29"
@@ -222,39 +223,12 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         readiness = response.json()
         self.assertEqual(readiness["status"], "needs_facts")
-        overseas = next(
-            item for item in readiness["accounts"]
-            if item["account_id"] == "overseas"
-        )
-        self.assertEqual(overseas["account_name"], "海外长钱")
-        self.assertEqual(overseas["portfolio_id"], "B")
-        self.assertEqual(overseas["status"], "missing")
-        self.assertEqual(overseas["snapshot_date"], None)
-        self.assertEqual(
-            {error.get("account_id") for error in readiness["errors"]},
-            {"overseas"},
-        )
+        cash = next(item for item in readiness["accounts"] if item["account_id"] == "cash")
+        self.assertEqual(cash["status"], "outside_window")
+        self.assertEqual(cash["snapshot_date"], "2026-06-27")
+        self.assertEqual({error["account_id"] for error in readiness["errors"]}, {"cash"})
 
-    def test_plan_readiness_distinguishes_an_account_outside_the_input_window(self):
-        db._TEST_CONN.execute(
-            "DELETE FROM account_value_snapshots WHERE account_id='overseas'"
-        )
-        db._TEST_CONN.commit()
-        db.insert_account_value_snapshot("overseas", "2026-06-27", 93030)
-
-        with patch("app.plan_service.datetime") as clock:
-            clock.now.return_value.date.return_value.isoformat.return_value = "2026-06-29"
-            response = self.client.get("/api/plan/readiness")
-
-        self.assertEqual(response.status_code, 200)
-        overseas = next(
-            item for item in response.json()["accounts"]
-            if item["account_id"] == "overseas"
-        )
-        self.assertEqual(overseas["status"], "outside_window")
-        self.assertEqual(overseas["snapshot_date"], "2026-06-27")
-
-    def test_plan_readiness_returns_five_missing_facts_without_an_account_summary(self):
+    def test_plan_readiness_returns_four_missing_facts_without_an_account_summary(self):
         db._TEST_CONN.execute("DELETE FROM account_contexts")
         db._TEST_CONN.execute("DELETE FROM account_state_versions")
         db._TEST_CONN.execute("DELETE FROM account_value_snapshots")
@@ -265,7 +239,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         readiness = response.json()
         self.assertEqual(readiness["status"], "needs_facts")
-        self.assertEqual(len(readiness["accounts"]), 6)
+        self.assertEqual(len(readiness["accounts"]), 4)
         self.assertEqual({item["status"] for item in readiness["accounts"]}, {"missing"})
 
     def test_plan_readiness_returns_a_structured_service_error(self):
@@ -290,7 +264,7 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         data = r.json()
         self.assertTrue({"allocation", "actions", "cash"} <= set(data["fund_transfer"]))
-        self.assertEqual(data["fund_transfer"]["policy_id"], "account-rebalance-2026-10-26-v5")
+        self.assertEqual(data["fund_transfer"]["policy_id"], "account-rebalance-2026-11-08-v6")
         self.assertNotEqual(data["transfer_deltas"]["stock"], 0)
         self.assertNotEqual(data["transfer_deltas"]["bond"], 0)
         self.assertTrue(data["transfer_steps"])
@@ -647,8 +621,9 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(data["plan_date"], "2026-06-29")
         self.assertIn("transfer_steps", data)
         self.assertIn("transfer_deltas", data)
-        self.assertEqual(data["fund_transfer"]["policy_id"], "account-rebalance-2026-10-26-v5")
-        self.assertEqual(data["fund_transfer"]["allocation"]["targets"]["changqian"], 0)
+        self.assertEqual(data["fund_transfer"]["policy_id"], "account-rebalance-2026-11-08-v6")
+        self.assertEqual(set(data["fund_transfer"]["allocation"]["targets"]),
+                         {"stock", "bond", "pingan", "cash_pool", "pending"})
         self.assertEqual(
             data["account_read_model"]["portfolios"][0]["account_ids"],
             ["stock", "cb", "cash"],
@@ -662,22 +637,25 @@ class TestPlansApi(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertTrue({"allocation", "actions", "cash"} <= set(r.json()["fund_transfer"]))
 
-    def test_transfer_plan_requires_current_overseas_snapshot(self):
-        db._TEST_CONN.execute(
-            "DELETE FROM account_value_snapshots WHERE account_id='overseas'"
-        )
-        db._TEST_CONN.commit()
+    def test_transfer_and_overview_exclude_legacy_advisory_balances(self):
+        overview = self.client.get("/api/account/latest")
+        self.assertEqual(overview.status_code, 200)
+        summary = overview.json()
+        self.assertEqual([item["id"] for item in summary["accounts"]], ["stock", "cb", "pingan", "cash"])
+        self.assertAlmostEqual(summary["total_assets"], sum(item["total"] for item in summary["accounts"]))
 
-        r = self.client.get("/api/plan/transfer")
-
-        self.assertEqual(r.status_code, 409)
-        overseas_error = next(
-            item for item in r.json()["detail"]["errors"]
-            if item["input"] == "account.overseas"
+        response = self.client.get("/api/plan/transfer")
+        self.assertEqual(response.status_code, 200)
+        plan = response.json()
+        transfer = plan["fund_transfer"]
+        self.assertEqual([item["id"] for item in plan["account"]["accounts"]], ["stock", "cb", "pingan", "cash"])
+        self.assertAlmostEqual(
+            transfer["allocation"]["total"],
+            sum(item["total"] for item in plan["account"]["accounts"]),
         )
-        self.assertEqual(overseas_error["kind"], "account")
-        self.assertEqual(overseas_error["account_name"], "海外长钱")
-        self.assertEqual(overseas_error["portfolio_id"], "B")
+        self.assertFalse(
+            {action["source"] for action in transfer["actions"]} & {"changqian", "overseas"}
+        )
 
     def test_order_sizing_stops_when_complete_funding_inputs_are_missing(self):
         db._TEST_CONN.execute(
@@ -905,7 +883,7 @@ class TestPlansApi(unittest.TestCase):
             round(cb_available + cb_summary["transfer_delta"] + cb_summary["order_delta"] - cb_summary["estimated_fees"], 2),
         )
 
-    def test_overseas_stale_blocks_complete_funding_plan(self):
+    def test_complete_funding_plan_ignores_missing_retired_facts(self):
         db._TEST_CONN.execute(
             "DELETE FROM account_value_snapshots WHERE account_id='overseas'"
         )
@@ -913,8 +891,8 @@ class TestPlansApi(unittest.TestCase):
 
         r = self.client.get("/api/plan")
 
-        self.assertEqual(r.status_code, 409)
-        self.assertIn("account.overseas", {e["input"] for e in r.json()["detail"]["errors"]})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["warnings"], [])
 
     def test_backfilled_account_fact_does_not_replace_newer_current_data(self):
         db.insert_account_value_snapshot("stock", "2026-06-01", 209555, 274)

@@ -243,7 +243,6 @@ def prepare_complete_plan_generation(plan_date: str | None = None) -> tuple[str,
         plan_date,
         account,
         plan_service.account_transfer_window_end(plan_date),
-        include_overseas=True,
     )
     account_errors = [error for error in account_errors if not (
         error.get("status") == "valuation_unavailable"

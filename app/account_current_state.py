@@ -15,11 +15,10 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from datasource import account_store, db, position_store, strategy_store
-from investment_model import ACCOUNT_DEFINITIONS, account_definition
+from investment_model import ACCOUNT_DEFINITIONS, ACTIVE_ACCOUNT_IDS, RETIRED_ACCOUNT_IDS, account_definition
 from app.price_adjustments import adjust_cb_reference_price
 
 SECURITIES_ACCOUNTS = {"stock", "cb", "pingan"}
-ACCOUNT_ORDER = ("stock", "cb", "pingan", "cash", "changqian", "overseas")
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 
 
@@ -33,7 +32,7 @@ class AccountVersionConflict(CurrentAccountError):
 
 def list_current_accounts() -> list[dict]:
     with db._conn() as conn:
-        accounts = [_current_account(conn, account_id) for account_id in ACCOUNT_ORDER]
+        accounts = [_current_account(conn, account_id) for account_id in ACTIVE_ACCOUNT_IDS]
     return [_refresh_current_valuation(account) for account in accounts]
 
 
@@ -48,13 +47,16 @@ def build_current_account_summary(*, refresh_valuation: bool = True) -> dict | N
     """Build the single account summary used by both the UI and plan generation."""
     with db._conn() as conn:
         summary = account_store.get_current_account_summary(conn)
-        accounts = [_current_account(conn, account_id) for account_id in ACCOUNT_ORDER]
+        accounts = [_current_account(conn, account_id) for account_id in ACTIVE_ACCOUNT_IDS]
     if refresh_valuation:
         accounts = [_refresh_current_valuation(account) for account in accounts]
     if summary is None and all(account["record_state"] == "missing" for account in accounts):
         return None
 
     result = dict(summary or {})
+    for account_id in RETIRED_ACCOUNT_IDS:
+        result.pop(f"{account_id}_total", None)
+        result.pop(f"{account_id}_pending", None)
     updated_at = {}
     snapshot_dates = {}
     totals = []
@@ -91,8 +93,6 @@ def build_current_account_summary(*, refresh_valuation: bool = True) -> dict | N
             result[cash_key] = cash
             result[cash_key.replace("_cash", "_available_cash")] = available_cash
             result[cash_key.replace("_cash", "_frozen_cash")] = frozen_cash
-        if account_id in {"changqian", "overseas"}:
-            result[f"{account_id}_pending"] = account["raw_data"].get("pending_amount", 0) if total is not None else None
         if account_id == "pingan":
             terms = account["raw_data"].get("fund_terms", [])
             result["fund_terms"] = terms
@@ -114,7 +114,7 @@ def build_current_account_summary(*, refresh_valuation: bool = True) -> dict | N
 
     result["account_snapshot_dates"] = snapshot_dates
     result["account_updated_at"] = updated_at
-    result["accounts"] = account_store.build_account_items(result)
+    result["accounts"] = account_store.build_account_items(result, account_ids=ACTIVE_ACCOUNT_IDS)
     result["total_assets"] = None if any(total is None for total in totals) else sum(totals)
     if refresh_valuation:
         _invalidate_plans_with_different_valuation(result)

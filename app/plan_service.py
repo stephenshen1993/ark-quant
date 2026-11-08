@@ -12,6 +12,7 @@ from app import account_current_state, plan_lifecycle
 from app.plan_execution_read_model import build_execution_read_model
 from datasource import db
 from datasource.youzhiyouxing import TemperatureFetchError, get_or_fetch_market_temperature
+from investment_model import ACTIVE_ACCOUNT_IDS
 from portfolio_rebalance import PlanValidationError
 from stage_allocation import POLICY_ID, build_stage_plan
 from app.cash_reserve import reconcile_cash_reserves
@@ -85,7 +86,6 @@ def build_plan_readiness() -> dict:
         plan_date,
         account,
         input_end,
-        include_overseas=True,
     )
     account_facts = (build_account_read_model(account or {}) or {}).get("accounts", [])
     errors_by_account = {
@@ -137,7 +137,6 @@ def build_transfer_plan(refresh_temperature: bool = False) -> dict:
         plan_date,
         account,
         account_transfer_window_end(plan_date),
-        include_overseas=True,
     )
     if account_errors:
         raise PlanServiceError(
@@ -173,7 +172,7 @@ def build_transfer_plan(refresh_temperature: bool = False) -> dict:
         "transfer_steps": transfer_steps,
         "transfer_deltas": deltas,
         "fund_transfer": fund_transfer,
-        "warnings": plan_input_warnings(plan_date, account),
+        "warnings": [],
     }
 
 
@@ -191,7 +190,6 @@ def build_current_plan(refresh_temperature: bool = False) -> dict:
         plan_date,
         account,
         account_transfer_window_end(plan_date),
-        include_overseas=True,
     )
     if account_errors:
         raise PlanServiceError(
@@ -204,7 +202,6 @@ def build_current_plan(refresh_temperature: bool = False) -> dict:
                 "errors": account_errors,
             },
         )
-    warnings = plan_input_warnings(plan_date, account)
     trade_errors = validate_strategy_inputs(plan_date)
 
     cb_orders = db.get_orders("cb", plan_date)
@@ -272,7 +269,7 @@ def build_current_plan(refresh_temperature: bool = False) -> dict:
         "market_temperature": market_temperature.to_dict(),
         "account": account,
         "account_read_model": account_read_model,
-        "warnings": warnings,
+        "warnings": [],
         "trade_errors": trade_errors,
         "targets": targets,
         "transfer_steps": transfer_steps,
@@ -319,7 +316,6 @@ def validate_plan_inputs(plan_date: str, account: dict | None) -> list[dict]:
             plan_date,
             account,
             account_input_window_end(plan_date),
-            include_overseas=True,
         )
         + validate_strategy_inputs(plan_date)
     )
@@ -418,7 +414,7 @@ def build_generated_plan_response(
         "market_temperature": market_temperature.to_dict(),
         "account": account,
         "account_read_model": account_read_model,
-        "warnings": plan_input_warnings(plan_date, account),
+        "warnings": [],
         "trade_errors": [],
         "targets": targets,
         "transfer_steps": transfer_steps,
@@ -654,8 +650,6 @@ def validate_account_inputs(
     plan_date: str,
     account: dict | None,
     account_input_end: str,
-    *,
-    include_overseas: bool = False,
 ) -> list[dict]:
     errors = []
     if not account:
@@ -665,10 +659,7 @@ def validate_account_inputs(
         account_facts = {
             item["id"]: item for item in (read_model or {}).get("accounts", [])
         }
-        required_accounts = ["stock", "cb", "pingan", "changqian", "cash"]
-        if include_overseas:
-            required_accounts.append("overseas")
-        for account_id in required_accounts:
+        for account_id in ACTIVE_ACCOUNT_IDS:
             account_fact = account_facts.get(account_id, {})
             actual = account_fact.get("snapshot_date")
             if not is_fact_date_acceptable(actual, plan_date, account_input_end):
@@ -780,23 +771,6 @@ def validate_strategy_inputs(plan_date: str) -> list[dict]:
                 "invalid": invalid[:20],
             })
     return errors
-
-
-def plan_input_warnings(plan_date: str, account: dict | None) -> list[dict]:
-    warnings = []
-    if not account:
-        return warnings
-    account_input_end = account_input_window_end(plan_date)
-    account_dates = account.get("account_snapshot_dates") or {}
-    overseas_snapshot_date = account_dates.get("overseas")
-    if not is_fact_date_acceptable(overseas_snapshot_date, plan_date, account_input_end):
-        warnings.append({
-            "input": "account.overseas",
-            "date": overseas_snapshot_date,
-            "expected": f"{plan_date} 至 {account_input_end}",
-            "message": "海外长钱事实日期不在计划输入窗口内，请更新待迁移资产。",
-        })
-    return warnings
 
 
 def account_input_window_end(plan_date: str) -> str:

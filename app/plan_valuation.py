@@ -4,6 +4,7 @@ from decimal import Decimal, ROUND_HALF_UP
 import math
 
 from datasource.account_store import build_account_items
+from investment_model import ACTIVE_ACCOUNT_IDS, RETIRED_ACCOUNT_IDS
 from portfolio_rebalance import PlanValidationError
 
 
@@ -43,8 +44,11 @@ def revalue_plan_account(account: dict, prices: dict, plan_date: str) -> dict:
                 result[direction + "_total"] = round(sum(
                     item["market_value"] for item in items
                     if directions.get(item["code"], "unclassified") == direction), 2)
+    retired_accounts = tuple(key for key in RETIRED_ACCOUNT_IDS if f"{key}_total" in result)
     result["total_assets"] = round(sum(result[key] for key in (
-        "stock_total", "bond_total", "pingan_total", "cash_pool", "changqian_total", "overseas_total")), 2)
+        "stock_total", "bond_total", "pingan_total", "cash_pool",
+        *(f"{key}_total" for key in retired_accounts),
+    )), 2)
     result["valuation_basis"] = {"type": "plan_date_close_snapshot", "data_date": plan_date}
-    result["accounts"] = build_account_items(result)
+    result["accounts"] = build_account_items(result, account_ids=(*ACTIVE_ACCOUNT_IDS, *retired_accounts))
     return result

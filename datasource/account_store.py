@@ -311,9 +311,11 @@ def get_current_account_summary(conn: sqlite3.Connection) -> dict | None:
     return get_account_summary(conn)
 
 
-def build_account_items(snap: dict) -> list[dict]:
+def build_account_items(
+    snap: dict, *, account_ids=("stock", "cb", "pingan", "changqian", "overseas", "cash")
+) -> list[dict]:
     items = []
-    for account_id in ("stock", "cb", "pingan", "changqian", "overseas", "cash"):
+    for account_id in account_ids:
         total_key, cash_key = ACCOUNT_VALUE_FIELDS[account_id]
         meta = account_definition(account_id)
         frozen_key = cash_key.replace("_cash", "_frozen_cash") if cash_key else None

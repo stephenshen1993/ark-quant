@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 
-POLICY_ID = "account-rebalance-2026-10-26-v5"
+from investment_model import RETIRED_ACCOUNT_IDS
+
+POLICY_ID = "account-rebalance-2026-11-08-v6"
 CASH_MIN = 300.0
 CASH_MAX = 1000.0
 MIN_ADJUSTMENT = 1000.0
@@ -44,7 +46,9 @@ def allocation_amounts(account: dict) -> dict:
     if abs(current["pingan"] - pa_parts - account["pingan_cash"] - pa_pending) > .02:
         raise PlanValidationError("INVALID_PINGAN_TOTAL", "平安持仓与现金合计不等于账户估值")
     current["pending"] = 0.0
-    for key in ("changqian", "overseas"):
+    for key in RETIRED_ACCOUNT_IDS:
+        if key + "_total" not in account and key + "_pending" not in account:
+            continue
         total = required_amount(account, key + "_total")
         pending = required_amount(account, key + "_pending")
         if pending > total:
@@ -106,18 +110,19 @@ def build_stage_plan(account: dict, *, blocked: dict | None = None) -> dict:
     deltas = {k: money(targets[k] - v) for k, v in current.items()}
     remaining = {k: money(targets[k] - v) for k, v in projected.items()}
     gaps = {k: remaining[k] for k in CARRIERS if remaining[k] >= MIN_ADJUSTMENT and k not in blocked}
-    reductions = {k: -remaining[k] for k in (*CARRIERS, "changqian", "overseas")
+    return_sources = (*CARRIERS, *(key for key in RETIRED_ACCOUNT_IDS if key in current))
+    reductions = {k: -remaining[k] for k in return_sources
                   if remaining[k] <= -MIN_ADJUSTMENT and k not in blocked}
     allocated = proportional(gaps, available["cash"])
     used = money(sum(allocated.values()))
-    pending_returns = money(account["changqian_pending"] + account["overseas_pending"] +
+    pending_returns = money(sum(account[key + "_pending"] for key in RETIRED_ACCOUNT_IDS if key in current) +
                             sum(t["amount"] for t in account.get("pending_transfers", []) if t["target"] == "cash"))
     # 只补本轮调出后的资金账户目标缺口；已安排回流占用缺口，不为下一轮提前筹款。
     return_limit = money(max(0, targets["cash_pool"] -
                             (current["cash_pool"] - used + pending_returns - reserved["cash"])))
     reductions = {k: v for k, v in proportional(reductions, return_limit).items() if v}
     actions = []
-    for key in (*CARRIERS, "changqian", "overseas"):
+    for key in return_sources:
         carrier = CARRIERS.get(key, key)
         for source, target, amount in (("cash_pool", carrier, allocated.get(key, 0)),
                                        (carrier, "cash_pool", reductions.get(key, 0))):

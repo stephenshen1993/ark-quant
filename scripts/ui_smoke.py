@@ -60,6 +60,7 @@ ARK_CHANGELOG_STYLE_METRICS = {
     "accent": "rgb(8, 122, 120)",
     "update": "rgb(47, 118, 86)",
     "neutral": "rgb(102, 116, 127)",
+    "retired": "rgb(180, 83, 9)",
     "kicker": {"fontSize": 11, "lineHeight": 16, "fontWeight": 650},
     "title": {"fontSize": 40, "lineHeight": 44, "fontWeight": 680},
     "subtitle": {"fontSize": 16, "lineHeight": 28, "fontWeight": 400},
@@ -264,6 +265,7 @@ def seed_database(db_path: Path, plan_date: str) -> None:
                 "rank": 1,
                 "stock_code": "600051",
                 "stock_name": "宁波联合",
+                "close_price": STOCK_QUOTES["600051"]["price"],
                 "total_mv_yuan": 1_000_000_000,
                 "pe_ttm": 10.0,
                 "roe_pct": 12.0,
@@ -669,7 +671,7 @@ def browser_check_code(
             await assertActivePage('overview.initial', overviewNav, '');
             smokeStep = 'overview';
             const overview = main.getByRole('region', {{ name: '投资概览', exact: true }});
-            await overview.locator('.overview-matrix tbody tr').nth(5).waitFor();
+            await overview.locator('.overview-matrix tbody tr').nth(3).waitFor();
             const overviewMetrics = await overview.evaluate(el => {{
               const state = window.Alpine.$data(el);
               const rows = state.allocationRows();
@@ -695,11 +697,11 @@ def browser_check_code(
                 detailsClosed: !el.querySelector('details').open }};
             }});
             const overviewDifferences = [];
-            const expectedAccounts = ['广发账户', '华泰账户', '平安账户', '资金账户', '海外长钱', '国内长钱'];
+            const expectedAccounts = ['广发账户', '华泰账户', '平安账户', '资金账户'];
             if (JSON.stringify(overviewMetrics.names) !== JSON.stringify(expectedAccounts))
               overviewDifferences.push(difference('overview.accounts', expectedAccounts, overviewMetrics.names));
-            if (JSON.stringify(overviewMetrics.targetWeights) !== JSON.stringify([0.35, 0.25, 0.3, 0.1, 0, 0]))
-              overviewDifferences.push(difference('overview.targets', [0.35, 0.25, 0.3, 0.1, 0, 0], overviewMetrics.targetWeights));
+            if (JSON.stringify(overviewMetrics.targetWeights) !== JSON.stringify([0.35, 0.25, 0.3, 0.1]))
+              overviewDifferences.push(difference('overview.targets', [0.35, 0.25, 0.3, 0.1], overviewMetrics.targetWeights));
             for (const field of ['accounted', 'pendingTotal']) {{
               if (Math.abs(overviewMetrics[field] - overviewMetrics.total) > 0.02)
                 overviewDifferences.push(difference('overview.' + field, overviewMetrics.total, overviewMetrics[field]));
@@ -860,8 +862,8 @@ def browser_check_code(
                 'account.narrowGutter', {NARROW_GUTTER}, accountMetrics.shellStyle, {GEOMETRY_TOLERANCE},
               ));
             }}
-            if (accountMetrics.accountCount !== 6) {{
-              accountDifferences.push(difference('account.accountCount', 6, accountMetrics.accountCount));
+            if (accountMetrics.accountCount !== 4) {{
+              accountDifferences.push(difference('account.accountCount', 4, accountMetrics.accountCount));
             }}
             if (accountMetrics.selectedAccount !== '广发账户') {{
               accountDifferences.push(difference('account.defaultSelection', '广发账户', accountMetrics.selectedAccount));
@@ -1169,6 +1171,7 @@ def browser_check_code(
               const rowCountBeforeContinue = await narrowAccount.locator('.account-current-holding-row').count();
               await addSecurity.click();
               const continuedCodeInput = narrowAccount.getByLabel('证券代码').last();
+              await continuedCodeInput.and(narrowAccountPage.locator(":focus")).waitFor({{ timeout: 2000 }});
               const rowCountAfterContinue = await narrowAccount.locator('.account-current-holding-row').count();
               const addSecurityBox = await addSecurity.boundingBox();
               const continuousAddMetrics = {{
@@ -1280,18 +1283,18 @@ def browser_check_code(
             await readinessAlert.waitFor({{ state: 'visible', timeout: 10000 }});
             const unknownOverview = await readinessErrorWorkspace.locator('.account-current-overview').innerText();
             const unknownStatuses = await readinessErrorWorkspace.locator('.account-current-rail-meta > span').allTextContents();
-            if (unknownOverview.includes('已就绪') || unknownStatuses.filter(text => text.trim() === '待确认').length !== 6) {{
+            if (unknownOverview.includes('已就绪') || unknownStatuses.filter(text => text.trim() === '待确认').length !== 4) {{
               fail('account.readiness-error', '计划就绪度失败时账户页仍然 fail-open', [
                 difference(
                   'account.readinessUnknown',
-                  {{ overviewIncludesReady: false, pendingStatusCount: 6 }},
+                  {{ overviewIncludesReady: false, pendingStatusCount: 4 }},
                   {{ overview: unknownOverview, statuses: unknownStatuses }},
                 ),
               ]);
             }}
             await readinessAlert.getByRole('button', {{ name: '重新确认', exact: true }}).click();
             await readinessErrorWorkspace.locator('.account-current-overview')
-              .filter({{ hasText: '6 / 6 个账户已就绪' }})
+              .filter({{ hasText: '4 / 4 个账户已就绪' }})
               .waitFor({{ state: 'visible', timeout: 10000 }});
             accountDataScenarioChecks.push({{
               name: 'readiness-error',
@@ -1364,7 +1367,6 @@ def browser_check_code(
             await pendingDetails.locator('summary').click();
             await assertPageIntegrity('account.pingan', main);
             await page.screenshot({{ path: {json.dumps(account_screenshot.replace('.png','-pingan.png'))}, fullPage: true }});
-            await chooseAccount('changqian');
             await chooseAccount('cash');
             const accountIntegrity = await assertPageIntegrity('account', main);
             await main.evaluate(element => element.scrollTo({{ top: 0, left: 0 }}));
@@ -2601,7 +2603,8 @@ def browser_check_code(
                 navActive: styleOf(activeNav).backgroundColor,
                 accent: typeColors['优化'],
                 update: typeColors['更新'],
-                neutral: typeColors['公告'] ?? typeColors['下线'],
+                neutral: typeColors['公告'],
+                retired: typeColors['下线'],
                 kicker: styleOf(kicker),
                 title: styleOf(title),
                 subtitle: styleOf(subtitle),
@@ -2649,7 +2652,7 @@ def browser_check_code(
             Object.entries(expectedStyleMetrics).forEach(([role, expected]) => {{
               const actual = styleMetrics[role];
               // 类型可以缺席；不能为了视觉测试强迫发布某一类日志。
-              if (['accent', 'update', 'neutral'].includes(role) && actual === undefined) return;
+              if (['accent', 'update', 'neutral', 'retired'].includes(role) && actual === undefined) return;
               if (expected && typeof expected === 'object') {{
                 Object.entries(expected).forEach(([property, expectedValue]) => {{
                   if (Math.abs(actual[property] - expectedValue) > 0.2) {{
